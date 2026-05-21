@@ -1,0 +1,307 @@
+<?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
+<?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
+<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/asistencia_tecnica.js"></script>'; ?>
+<?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
+
+<div class="content">
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-title">
+      <i class="fas fa-person-chalkboard" style="color:var(--primario);margin-right:8px;"></i>Asistencia Técnica
+      <small>Registro de visitas técnicas a productores — <?= htmlspecialchars($_SESSION['programa']['sigla'] ?? '') ?></small>
+    </div>
+    <div class="mode-tabs">
+      <button class="mode-tab active" onclick="switchTab('nueva')">
+        <i class="fas fa-plus-circle" style="font-size:.75rem;margin-right:5px;"></i>Nueva Visita
+      </button>
+      <button class="mode-tab" onclick="switchTab('listado')">
+        <i class="fas fa-list" style="font-size:.75rem;margin-right:5px;"></i>Listado
+      </button>
+    </div>
+  </div>
+
+  <!-- Mini stats -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="mini-stat">
+        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-lbl"><i class="fas fa-handshake" style="color:var(--primario);margin-right:4px;"></i>Total visitas</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="mini-stat" style="border-left-color:#16a34a;">
+        <div class="ms-val" style="color:#16a34a;"><?= $resumen['finalizadas'] ?></div>
+        <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Finalizadas</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="mini-stat blue">
+        <div class="ms-val"><?= $resumen['hombres'] ?></div>
+        <div class="ms-lbl"><i class="fas fa-mars" style="color:#3b82f6;margin-right:4px;"></i>Productores hombres</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="mini-stat" style="border-left-color:#db2777;">
+        <div class="ms-val"><?= $resumen['mujeres'] ?></div>
+        <div class="ms-lbl"><i class="fas fa-venus" style="color:#db2777;margin-right:4px;"></i>Productoras mujeres</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB NUEVA VISITA -->
+  <div id="tab-nueva">
+    <div class="card-box">
+      <div class="card-box-header"><h6><i class="fas fa-file-medical"></i> Datos de la Visita</h6></div>
+      <div class="card-box-body">
+        <form id="formAT" novalidate>
+          <input type="hidden" id="atId" name="id_at" value="0"/>
+
+          <div class="form-section-title"><i class="fas fa-tag me-1"></i>Tipo y Fecha</div>
+          <div class="row g-3 mb-4">
+            <div class="col-md-5">
+              <label class="form-label-b">Tipo de Asistencia <span class="req">*</span></label>
+              <select class="fs" id="atTipo" name="id_tipo_at" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($tiposAT as $t): ?>
+                <option value="<?= $t['id_tipo_at'] ?>"><?= htmlspecialchars($t['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-b">Fecha de Visita <span class="req">*</span></label>
+              <input type="date" class="fc" id="atFecha" name="fecha_visita" required/>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label-b">Hora</label>
+              <input type="time" class="fc" id="atHora" name="hora_visita"/>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label-b">Duración</label>
+              <input type="text" class="fc" id="atDuracion" name="duracion" placeholder="Ej. 2 horas"/>
+            </div>
+          </div>
+
+          <div class="form-section-title"><i class="fas fa-location-dot me-1"></i>Lugar</div>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label-b">Departamento <span class="req">*</span></label>
+              <select class="fs" id="atDep" name="id_departamento" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($departamentos as $dep): ?>
+                <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Municipio <span class="req">*</span></label>
+              <select class="fs" id="atMun" name="id_municipio" required>
+                <option value="">— Seleccione departamento —</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Aldea</label>
+              <input type="text" class="fc" id="atAldea" name="aldea" placeholder="Ej. El Porvenir"/>
+            </div>
+          </div>
+
+          <div class="form-section-title"><i class="fas fa-user me-1"></i>Productor Visitado</div>
+          <div class="row g-3 mb-4">
+            <div class="col-md-3">
+              <label class="form-label-b">Nombre <span class="req">*</span></label>
+              <input type="text" class="fc" id="atPNombre" name="productor_nombre" placeholder="Primer nombre"/>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-b">Apellido</label>
+              <input type="text" class="fc" id="atPApellido" name="productor_apellido"/>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-b">DNI</label>
+              <input type="text" class="fc input-dni" id="atPDni" name="productor_dni" maxlength="15" placeholder="0000-0000-00000"/>
+            </div>
+            <div class="col-md-1">
+              <label class="form-label-b">Edad</label>
+              <input type="number" class="fc" id="atPEdad" name="productor_edad" min="1" max="120"/>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label-b">Sexo</label>
+              <select class="fs" id="atPSexo" name="productor_sexo">
+                <option value="">— —</option>
+                <option value="M">Masculino</option>
+                <option value="F">Femenino</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Teléfono</label>
+              <input type="text" class="fc input-tel" id="atPTel" name="productor_telefono" placeholder="9999-9999"/>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Organización</label>
+              <select class="fs" id="atOrg" name="id_organizacion">
+                <option value="">— Sin organización —</option>
+                <?php foreach ($organizaciones as $org): ?>
+                <option value="<?= $org['id_organizacion'] ?>"><?= htmlspecialchars($org['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Área Productiva (mz)</label>
+              <input type="number" class="fc" id="atArea" name="area_productiva" step="0.1" min="0"/>
+            </div>
+          </div>
+
+          <div class="form-section-title"><i class="fas fa-seedling me-1"></i>Contenido Técnico</div>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label-b">Tema <span class="req">*</span></label>
+              <select class="fs" id="atTema" name="id_tema" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($temas as $tema): ?>
+                <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Subtema</label>
+              <select class="fs" id="atSubtema" name="id_subtema">
+                <option value="">— Seleccione tema primero —</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Cultivo / Rubro</label>
+              <select class="fs" id="atCultivo" name="id_cultivo">
+                <option value="">— Sin especificar —</option>
+                <?php
+                $tipoActual = '';
+                foreach ($cultivos as $cult):
+                    if ($cult['tipo'] !== $tipoActual):
+                        if ($tipoActual) echo '</optgroup>';
+                        $tipoActual = $cult['tipo'];
+                        $etiq = $tipoActual === 'cultivo' ? 'Cultivos' : ($tipoActual === 'ganaderia' ? 'Ganadería' : 'Otros');
+                        echo '<optgroup label="' . htmlspecialchars($etiq) . '">';
+                    endif;
+                ?>
+                <option value="<?= $cult['id_cultivo'] ?>"><?= htmlspecialchars($cult['nombre']) ?></option>
+                <?php endforeach; if ($tipoActual) echo '</optgroup>'; ?>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label-b">Descripción de la visita</label>
+              <textarea class="fc" id="atDescripcion" name="descripcion" rows="3"
+                        placeholder="Actividades realizadas, metodología..."></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label-b">
+                <i class="fas fa-list-check me-1" style="color:var(--primario);"></i>
+                Resultados / Logros obtenidos
+                <span style="font-size:.73rem;color:#aaa;font-weight:normal;"> (uno por línea)</span>
+              </label>
+              <textarea class="fc" id="atResultados" name="resultados" rows="3"
+                        placeholder="Ej.&#10;Se aplicó fertilizante en 2 mz&#10;El productor recibió semilla certificada"></textarea>
+            </div>
+          </div>
+
+          <div class="form-section-title"><i class="fas fa-user-tie me-1"></i>Técnico y Seguimiento</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label-b">Técnico responsable <span class="req">*</span></label>
+              <select class="fs" id="atTecnico" name="id_tecnico" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($tecnicos as $tec): ?>
+                <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-b">Próxima visita</label>
+              <input type="date" class="fc" id="atProxVisita" name="prox_visita"/>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label-b">Observaciones adicionales</label>
+              <textarea class="fc" id="atObservaciones" name="observaciones" rows="1"
+                        placeholder="Notas internas..."></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div style="padding:14px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0f0f0;">
+        <button type="button" class="btn-gris" id="btnLimpiarAT"><i class="fas fa-rotate-left"></i> Limpiar</button>
+        <button type="button" class="btn-primario" id="btnGuardarAT"><i class="fas fa-floppy-disk"></i> Guardar Visita</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB LISTADO -->
+  <div id="tab-listado" style="display:none;">
+    <div class="card-box">
+      <div class="card-box-header">
+        <h6><i class="fas fa-list-ul"></i> Listado de Visitas AT</h6>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select class="fs" id="filtroDepAT" style="width:155px;padding:6px 10px;">
+            <option value="">Todos los deptos.</option>
+            <?php foreach ($departamentos as $dep): ?>
+            <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroTipoAT" style="width:165px;padding:6px 10px;">
+            <option value="">Todos los tipos</option>
+            <?php foreach ($tiposAT as $t): ?>
+            <option value="<?= $t['id_tipo_at'] ?>"><?= htmlspecialchars($t['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroTemaAT" style="width:165px;padding:6px 10px;">
+            <option value="">Todos los temas</option>
+            <?php foreach ($temas as $tema): ?>
+            <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroTecAT" style="width:165px;padding:6px 10px;">
+            <option value="">Todos los técnicos</option>
+            <?php foreach ($tecnicos as $tec): ?>
+            <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroEstadoAT" style="width:115px;padding:6px 10px;">
+            <option value="">Todos</option>
+            <option value="borrador">Borrador</option>
+            <option value="finalizado">Finalizado</option>
+          </select>
+          <button class="btn-outline" id="btnFiltrarAT" style="padding:6px 14px;"><i class="fas fa-filter"></i> Filtrar</button>
+        </div>
+      </div>
+      <div style="padding:16px;overflow-x:auto;">
+        <table id="tablaAT" class="sag-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>#</th><th>Fecha</th><th>Tipo</th><th>Productor</th>
+              <th>Tema</th><th>Cultivo</th><th>Técnico</th><th>Ubicación</th>
+              <th>Próx. Visita</th><th>Estado</th><th style="width:100px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- Modal Ver AT -->
+<div class="modal fade" id="modalVerAT" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header modal-header-sag">
+        <h5 class="modal-title"><i class="fas fa-person-chalkboard me-2"></i>Detalle de Asistencia Técnica</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalATBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn-primario btn-editar-desde-modal-at" data-id=""><i class="fas fa-pen me-1"></i> Editar</button>
+        <button type="button" class="btn-outline btn-finalizar-desde-modal" data-id=""><i class="fas fa-circle-check me-1"></i> Finalizar</button>
+        <button type="button" class="btn-gris" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php require ROOT_PATH . '/app/views/layouts/footer.php'; ?>

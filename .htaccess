@@ -1,0 +1,22 @@
+Options -Indexes
+RewriteEngine On
+
+# Bloquear acceso directo a directorios sensibles
+RewriteRule ^(core|config|app/models|app/controllers|logs)/ - [F,L]
+
+# No redirigir archivos y carpetas reales (css, js, img, etc.)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Todo lo demás va a index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Seguridad adicional
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Deshabilitar firma del servidor
+ServerSignature Off
