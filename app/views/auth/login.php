@@ -311,7 +311,7 @@
         </div>
         <div class="input-group-icon">
           <label class="form-label" for="password">Contraseña</label>
-          <i class="fas fa-lock icon-left"></i>
+          <i class="fas fa-unlock-keyhole icon-left"></i>
           <input type="password" class="form-control" id="password" name="password"
                  placeholder="••••••••••" autocomplete="current-password" required/>
           <i class="fas fa-eye icon-right" id="togglePwd" title="Mostrar/ocultar"></i>
