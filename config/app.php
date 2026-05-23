@@ -72,9 +72,9 @@ define('DB_MAIN', [
 // Ambiente de pruebas: 'https://pruebas-trazaragro.oirsa.org'
 // Ambiente productivo: 'https://trazaragro.oirsa.org'
 define('TRAZARAGRO', [
-    'base_url'      => 'https://pruebas-trazaragro.oirsa.org',
-    'username'      => 'joselrns@gmail.com',
-    'password'      => 'Palacios',
+    'base_url'      => '
+    'username'      => '',
+    'password'      => ',
     'client_id'     => 'TZWEB',
     'client_secret' => '44007759-8c91-4557-9347-53708a1bb5c5',
     'instance'      => 'HN',
