@@ -11,7 +11,46 @@ const SAG = (function () {
   })();
 
   // ──────────────────────────────────────────────────
-  //  AJAX helper
+  //  CSRF token — leído del meta del header
+  // ──────────────────────────────────────────────────
+  const CSRF = (function () {
+    const m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  })();
+
+  // Configurar jQuery para enviar siempre el header X-CSRF-Token en peticiones unsafe
+  if (typeof $ !== 'undefined' && CSRF) {
+    $.ajaxSetup({
+      headers: { 'X-CSRF-Token': CSRF }
+    });
+  }
+
+  // Helper: agregar el token a un objeto/string/FormData de payload
+  function withCsrf(data) {
+    if (!CSRF) return data;
+    // FormData: usar append
+    if (typeof FormData !== 'undefined' && data instanceof FormData) {
+      if (!data.has('_csrf')) data.append('_csrf', CSRF);
+      return data;
+    }
+    // Objeto plano
+    if (data && typeof data === 'object') {
+      if (data._csrf === undefined) data._csrf = CSRF;
+      return data;
+    }
+    // String tipo "a=1&b=2"
+    if (typeof data === 'string') {
+      if (data.indexOf('_csrf=') === -1) {
+        return (data ? data + '&' : '') + '_csrf=' + encodeURIComponent(CSRF);
+      }
+      return data;
+    }
+    // null/undefined → crear objeto
+    return { _csrf: CSRF };
+  }
+
+  // ──────────────────────────────────────────────────
+  //  AJAX helper (con CSRF automático en POST)
   // ──────────────────────────────────────────────────
   function ajax(url, data, callback, method) {
     // Soporta dos formas de llamada:
@@ -24,11 +63,13 @@ const SAG = (function () {
       var errCb = opts.error   || null;
       data     = opts.data;
       url      = opts.url;
+      // Inyectar CSRF en peticiones que cambian estado
+      if (method.toUpperCase() !== 'GET') data = withCsrf(data);
       return $.ajax({
         url:     BASE + url,
         type:    method,
         data:    data,
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': CSRF },
         success: function (res) { if (typeof callback === 'function') callback(res); },
         error:   function () {
           toast('Error de conexión. Intente nuevamente.', 'error');
@@ -38,11 +79,12 @@ const SAG = (function () {
       });
     }
     method = method || 'POST';
+    if (method.toUpperCase() !== 'GET') data = withCsrf(data);
     $.ajax({
       url:     BASE + url,
       type:    method,
       data:    data,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': CSRF },
       success: function (res) {
         if (typeof callback === 'function') callback(res);
       },
@@ -250,6 +292,8 @@ const SAG = (function () {
     dataTable: dataTable,
     initSelect2: initSelect2,
     BASE: BASE,
-    BASE_URL: BASE
+    BASE_URL: BASE,
+    CSRF: CSRF,
+    withCsrf: withCsrf
   };
 })();

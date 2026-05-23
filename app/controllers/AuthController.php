@@ -37,6 +37,11 @@ class AuthController extends Controller
                 return;
             }
 
+            // Regenerar ID de sesión y token CSRF tras login (anti-fixation)
+            session_regenerate_id(true);
+            $_SESSION['_csrf']        = bin2hex(random_bytes(32));
+            $_SESSION['_last_regen']  = time();
+
             // Guardar en sesión
             $_SESSION['user'] = [
                 'id_usuario'  => $user['id_usuario'],

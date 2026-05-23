@@ -1,20 +1,18 @@
 <?php
 /**
- * EntregasController — Módulo de Entregas de Incentivos
+ * EntregasController — Movimientos de Trazaragro (vista nativa OIRSA)
  *
- * VERSIÓN MOCK (mayo 2026)
- * Esta versión NO está conectada a KoBoToolbox ni persiste en BD.
- * Los datos del listado son ficticios para validar UX antes del sync real.
+ * Refactor mayo 2026: el módulo "Entregas de Incentivos" ahora refleja 1:1
+ * la tabla "Programas nacionales / Registro de Movilización" de OIRSA.
+ * Cada fila persistida = un objeto trazable (un MovementId de OData).
  *
- * Integraciones planeadas:
- *  · KoBoToolbox      → core/KoboClient.php (a crear) — datos de campo
- *  · Trazaragro       → core/TrazaragroClient.php (OAuth + OData v3 LIVE)
- *  · Inventarios      → InventariosController::registrarSalida() al aprobar
+ * Tabla principal: sag_trazaragro_movimientos (migración 004)
  *
- * Pendiente:
- * - Implementar KoboClient real con credenciales
- * - Persistir en sag_entregas + sag_entregas_lineas (migración 003)
- * - Cron para sync automático
+ * Flujo:
+ *  1. Botón "Sincronizar" → fetchEntregas() en TrazaragroClient
+ *  2. Para cada línea OData → UPSERT por movement_id en sag_trazaragro_movimientos
+ *  3. Vista lee directo de esa tabla y la muestra estilo OIRSA
+ *  4. Botón "Descargar reporte" → CSV con las mismas columnas que OIRSA
  */
 class EntregasController extends Controller
 {
@@ -23,63 +21,138 @@ class EntregasController extends Controller
         $this->requirePrograma();
     }
 
+    // ════════════════════════════════════════════════════════════
+    //  VISTA PRINCIPAL
+    // ════════════════════════════════════════════════════════════
     public function index(): void
     {
         $pageTitle = 'Entregas de Incentivos — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
 
-        $entregas = $this->mockEntregas();
-        $kpis     = $this->calcularKpis($entregas);
-
-        $bodegas = [
-            ['codigo' => 'FM01', 'nombre' => 'Bodega Central FM-01'],
-            ['codigo' => 'FM02', 'nombre' => 'Bodega Valle FM-02'],
-            ['codigo' => 'CP01', 'nombre' => 'Bodega Santa Rosa CP-01'],
-            ['codigo' => 'CP02', 'nombre' => 'Bodega La Entrada CP-02'],
-            ['codigo' => 'OL01', 'nombre' => 'Bodega Juticalpa OL-01'],
-            ['codigo' => 'OL02', 'nombre' => 'Bodega Campamento OL-02'],
-        ];
-
-        $tecnicos = [
-            ['codigo' => 'tec01', 'nombre' => 'Jose Luis Ramirez'],
-            ['codigo' => 'tec02', 'nombre' => 'Carmen Sosa'],
-            ['codigo' => 'tec03', 'nombre' => 'Ivan Mendoza'],
-            ['codigo' => 'tec04', 'nombre' => 'Lucia Bardales'],
-            ['codigo' => 'tec05', 'nombre' => 'Mario Discua'],
-        ];
+        $movimientos = $this->cargarMovimientos();
+        $kpis        = $this->calcularKpis($movimientos);
+        $catalogos   = $this->cargarCatalogosFiltros();
 
         $esAdmin = in_array(($_SESSION['user']['rol_slug'] ?? ''), ['admin', 'coordinador']);
 
         $this->view('entregas/index', compact(
-            'pageTitle', 'entregas', 'kpis', 'bodegas', 'tecnicos', 'esAdmin'
+            'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin'
         ));
     }
 
     // ════════════════════════════════════════════════════════════
-    //  SINCRONIZACIÓN — Kobo (campo) y Trazaragro (manifiestos)
+    //  CARGA DESDE BD
     // ════════════════════════════════════════════════════════════
-    public function sincronizar(): void
+    private function cargarMovimientos(): array
     {
-        $nuevas  = rand(2, 8);
-        $alertas = rand(0, 2);
-        $this->logAction('SYNC_KOBO', 'entregas', "MOCK +{$nuevas} entregas, {$alertas} alertas");
-        $this->success(
-            "Sincronización con KoBo completada: {$nuevas} nuevas entregas importadas" .
-            ($alertas ? " ({$alertas} requieren revisión)" : ''),
-            ['nuevas' => $nuevas, 'alertas' => $alertas, 'origen' => 'kobo']
-        );
+        try {
+            $db = Database::programa();
+            return $db->fetchAll("
+                SELECT *
+                FROM sag_trazaragro_movimientos
+                ORDER BY fecha_autorizacion DESC, movement_id DESC
+                LIMIT 1000
+            ");
+        } catch (\Throwable $e) {
+            error_log('cargarMovimientos: ' . $e->getMessage());
+            return [];
+        }
     }
 
-    /**
-     * Sincronización con Trazaragro vía API REST (OData v3 + OAuth2).
-     * Envuelto en try/catch para que cualquier fallo se reporte como JSON
-     * (evita devolver HTML 500 que el frontend no puede parsear).
-     */
+    private function cargarCatalogosFiltros(): array
+    {
+        try {
+            $db = Database::programa();
+            $rubros = $db->fetchAll(
+                "SELECT DISTINCT rubro FROM sag_trazaragro_movimientos
+                 WHERE rubro IS NOT NULL AND rubro <> '' ORDER BY rubro"
+            );
+            $tipos = $db->fetchAll(
+                "SELECT DISTINCT tipo_movimiento FROM sag_trazaragro_movimientos
+                 WHERE tipo_movimiento IS NOT NULL AND tipo_movimiento <> '' ORDER BY tipo_movimiento"
+            );
+            $deptos = $db->fetchAll(
+                "SELECT DISTINCT destino_departamento AS depto FROM sag_trazaragro_movimientos
+                 WHERE destino_departamento IS NOT NULL AND destino_departamento <> '' ORDER BY depto"
+            );
+            $objetos = $db->fetchAll(
+                "SELECT DISTINCT objeto_trazable FROM sag_trazaragro_movimientos
+                 WHERE objeto_trazable IS NOT NULL AND objeto_trazable <> '' ORDER BY objeto_trazable"
+            );
+            return [
+                'rubros'  => array_column($rubros, 'rubro'),
+                'tipos'   => array_column($tipos, 'tipo_movimiento'),
+                'deptos'  => array_column($deptos, 'depto'),
+                'objetos' => array_column($objetos, 'objeto_trazable'),
+            ];
+        } catch (\Throwable $e) {
+            return ['rubros' => [], 'tipos' => [], 'deptos' => [], 'objetos' => []];
+        }
+    }
+
+    private function calcularKpis(array $movimientos): array
+    {
+        $kpis = [
+            'total_movimientos'    => count($movimientos),
+            'entregados'           => 0,
+            'pendientes'           => 0,
+            'beneficiarios_unicos' => 0,
+            'manifiestos_unicos'   => 0,   // GUIASA No.
+            'cantidad_total'       => 0,
+            'desglose_objetos'     => [],
+        ];
+
+        $beneficiarios = [];
+        $manifiestos   = [];
+        $porObjeto     = [];
+
+        foreach ($movimientos as $m) {
+            // Beneficiario único por DNI
+            if (!empty($m['destino_dni'])) $beneficiarios[$m['destino_dni']] = true;
+            // Manifiesto único por GUIASA
+            if (!empty($m['guiasa_no']))   $manifiestos[$m['guiasa_no']]   = true;
+
+            $entregado = !empty($m['is_completed']) || !empty($m['codigo_trazabilidad']);
+            if ($entregado) $kpis['entregados']++;
+            else            $kpis['pendientes']++;
+
+            $kpis['cantidad_total'] += (float)($m['cantidad'] ?? 0);
+
+            // Desglose por objeto trazable exacto
+            $obj = trim((string)($m['objeto_trazable'] ?? '')) ?: '(sin nombre)';
+            if (!isset($porObjeto[$obj])) {
+                $porObjeto[$obj] = [
+                    'objeto'      => $obj,
+                    'unidad'      => $m['unidad'] ?? '',
+                    'movimientos' => 0,
+                    'entregados'  => 0,
+                    'pendientes'  => 0,
+                    'cantidad'    => 0,
+                ];
+            }
+            $porObjeto[$obj]['movimientos']++;
+            $porObjeto[$obj]['cantidad'] += (float)($m['cantidad'] ?? 0);
+            if ($entregado) $porObjeto[$obj]['entregados']++;
+            else            $porObjeto[$obj]['pendientes']++;
+        }
+
+        $kpis['beneficiarios_unicos'] = count($beneficiarios);
+        $kpis['manifiestos_unicos']   = count($manifiestos);
+
+        // Ordenar desglose por más movimientos
+        usort($porObjeto, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
+        $kpis['desglose_objetos'] = $porObjeto;
+
+        return $kpis;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  SINCRONIZACIÓN (botón "Sincronizar con Trazaragro")
+    // ════════════════════════════════════════════════════════════
     public function sincronizarTrazaragro(): void
     {
         try {
-            // Verificar que la clase existe (archivo desplegado correctamente)
             if (!class_exists('TrazaragroClient')) {
-                $this->error('El archivo core/TrazaragroClient.php no está desplegado en este servidor. Cópialo y vuelve a intentar.');
+                $this->error('core/TrazaragroClient.php no está desplegado.');
                 return;
             }
 
@@ -90,71 +163,336 @@ class EntregasController extends Controller
                 return;
             }
 
-            $authCode = trim((string) $this->getPost('authCode', ''));
-            $desde    = $this->getPost('desde', date('Y-m-d', strtotime('-7 days')));
-            $hasta    = $this->getPost('hasta', date('Y-m-d'));
-            $top      = (int) $this->getPost('top', 100);
+            $desde   = $this->getPost('desde', date('Y-m-d', strtotime('-30 days')));
+            $hasta   = $this->getPost('hasta', date('Y-m-d'));
+            $top     = (int) $this->getPost('top', 500);
+            $limpiar = (int) $this->getPost('limpiar', 0);
 
-            $entregas = $cli->fetchEntregas([
-                'top'      => $top,
-                'desde'    => $desde,
-                'hasta'    => $hasta,
-                'authCode' => $authCode ?: null,
+            // Rubro del programa activo (filtro OIRSA)
+            $progId = $_SESSION['programa']['id'] ?? '';
+            $rubro  = PROGRAMAS[$progId]['trazaragro_rubro'] ?? null;
+
+            if ($limpiar) {
+                $borradas = $this->limpiarMovimientos();
+                error_log("sincronizarTrazaragro: limpieza solicitada, {$borradas} filas borradas");
+            }
+
+            $movimientos = $cli->fetchEntregas([
+                'top'   => $top,
+                'desde' => $desde,
+                'hasta' => $hasta,
+                'rubro' => $rubro,
             ]);
 
-            // Validación cruzada local
-            $matched = 0; $sinMatch = 0; $duplicados = 0; $alertas = [];
-            foreach ($entregas as &$e) {
-                $e['_validacion'] = $this->validarVsBeneficiarios($e);
-                if ($e['_validacion']['estado'] === 'matched')       $matched++;
-                elseif ($e['_validacion']['estado'] === 'sin_match') $sinMatch++;
-                elseif ($e['_validacion']['estado'] === 'duplicado') $duplicados++;
-                if (!empty($e['_validacion']['alerta'])) $alertas[] = $e['_validacion']['alerta'];
-            }
-            unset($e);
+            $stats = $this->persistirMovimientos($movimientos);
 
-            $nuevas = count($entregas);
+            // Resumen amigable
+            $resumen = "Trazaragro ({$ping['mode']}): {$stats['recibidos']} movimientos sincronizados";
+            if ($stats['insertados'])   $resumen .= " · {$stats['insertados']} nuevos";
+            if ($stats['actualizados']) $resumen .= " · {$stats['actualizados']} actualizados";
+            if ($stats['errores'])      $resumen .= " · {$stats['errores']} con error";
 
             $this->logAction('SYNC_TRAZARAGRO', 'entregas',
-                "Modo: {$ping['mode']} · recibidas={$nuevas} · ok={$matched} · sin_match={$sinMatch} · dup={$duplicados}");
-
-            $resumen = "Trazaragro ({$ping['mode']}): {$nuevas} manifiestos recibidos";
-            if ($matched)    $resumen .= " · {$matched} validados";
-            if ($sinMatch)   $resumen .= " · {$sinMatch} sin match en padrón";
-            if ($duplicados) $resumen .= " · {$duplicados} duplicados";
+                "rubro=" . ($rubro ?: 'todos') . " · {$resumen}");
 
             $this->success($resumen, [
-                'nuevas'     => $nuevas,
-                'matched'    => $matched,
-                'sin_match'  => $sinMatch,
-                'duplicados' => $duplicados,
-                'alertas'    => $alertas,
-                'origen'     => 'trazaragro',
-                'modo'       => $ping['mode'],
-                'rango'      => ['desde' => $desde, 'hasta' => $hasta],
-                'entregas'   => $entregas,
+                'rubro_filtrado' => $rubro,
+                'recibidos'      => $stats['recibidos'],
+                'insertados'     => $stats['insertados'],
+                'actualizados'   => $stats['actualizados'],
+                'errores'        => $stats['errores'],
+                'errores_det'    => $stats['errores_det'] ?? [],
+                'modo'           => $ping['mode'],
+                'rango'          => ['desde' => $desde, 'hasta' => $hasta],
             ]);
         } catch (\Throwable $e) {
-            error_log('sincronizarTrazaragro EXCEPTION: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            error_log('sincronizarTrazaragro EX: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             $this->error('Error interno: ' . $e->getMessage() . ' (línea ' . $e->getLine() . ' de ' . basename($e->getFile()) . ')');
         }
     }
 
     /**
-     * Endpoint de diagnóstico — qué archivos del paquete Trazaragro/Inventarios
-     * están desplegados en este servidor. Útil cuando aparece 500 o "Error de conexión".
+     * Persiste los movimientos recibidos de OIRSA en sag_trazaragro_movimientos.
+     * UPSERT por movement_id (PK). Tabla flat — sin agregaciones, sin joins.
      */
+    private function persistirMovimientos(array $movs): array
+    {
+        $stats = [
+            'recibidos'    => count($movs),
+            'insertados'   => 0,
+            'actualizados' => 0,
+            'errores'      => 0,
+            'errores_det'  => [],
+        ];
+
+        if (empty($movs)) return $stats;
+
+        try {
+            $db = Database::programa();
+        } catch (\Throwable $e) {
+            $stats['errores']++;
+            $stats['errores_det'][] = 'No se pudo conectar al programa: ' . $e->getMessage();
+            return $stats;
+        }
+
+        $sql = "INSERT INTO sag_trazaragro_movimientos (
+            movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
+            objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
+            guiasa_no, codigo_autorizacion,
+            fecha_registro, fecha_autorizacion, fecha_expiracion,
+            origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
+            destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue, destino_departamento, destino_municipio,
+            cantidad, unidad, transportista, vehiculo, condicion, proposito,
+            autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
+            estado_local, raw_json, synced_at
+        ) VALUES (
+            :movement_id, :rubro, :rubro_id, :tipo_movimiento, :tipo_movimiento_id, :actividad_id,
+            :objeto_trazable, :objeto_trazable_codigo, :codigo_trazabilidad,
+            :guiasa_no, :codigo_autorizacion,
+            :fecha_registro, :fecha_autorizacion, :fecha_expiracion,
+            :origen_persona, :origen_establecimiento, :origen_cue, :origen_departamento, :origen_municipio,
+            :destino_persona, :destino_dni, :destino_nombre, :destino_establecimiento, :destino_cue, :destino_departamento, :destino_municipio,
+            :cantidad, :unidad, :transportista, :vehiculo, :condicion, :proposito,
+            :autorizado_por, :creado_por, :status_oirsa, :status_id, :event_stage, :is_completed,
+            :estado_local, :raw_json, NOW()
+        )
+        ON DUPLICATE KEY UPDATE
+            rubro = VALUES(rubro),
+            tipo_movimiento = VALUES(tipo_movimiento),
+            objeto_trazable = VALUES(objeto_trazable),
+            codigo_trazabilidad = VALUES(codigo_trazabilidad),
+            guiasa_no = VALUES(guiasa_no),
+            codigo_autorizacion = VALUES(codigo_autorizacion),
+            fecha_registro = VALUES(fecha_registro),
+            fecha_autorizacion = VALUES(fecha_autorizacion),
+            fecha_expiracion = VALUES(fecha_expiracion),
+            origen_persona = VALUES(origen_persona),
+            origen_establecimiento = VALUES(origen_establecimiento),
+            origen_cue = VALUES(origen_cue),
+            origen_departamento = VALUES(origen_departamento),
+            origen_municipio = VALUES(origen_municipio),
+            destino_persona = VALUES(destino_persona),
+            destino_dni = VALUES(destino_dni),
+            destino_nombre = VALUES(destino_nombre),
+            destino_establecimiento = VALUES(destino_establecimiento),
+            destino_cue = VALUES(destino_cue),
+            destino_departamento = VALUES(destino_departamento),
+            destino_municipio = VALUES(destino_municipio),
+            cantidad = VALUES(cantidad),
+            unidad = VALUES(unidad),
+            transportista = VALUES(transportista),
+            vehiculo = VALUES(vehiculo),
+            condicion = VALUES(condicion),
+            proposito = VALUES(proposito),
+            autorizado_por = VALUES(autorizado_por),
+            creado_por = VALUES(creado_por),
+            status_oirsa = VALUES(status_oirsa),
+            status_id = VALUES(status_id),
+            event_stage = VALUES(event_stage),
+            is_completed = VALUES(is_completed),
+            estado_local = VALUES(estado_local),
+            raw_json = VALUES(raw_json),
+            synced_at = NOW()
+        ";
+
+        foreach ($movs as $m) {
+            try {
+                $isCompleted = !empty($m['is_completed']) ? 1 : 0;
+                $tieneCodigo = !empty($m['codigo_trazabilidad']);
+                $estadoLocal = ($isCompleted || $tieneCodigo) ? 'entregado' : 'pendiente';
+
+                $movId = (int)($m['trazaragro_id'] ?? 0);
+                if ($movId <= 0) {
+                    $stats['errores']++;
+                    $stats['errores_det'][] = 'Movimiento sin MovementId, saltado';
+                    continue;
+                }
+
+                // Verificar si existía (para contar insert vs update)
+                $existe = $db->fetchOne(
+                    "SELECT movement_id FROM sag_trazaragro_movimientos WHERE movement_id = ?",
+                    [$movId]
+                );
+
+                $params = [
+                    ':movement_id'           => $movId,
+                    ':rubro'                 => $m['rubro'] ?: null,
+                    ':rubro_id'              => $m['rubro_id'] ?: null,
+                    ':tipo_movimiento'       => $m['tipo_movimiento'] ?: null,
+                    ':tipo_movimiento_id'    => $m['tipo_movimiento_id'] ?: null,
+                    ':actividad_id'          => $m['actividad_id'] ?: null,
+                    ':objeto_trazable'       => $m['objeto_trazable'] ?: null,
+                    ':objeto_trazable_codigo'=> $m['objeto_trazable_codigo'] ?: null,
+                    ':codigo_trazabilidad'   => $m['codigo_trazabilidad'] ?: null,
+                    ':guiasa_no'             => $m['registration_code'] ?: null,
+                    ':codigo_autorizacion'   => $m['authorization_code'] ?: null,
+                    ':fecha_registro'        => $m['fecha_registro'] ?: null,
+                    ':fecha_autorizacion'    => $m['fecha_autorizacion'] ?: null,
+                    ':fecha_expiracion'      => $m['fecha_expiracion'] ?: null,
+                    ':origen_persona'        => $m['origen_persona'] ?: null,
+                    ':origen_establecimiento'=> $m['origen_establecimiento'] ?: null,
+                    ':origen_cue'            => $m['origen_cue'] ?: null,
+                    ':origen_departamento'   => $m['origen_departamento'] ?: null,
+                    ':origen_municipio'      => $m['origen_municipio'] ?: null,
+                    ':destino_persona'       => $m['destino_persona'] ?: null,
+                    ':destino_dni'           => $m['destino_dni'] ?: null,
+                    ':destino_nombre'        => $m['destino_nombre'] ?: null,
+                    ':destino_establecimiento'=> $m['destino_establecimiento'] ?: null,
+                    ':destino_cue'           => $m['destino_cue'] ?: null,
+                    ':destino_departamento'  => $m['destino_departamento'] ?: null,
+                    ':destino_municipio'     => $m['destino_municipio'] ?: null,
+                    ':cantidad'              => (float)($m['cantidad'] ?? 0),
+                    ':unidad'                => $m['unidad'] ?: null,
+                    ':transportista'         => $m['transportista'] ?: null,
+                    ':vehiculo'              => $m['vehiculo'] ?: null,
+                    ':condicion'             => $m['condicion'] ?: null,
+                    ':proposito'             => $m['proposito'] ?: null,
+                    ':autorizado_por'        => $m['usuario_autoriza'] ?: null,
+                    ':creado_por'            => $m['usuario_crea'] ?: null,
+                    ':status_oirsa'          => $m['status'] ?: null,
+                    ':status_id'             => $m['status_id'] ?: null,
+                    ':event_stage'           => $m['event_stage'] ?: null,
+                    ':is_completed'          => $isCompleted,
+                    ':estado_local'          => $estadoLocal,
+                    ':raw_json'              => json_encode($m['raw'] ?? [], JSON_UNESCAPED_UNICODE),
+                ];
+
+                $db->execute($sql, $params);
+                if ($existe) $stats['actualizados']++;
+                else         $stats['insertados']++;
+            } catch (\Throwable $e) {
+                $stats['errores']++;
+                $stats['errores_det'][] = 'MovementId ' . ($m['trazaragro_id'] ?? '?') . ': ' . $e->getMessage();
+                error_log('persistirMovimientos: ' . $e->getMessage());
+            }
+        }
+
+        return $stats;
+    }
+
+    private function limpiarMovimientos(): int
+    {
+        try {
+            $db = Database::programa();
+            return $db->execute("DELETE FROM sag_trazaragro_movimientos");
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  EXPORTAR CSV (idéntico al export de OIRSA)
+    // ════════════════════════════════════════════════════════════
+    public function exportar(): void
+    {
+        try {
+            $db = Database::programa();
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo 'Error: ' . $e->getMessage();
+            exit;
+        }
+
+        $rows = $db->fetchAll("
+            SELECT *
+            FROM sag_trazaragro_movimientos
+            ORDER BY fecha_autorizacion DESC, movement_id DESC
+        ");
+
+        $sigla = $_SESSION['programa']['sigla'] ?? 'SAG';
+        $fname = "trazaragro_movimientos_{$sigla}_" . date('Ymd_His') . '.csv';
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $fname . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+
+        echo "\xEF\xBB\xBF"; // BOM UTF-8 para Excel
+
+        $out = fopen('php://output', 'w');
+        fputcsv($out, [
+            'Rubro',
+            'Tipo de movimiento',
+            'Objeto trazable',
+            'Código de Trazabilidad',
+            'GUIASA No.',
+            'Código de autorización',
+            'Fecha',
+            'Origen - Persona',
+            'Origen - Establecimiento',
+            'Origen - Departamento',
+            'Destino - Persona',
+            'Destino - DNI',
+            'Destino - Establecimiento',
+            'Destino - CUE',
+            'Destino - Departamento',
+            'Destino - Municipio',
+            'Cantidad',
+            'Unidad',
+            'Autorizado por',
+            'Estado',
+        ], ';');
+
+        foreach ($rows as $r) {
+            fputcsv($out, [
+                $r['rubro'],
+                $r['tipo_movimiento'],
+                $r['objeto_trazable'],
+                $r['codigo_trazabilidad'],
+                $r['guiasa_no'],
+                $r['codigo_autorizacion'],
+                $r['fecha_autorizacion'],
+                $r['origen_persona'],
+                $r['origen_establecimiento'],
+                $r['origen_departamento'],
+                $r['destino_persona'],
+                $r['destino_dni'],
+                $r['destino_establecimiento'],
+                $r['destino_cue'],
+                $r['destino_departamento'],
+                $r['destino_municipio'],
+                $r['cantidad'],
+                $r['unidad'],
+                $r['autorizado_por'],
+                $r['estado_local'],
+            ], ';');
+        }
+        fclose($out);
+        exit;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  DETALLE de un movimiento (modal)
+    // ════════════════════════════════════════════════════════════
+    public function detalle(): void
+    {
+        $id = (int) $this->getPost('id', 0);
+        try {
+            $db  = Database::programa();
+            $row = $db->fetchOne(
+                "SELECT * FROM sag_trazaragro_movimientos WHERE movement_id = ?",
+                [$id]
+            );
+            if (!$row) { $this->error('Movimiento no encontrado.'); return; }
+            // Decodificar el raw_json para enviarlo como objeto
+            if (!empty($row['raw_json'])) {
+                $row['raw'] = json_decode($row['raw_json'], true);
+            }
+            $this->success('OK', ['movimiento' => $row]);
+        } catch (\Throwable $e) {
+            $this->error('Error: ' . $e->getMessage());
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  DIAGNÓSTICO (mantenido por compatibilidad)
+    // ════════════════════════════════════════════════════════════
     public function diag(): void
     {
         $base = defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__, 2);
         $checks = [
             'core/TrazaragroClient.php'                     => $base . '/core/TrazaragroClient.php',
-            'core/Database.php'                             => $base . '/core/Database.php',
             'app/controllers/EntregasController.php'        => $base . '/app/controllers/EntregasController.php',
-            'app/controllers/InventariosController.php'     => $base . '/app/controllers/InventariosController.php',
-            'app/views/inventarios/index.php'               => $base . '/app/views/inventarios/index.php',
-            'public/assets/js/modules/inventarios.js'       => $base . '/public/assets/js/modules/inventarios.js',
-            'sql/migracion_003_entregas_inventario.sql'     => $base . '/sql/migracion_003_entregas_inventario.sql',
+            'sql/migracion_004_trazaragro_movimientos.sql'  => $base . '/sql/migracion_004_trazaragro_movimientos.sql',
         ];
         $report = [];
         foreach ($checks as $rel => $abs) {
@@ -166,249 +504,84 @@ class EntregasController extends Controller
                 'modificado'=> $exists ? date('Y-m-d H:i:s', filemtime($abs)) : null,
             ];
         }
-        $classes = [
-            'TrazaragroClient'       => class_exists('TrazaragroClient'),
-            'InventariosController'  => class_exists('InventariosController'),
-            'Database'               => class_exists('Database'),
-        ];
-        $config = [
-            'TRAZARAGRO_definido' => defined('TRAZARAGRO'),
-            'TRAZARAGRO_url'      => defined('TRAZARAGRO') ? (TRAZARAGRO['base_url'] ?? '') : '',
-            'TRAZARAGRO_user_set' => defined('TRAZARAGRO') ? !empty(TRAZARAGRO['username']) : false,
-            'php_version'         => PHP_VERSION,
-            'session_programa'    => $_SESSION['programa']['sigla'] ?? '(ninguno)',
-        ];
-        $this->success('Diagnóstico de despliegue', [
+
+        $tablaExiste = false; $totalMovs = 0;
+        try {
+            $db = Database::programa();
+            $r  = $db->fetchOne("SHOW TABLES LIKE 'sag_trazaragro_movimientos'");
+            $tablaExiste = (bool)$r;
+            if ($tablaExiste) {
+                $r2 = $db->fetchOne("SELECT COUNT(*) AS c FROM sag_trazaragro_movimientos");
+                $totalMovs = (int)($r2['c'] ?? 0);
+            }
+        } catch (\Throwable $e) {}
+
+        $this->success('Diagnóstico de movimientos Trazaragro', [
             'archivos' => $report,
-            'clases'   => $classes,
-            'config'   => $config,
+            'config'   => [
+                'TRAZARAGRO_definido' => defined('TRAZARAGRO'),
+                'TRAZARAGRO_url'      => defined('TRAZARAGRO') ? (TRAZARAGRO['base_url'] ?? '') : '',
+                'TRAZARAGRO_user_set' => defined('TRAZARAGRO') ? !empty(TRAZARAGRO['username']) : false,
+                'php_version'         => PHP_VERSION,
+                'session_programa'    => $_SESSION['programa']['sigla'] ?? '(ninguno)',
+                'rubro_programa'      => $_SESSION['programa'] && ($_SESSION['programa']['id'] ?? null)
+                                          ? (PROGRAMAS[$_SESSION['programa']['id']]['trazaragro_rubro'] ?? null)
+                                          : null,
+            ],
+            'tabla_existe' => $tablaExiste,
+            'total_movs'   => $totalMovs,
         ]);
     }
 
-    /**
-     * Valida una entrega Trazaragro vs el padrón local de beneficiarios.
-     */
-    private function validarVsBeneficiarios(array $entrega): array
+    // ════════════════════════════════════════════════════════════
+    //  ENDPOINTS LEGACY (mantenidos por compatibilidad)
+    // ════════════════════════════════════════════════════════════
+    public function sincronizar(): void
     {
-        $dni = $entrega['dni'] ?? '';
-        if ($dni === '') {
-            return ['estado' => 'sin_match', 'alerta' => 'Manifiesto sin DNI de beneficiario'];
-        }
-        return ['estado' => 'matched', 'alerta' => null];
+        // KoBo legacy — mock; se implementará cuando KoboClient esté listo
+        $this->success('Sincronización con KoBo aún no implementada (mock)', [
+            'origen' => 'kobo', 'mock' => true,
+        ]);
     }
 
     public function aprobar(): void
     {
-        if (!in_array(($_SESSION['user']['rol_slug'] ?? ''), ['admin', 'coordinador'])) {
-            $this->error('Sin permisos para aprobar entregas.'); return;
-        }
+        // No aplica directamente en la vista OIRSA. Reservado para futura
+        // funcionalidad de marcar revisión local sobre un movimiento.
         $id  = (int) $this->getPost('id', 0);
         $obs = $this->getPost('observacion', '');
-
         try {
-            $salida = ['ok' => false, 'msg' => 'InventariosController no desplegado'];
-            if (class_exists('InventariosController')) {
-                $mockBodegaId = 1;
-                $mockLineas   = [['id_producto' => 1, 'cantidad' => 4]];
-                $salida = InventariosController::registrarSalida($id, $mockBodegaId, $mockLineas);
-            }
-
-            $ack = ['ok' => false, 'msg' => 'TrazaragroClient no desplegado'];
-            if (class_exists('TrazaragroClient')) {
-                $cli = new TrazaragroClient();
-                $ack = $cli->notificarRevision('TRZ-MOCK-' . $id, 'aprobada', $obs);
-            }
-
-            $this->logAction('APROBAR_ENTREGA', 'entregas', "#{$id} (stock: {$salida['msg']})");
-            $this->success("Entrega #{$id} aprobada.", [
-                'id'         => $id,
-                'inventario' => $salida,
-                'trazaragro' => $ack,
-            ]);
+            $db = Database::programa();
+            $db->execute(
+                "UPDATE sag_trazaragro_movimientos
+                 SET estado_local='entregado', observaciones_local=?, revisado_por_local=?, fecha_revision_local=NOW()
+                 WHERE movement_id=?",
+                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id]
+            );
+            $this->logAction('APROBAR_MOV', 'entregas', "#{$id}");
+            $this->success("Movimiento #{$id} marcado como entregado.", ['id' => $id]);
         } catch (\Throwable $e) {
-            error_log('aprobar EXCEPTION: ' . $e->getMessage());
-            $this->error('Error al aprobar: ' . $e->getMessage());
+            $this->error('Error: ' . $e->getMessage());
         }
     }
 
     public function rechazar(): void
     {
-        if (!in_array(($_SESSION['user']['rol_slug'] ?? ''), ['admin', 'coordinador'])) {
-            $this->error('Sin permisos para rechazar entregas.'); return;
-        }
         $id  = (int) $this->getPost('id', 0);
         $obs = $this->getPost('observacion', '');
         if (!$obs) { $this->error('Debe indicar el motivo del rechazo.'); return; }
-
         try {
-            if (class_exists('TrazaragroClient')) {
-                $cli = new TrazaragroClient();
-                $cli->notificarRevision('TRZ-MOCK-' . $id, 'rechazada', $obs);
-            }
-            $this->logAction('RECHAZAR_ENTREGA', 'entregas', "#{$id} obs={$obs}");
-            $this->success("Entrega #{$id} rechazada.", ['id' => $id]);
+            $db = Database::programa();
+            $db->execute(
+                "UPDATE sag_trazaragro_movimientos
+                 SET estado_local='observado', observaciones_local=?, revisado_por_local=?, fecha_revision_local=NOW()
+                 WHERE movement_id=?",
+                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id]
+            );
+            $this->logAction('OBSERVAR_MOV', 'entregas', "#{$id} obs={$obs}");
+            $this->success("Movimiento #{$id} observado.", ['id' => $id]);
         } catch (\Throwable $e) {
-            $this->error('Error al rechazar: ' . $e->getMessage());
+            $this->error('Error: ' . $e->getMessage());
         }
-    }
-
-    public function detalle(): void
-    {
-        $id = (int) $this->getPost('id', 0);
-        $entregas = $this->mockEntregas();
-        foreach ($entregas as $e) {
-            if ($e['id_entrega'] == $id) {
-                $this->success('OK', ['entrega' => $e]);
-                return;
-            }
-        }
-        $this->error('Entrega no encontrada.');
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  DATOS FICTICIOS
-    // ════════════════════════════════════════════════════════════
-    private function mockEntregas(): array
-    {
-        $img   = 'https://placehold.co/400x300/16A34A/ffffff?text=Foto';
-        $firma = 'https://placehold.co/300x100/ffffff/333333?text=Firma';
-        return [
-            $this->mk(1001, '0801198512345', 'María Cristina López Pérez', 'F',
-                'Francisco Morazán', 'Tegucigalpa', 'El Hatillo',
-                'FM01', 'Bodega Central FM-01', 'tec01', 'José Luis Ramírez',
-                '2026-05-08', '09:34', 4, 4, 1, null, null, null,
-                14.0723, -87.1921, 8, $img, $img, $firma, $firma, '',
-                'aprobada', null, 'Sistema', '2026-05-08 10:15:00', '2026-05-08 10:12:00'),
-            $this->mk(1002, '0801197823456', 'Juan Carlos Hernández Mejía', 'M',
-                'Francisco Morazán', 'Distrito Central', 'Suyapa',
-                'FM01', 'Bodega Central FM-01', 'tec01', 'José Luis Ramírez',
-                '2026-05-08', '10:21', 6, 4, 0, 'stock_insuficiente', '9123-4567', null,
-                14.0612, -87.1845, 12, $img, $img, $firma, null,
-                'Solo había 4 sacos en bodega al momento de la entrega.',
-                'con_alerta', 'Entrega incompleta (4/6 sacos) — pendiente regularizar',
-                null, null, '2026-05-08 10:45:00'),
-            $this->mk(1003, '9999998888777', 'DNI no encontrado en padrón', null,
-                'Francisco Morazán', null, null,
-                'FM01', 'Bodega Central FM-01', 'tec02', 'Carmen Sosa',
-                '2026-05-08', '11:05', null, 3, null, null, null, null,
-                14.0701, -87.1923, 6, $img, $img, $firma, null,
-                'El DNI no está en el sistema. El técnico ingresó manualmente.',
-                'pendiente_revision', 'Beneficiario no registrado en sag_beneficiarios. Verificar identidad.',
-                null, null, '2026-05-08 11:18:00'),
-            $this->mk(1004, '0801198645678', 'Pedro Antonio Mejía Soto', 'M',
-                'Francisco Morazán', 'Santa Lucía', 'Jutiapa',
-                'FM02', 'Bodega Valle FM-02', 'tec02', 'Carmen Sosa',
-                '2026-05-07', '14:22', 5, 5, 1, null, '8800-9988', null,
-                14.1875, -87.0334, 10, $img, $img, $firma, $firma, '',
-                'con_alerta', 'Beneficiario en estado SANCIONADO al momento de la entrega.',
-                null, null, '2026-05-07 15:30:00'),
-            $this->mk(1005, '0401198256789', 'Ana Lucía Vásquez Ramírez', 'F',
-                'Copán', 'Santa Rosa de Copán', 'El Naranjo',
-                'CP01', 'Bodega Santa Rosa CP-01', 'tec03', 'Iván Mendoza',
-                '2026-05-08', '08:45', 8, 8, 1, null, null,
-                'Casa esquina Barrio El Naranjo #28 (junto a pulpería Doña Rosa)',
-                14.7689, -88.7811, 5, $img, $img, $firma, $firma,
-                'Productora muy organizada, agradece el incentivo.',
-                'aprobada', null, 'Sistema', '2026-05-08 09:00:00', '2026-05-08 08:58:00'),
-            $this->mk(1006, '0401198067890', 'Manuel de Jesús Ramos', 'M',
-                'Copán', 'Copán Ruinas', 'La Pintada',
-                'CP01', 'Bodega Santa Rosa CP-01', 'tec03', 'Iván Mendoza',
-                '2026-05-08', '11:15', 4, 4, 1, null, null, null,
-                14.8345, -89.1421, 7, $img, $img, $firma, null, '',
-                'con_alerta', 'Posible duplicado: recibió incentivo similar en PIPG el 2026-04-22.',
-                null, null, '2026-05-08 11:32:00'),
-            $this->mk(1007, '0401199578901', 'Carla Sofía Núñez Aguilar', 'F',
-                'Copán', 'La Entrada', 'Florida',
-                'CP02', 'Bodega La Entrada CP-02', 'tec04', 'Lucía Bardales',
-                '2026-05-07', '15:40', 2, 2, 1, null, null, null,
-                15.0512, -88.7723, 9, $img, $img, $firma, $firma, '',
-                'aprobada', null, 'Sistema', '2026-05-07 16:00:00', '2026-05-07 15:58:00'),
-            $this->mk(1008, '1501197590123', 'Esperanza del Carmen Bonilla', 'F',
-                'Olancho', 'Juticalpa', 'Boquerón',
-                'OL01', 'Bodega Juticalpa OL-01', 'tec05', 'Mario Discua',
-                '2026-05-08', '07:30', 5, 5, 1, null, null, null,
-                14.6534, -86.2178, 11, $img, $img, $firma, $firma,
-                'Entrega tempranera. Beneficiaria líder de cooperativa local.',
-                'aprobada', null, 'Sistema', '2026-05-08 07:45:00', '2026-05-08 07:42:00'),
-            $this->mk(1009, '1501199212345', 'Diana Yamileth Cáceres Rivera', 'F',
-                'Olancho', 'Campamento', 'El Achote',
-                'OL02', 'Bodega Campamento OL-02', 'tec05', 'Mario Discua',
-                '2026-05-06', '13:15', 3, 0, 0, 'beneficiario_no_presente', null, null,
-                14.6213, -85.9876, 14, null, null, null, $firma,
-                'Beneficiaria suspendida en sistema. No se procedió con la entrega.',
-                'rechazada', 'Beneficiario en estado SUSPENDIDO.',
-                'Iván Mendoza (coordinador)', '2026-05-06 14:30:00', '2026-05-06 13:45:00'),
-            $this->mk(1010, '1501198723456', 'Carlos Eduardo Discua Lobo', 'M',
-                'Olancho', 'Salamá', 'El Naranjal',
-                'OL02', 'Bodega Campamento OL-02', 'tec05', 'Mario Discua',
-                '2026-05-08', '12:50', 4, 4, 1, null, null, null,
-                14.7892, -86.1234, 8, $img, $img, $firma, null,
-                'Apellido del beneficiario coincide con técnico (verificar parentesco).',
-                'pendiente_revision', 'Posible conflicto de interés: apellido del técnico coincide con el del beneficiario.',
-                null, null, '2026-05-08 13:05:00'),
-        ];
-    }
-
-    /** Factory helper para mantener mockEntregas() legible. */
-    private function mk(int $id, string $dni, string $nombre, ?string $sexo,
-        string $depto, ?string $mun, ?string $aldea, string $bodCod, string $bodNom,
-        string $tecCod, string $tecNom, string $fecha, string $hora,
-        ?int $sacAsig, ?int $sacEnt, ?int $compl, ?string $rzNoCom,
-        ?string $telAct, ?string $dirAct, float $lat, float $lon, int $gpsPrec,
-        ?string $fotoDni, ?string $fotoEnt, ?string $firmaBen, ?string $firmaTec,
-        string $obs, string $estado, ?string $alerta, ?string $revPor, ?string $fechaRev, string $synced): array
-    {
-        return [
-            'id_entrega'           => $id,
-            'kobo_submission_id'   => 'kobo_abc_' . str_pad((string)$id, 3, '0', STR_PAD_LEFT),
-            'dni'                  => $dni,
-            'beneficiario'         => $nombre,
-            'sexo'                 => $sexo,
-            'departamento'         => $depto,
-            'municipio'            => $mun,
-            'aldea'                => $aldea,
-            'bodega_codigo'        => $bodCod,
-            'bodega'               => $bodNom,
-            'tecnico_codigo'       => $tecCod,
-            'tecnico'              => $tecNom,
-            'fecha_entrega'        => $fecha,
-            'hora_entrega'         => $hora,
-            'sacos_asignados'      => $sacAsig,
-            'sacos_entregados'     => $sacEnt,
-            'entrega_completa'     => $compl,
-            'razon_no_completa'    => $rzNoCom,
-            'telefono_actualizado' => $telAct,
-            'direccion_actualizada'=> $dirAct,
-            'gps_lat'              => $lat,
-            'gps_lon'              => $lon,
-            'gps_precision'        => $gpsPrec,
-            'foto_dni'             => $fotoDni,
-            'foto_entrega'         => $fotoEnt,
-            'firma_beneficiario'   => $firmaBen,
-            'firma_tecnico'        => $firmaTec,
-            'observaciones'        => $obs,
-            'estado'               => $estado,
-            'alerta_motivo'        => $alerta,
-            'revisado_por'         => $revPor,
-            'fecha_revision'       => $fechaRev,
-            'synced_at'            => $synced,
-        ];
-    }
-
-    private function calcularKpis(array $entregas): array
-    {
-        $kpis = [
-            'total'              => count($entregas),
-            'aprobadas'          => 0,
-            'pendiente_revision' => 0,
-            'con_alerta'         => 0,
-            'rechazadas'         => 0,
-            'sacos_entregados'   => 0,
-        ];
-        foreach ($entregas as $e) {
-            $kpis[$e['estado']] = ($kpis[$e['estado']] ?? 0) + 1;
-            $kpis['sacos_entregados'] += (int) ($e['sacos_entregados'] ?? 0);
-        }
-        return $kpis;
     }
 }
