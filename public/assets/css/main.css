@@ -227,6 +227,26 @@ h1, h2, h3, h4, h5, h6 {
 #sidebar.collapsed .nav-item-s { padding: 12px; justify-content: center; margin: 1px 6px; }
 #sidebar.collapsed .nav-label { display: none; }
 
+/* Badge de alertas en items del sidebar */
+.nav-badge-alert {
+  background: #dc2626; color: #fff;
+  font-size: .68rem; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px;
+  margin-left: auto;
+  min-width: 20px; text-align: center;
+  box-shadow: 0 1px 4px rgba(220,38,38,.4);
+  animation: pulseBadge 2.2s ease-in-out infinite;
+}
+@keyframes pulseBadge {
+  0%, 100% { box-shadow: 0 1px 4px rgba(220,38,38,.4); }
+  50%      { box-shadow: 0 1px 8px rgba(220,38,38,.8); }
+}
+#sidebar.collapsed .nav-badge-alert {
+  position: absolute; top: 4px; right: 4px;
+  padding: 1px 5px; font-size: .6rem;
+  margin: 0;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 16px 18px 22px;

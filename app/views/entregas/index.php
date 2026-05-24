@@ -130,6 +130,33 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
   </div>
   <?php endif; ?>
 
+  <!-- ══ TABS DE NAVEGACIÓN ══ -->
+  <div class="mode-tabs" style="margin-bottom:14px;">
+    <button class="mode-tab active" onclick="switchEntregasTab('resumen')">
+      <i class="fas fa-chart-pie"></i> Resumen
+    </button>
+    <button class="mode-tab" onclick="switchEntregasTab('movimientos')">
+      <i class="fas fa-list-ul"></i> Movimientos <small style="opacity:.7;">(<?= count($movimientos ?? []) ?>)</small>
+    </button>
+    <button class="mode-tab" onclick="switchEntregasTab('productores')">
+      <i class="fas fa-user-tag"></i> Por Productor <small style="opacity:.7;">(<?= count($reporteProductores ?? []) ?>)</small>
+    </button>
+    <button class="mode-tab" onclick="switchEntregasTab('bodegas')">
+      <i class="fas fa-warehouse"></i> Por Bodega <small style="opacity:.7;">(<?= count($reporteBodegas ?? []) ?>)</small>
+    </button>
+    <button class="mode-tab" onclick="switchEntregasTab('anomalias')" <?= !empty($anomalias) ? 'style="color:#92400e;"' : '' ?>>
+      <i class="fas fa-triangle-exclamation"></i> Anomalías
+      <?php if (!empty($anomalias)): ?>
+        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:.7rem;margin-left:4px;font-weight:700;"><?= count($anomalias) ?></span>
+      <?php else: ?>
+        <small style="opacity:.7;">(0)</small>
+      <?php endif; ?>
+    </button>
+  </div>
+
+  <!-- ══ TAB: RESUMEN ══ -->
+  <div id="tab-ent-resumen">
+
   <!-- KPIs principales -->
   <div class="row g-2 mb-3">
     <div class="col-6 col-md-3 col-lg-2">
@@ -168,6 +195,14 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
         <div><div class="kpi-val" style="color:#9a3412;"><?= number_format($kpis['cantidad_total'], 0) ?></div><div class="kpi-lbl">Total unidades</div></div>
       </div>
     </div>
+    <?php if (($kpis['con_alertas'] ?? 0) > 0): ?>
+    <div class="col-6 col-md-3 col-lg-2">
+      <div class="kpi-ent" style="border-color:#f59e0b;border-width:2px;">
+        <div class="kpi-icon" style="background:#fef3c7;color:#d97706;"><i class="fas fa-triangle-exclamation"></i></div>
+        <div><div class="kpi-val" style="color:#d97706;"><?= number_format($kpis['con_alertas']) ?></div><div class="kpi-lbl">Con alertas</div></div>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 
   <!-- Desglose por objeto trazable -->
@@ -206,6 +241,11 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     </div>
   </div>
   <?php endif; ?>
+
+  </div> <!-- /tab-ent-resumen -->
+
+  <!-- ══ TAB: MOVIMIENTOS ══ -->
+  <div id="tab-ent-movimientos" style="display:none;">
 
   <!-- Filtros -->
   <div class="ent-filtros">
@@ -301,6 +341,236 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
   </div>
   <div id="contadorFiltrados" style="margin-top:8px;font-size:.78rem;color:#666;text-align:right;"></div>
 
+  </div> <!-- /tab-ent-movimientos -->
+
+  <!-- ══ TAB: POR PRODUCTOR ══ -->
+  <div id="tab-ent-productores" style="display:none;">
+    <?php if (empty($reporteProductores)): ?>
+      <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
+        <i class="fas fa-user-tag" style="font-size:2rem;margin-bottom:10px;display:block;color:#bbb;"></i>
+        Sin productores aún. Sincroniza con Trazaragro para ver el reporte.
+      </div>
+    <?php else: ?>
+      <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
+        <i class="fas fa-info-circle"></i>
+        <strong><?= count($reporteProductores) ?> productor(es)</strong> con entregas registradas. Tarjeta con fondo amarillento = el productor tiene alguna alerta.
+      </div>
+      <div style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:hidden;">
+      <?php foreach ($reporteProductores as $p): ?>
+      <div style="padding:14px 16px;border-bottom:2px solid #f1f5f9;background:<?= $p['tiene_alerta'] ? '#fffbeb' : '#fff' ?>;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:240px;">
+            <strong style="font-size:.95rem;color:#1a1a1a;"><?= htmlspecialchars($p['nombre']) ?></strong>
+            <?php if ($p['validacion'] === 'no_padron'): ?>
+              <span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">⚠ NO EN PADRÓN</span>
+            <?php elseif ($p['validacion'] === 'en_padron'): ?>
+              <span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">✓ EN PADRÓN</span>
+            <?php endif; ?>
+            <div style="margin-top:3px;font-size:.78rem;color:#666;">
+              <i class="fas fa-id-card" style="margin-right:3px;"></i>DNI: <strong><?= htmlspecialchars($p['dni']) ?></strong>
+              <span style="margin:0 8px;color:#bbb;">·</span>
+              <i class="fas fa-map-marker-alt" style="margin-right:3px;"></i>
+              <?= htmlspecialchars($p['departamento']) ?><?= $p['municipio'] ? ' / ' . htmlspecialchars($p['municipio']) : '' ?>
+              <?php if ($p['establecimiento']): ?>
+                <span style="margin:0 8px;color:#bbb;">·</span>
+                <i class="fas fa-house" style="margin-right:3px;"></i><?= htmlspecialchars($p['establecimiento']) ?>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:1.2rem;font-weight:800;color:#16a34a;line-height:1;"><?= $p['num_objetos'] ?></div>
+            <div style="font-size:.7rem;color:#666;text-transform:uppercase;">objetos</div>
+            <div style="font-size:.7rem;color:#888;margin-top:3px;">
+              <?= $p['num_manifiestos'] ?> GUIASA(s) · <span style="color:#16a34a;"><?= $p['entregados'] ?> entreg.</span> · <span style="color:#d97706;"><?= $p['pendientes'] ?> pend.</span>
+            </div>
+            <?php if (!empty($p['dni']) && $p['dni'] !== '(sin DNI)'): ?>
+            <a href="<?= BASE_URL ?>/entregas/acta?dni=<?= urlencode($p['dni']) ?>" target="_blank"
+               style="display:inline-block;margin-top:8px;padding:5px 12px;background:#0d9488;color:#fff;border-radius:6px;text-decoration:none;font-size:.72rem;font-weight:700;"
+               title="Generar acta imprimible / PDF">
+              <i class="fas fa-file-pdf"></i> Acta / PDF
+            </a>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <table style="width:100%;margin-top:10px;font-size:.76rem;border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1.5px solid #e5e7eb;color:#555;text-transform:uppercase;font-size:.65rem;">
+              <th style="text-align:left;padding:5px 6px;">Objeto trazable</th>
+              <th style="text-align:left;padding:5px 6px;">Cód. trazabilidad</th>
+              <th style="text-align:left;padding:5px 6px;">GUIASA</th>
+              <th style="text-align:left;padding:5px 6px;">Fecha</th>
+              <th style="text-align:right;padding:5px 6px;">Cantidad</th>
+              <th style="text-align:left;padding:5px 6px;">Autorizó</th>
+              <th style="text-align:center;padding:5px 6px;">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($p['objetos'] as $o): ?>
+            <tr style="border-bottom:1px dashed #f3f4f6;">
+              <td style="padding:5px 6px;"><strong><?= htmlspecialchars($o['objeto']) ?></strong></td>
+              <td style="padding:5px 6px;">
+                <?php if ($o['codigo_traza']): ?>
+                  <strong style="color:#0f766e;"><?= htmlspecialchars($o['codigo_traza']) ?></strong>
+                <?php else: ?>
+                  <em style="color:#bbb;">— sin código —</em>
+                <?php endif; ?>
+              </td>
+              <td style="padding:5px 6px;"><?= htmlspecialchars($o['guiasa']) ?></td>
+              <td style="padding:5px 6px;"><?= htmlspecialchars(substr((string)$o['fecha'], 0, 10)) ?></td>
+              <td style="padding:5px 6px;text-align:right;font-weight:600;"><?= number_format($o['cantidad'], 0) ?> <?= htmlspecialchars($o['unidad']) ?></td>
+              <td style="padding:5px 6px;color:#0d9488;"><?= htmlspecialchars($o['autoriza']) ?></td>
+              <td style="padding:5px 6px;text-align:center;">
+                <span class="est-badge est-<?= htmlspecialchars($o['estado']) ?>"><?= $o['estado'] === 'entregado' ? '✓ Entregado' : 'Pendiente' ?></span>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- ══ TAB: POR BODEGA ══ -->
+  <div id="tab-ent-bodegas" style="display:none;">
+    <?php if (empty($reporteBodegas)): ?>
+      <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
+        <i class="fas fa-warehouse" style="font-size:2rem;margin-bottom:10px;display:block;color:#bbb;"></i>
+        Sin bodegas registradas en los movimientos. Sincroniza con Trazaragro.
+      </div>
+    <?php else: ?>
+      <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
+        <i class="fas fa-info-circle"></i>
+        <strong><?= count($reporteBodegas) ?> bodega(s) de origen</strong> que han despachado insumos. Ordenadas por volumen.
+      </div>
+      <div class="row g-2">
+        <?php foreach ($reporteBodegas as $b): ?>
+        <div class="col-12 col-md-6 col-lg-4">
+          <div style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;padding:14px 16px;height:100%;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <div style="width:38px;height:38px;background:#fef3c7;color:#d97706;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+                <i class="fas fa-warehouse"></i>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <strong style="font-size:.88rem;display:block;color:#1a1a1a;"><?= htmlspecialchars($b['bodega']) ?></strong>
+                <div style="font-size:.7rem;color:#888;">
+                  <?php if ($b['departamento']): ?><?= htmlspecialchars($b['departamento']) ?> · <?php endif; ?>
+                  <?php if ($b['cue']): ?>CUE: <?= htmlspecialchars($b['cue']) ?><?php endif; ?>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 0;border-top:1px dashed #e5e7eb;border-bottom:1px dashed #e5e7eb;font-size:.75rem;">
+              <div>
+                <div style="color:#888;text-transform:uppercase;font-size:.62rem;">Movimientos</div>
+                <strong style="font-size:1.1rem;color:#1e40af;"><?= number_format($b['movimientos']) ?></strong>
+              </div>
+              <div>
+                <div style="color:#888;text-transform:uppercase;font-size:.62rem;">Beneficiarios</div>
+                <strong style="font-size:1.1rem;color:#16a34a;"><?= number_format($b['beneficiarios_unicos']) ?></strong>
+              </div>
+              <div>
+                <div style="color:#888;text-transform:uppercase;font-size:.62rem;">Manifiestos</div>
+                <strong style="font-size:1.1rem;color:#7c3aed;"><?= number_format($b['manifiestos_unicos']) ?></strong>
+              </div>
+              <div>
+                <div style="color:#888;text-transform:uppercase;font-size:.62rem;">Unidades</div>
+                <strong style="font-size:1.1rem;color:#9a3412;"><?= number_format($b['cantidad_total'], 0) ?></strong>
+              </div>
+            </div>
+
+            <div style="margin-top:10px;font-size:.7rem;">
+              <div style="color:#16a34a;font-weight:600;">
+                <i class="fas fa-circle-check"></i> <?= $b['entregados'] ?> entregados
+              </div>
+              <div style="color:#d97706;font-weight:600;">
+                <i class="fas fa-clock"></i> <?= $b['pendientes'] ?> pendientes
+              </div>
+            </div>
+
+            <?php if (!empty($b['top_objetos'])): ?>
+            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e5e7eb;">
+              <div style="font-size:.62rem;color:#888;text-transform:uppercase;margin-bottom:4px;">Top objetos despachados</div>
+              <?php foreach ($b['top_objetos'] as $to): ?>
+              <div style="display:flex;justify-content:space-between;font-size:.74rem;padding:2px 0;">
+                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;margin-right:6px;"><?= htmlspecialchars($to['objeto']) ?></span>
+                <strong style="color:#0f766e;flex-shrink:0;"><?= $to['cantidad'] ?></strong>
+              </div>
+              <?php endforeach; ?>
+              <?php if ($b['objetos_unicos'] > 3): ?>
+                <small style="color:#999;font-size:.65rem;">+ <?= $b['objetos_unicos'] - 3 ?> tipo(s) más</small>
+              <?php endif; ?>
+            </div>
+            <?php endif; ?>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- ══ TAB: ANOMALÍAS ══ -->
+  <div id="tab-ent-anomalias" style="display:none;">
+    <?php if (empty($anomalias)): ?>
+      <div style="text-align:center;padding:60px 20px;color:#16a34a;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
+        <i class="fas fa-circle-check" style="font-size:2.5rem;margin-bottom:10px;display:block;"></i>
+        <strong style="font-size:1rem;">Sin anomalías detectadas</strong>
+        <div style="margin-top:6px;font-size:.85rem;color:#666;">Todos los movimientos sincronizados están en orden.</div>
+      </div>
+    <?php else: ?>
+      <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
+        <i class="fas fa-info-circle"></i>
+        Se detectaron <strong><?= count($anomalias) ?> alerta(s)</strong> que requieren revisión manual. Categorías: <strong>Sin DNI</strong> (movimiento sin productor identificado), <strong>No en padrón</strong> (DNI no encontrado en sag_beneficiarios), <strong>Duplicado</strong> (mismo productor recibió mismo objeto múltiples veces), <strong>Cantidad</strong> (cero o no especificada), <strong>Estado</strong> (entregado sin objeto trazable).
+      </div>
+      <div style="background:#fff;border:1.5px solid #f59e0b;border-radius:10px;overflow:auto;">
+      <table class="tbl-desg" style="min-width:900px;">
+        <thead>
+          <tr>
+            <th style="width:25%;">Beneficiario</th>
+            <th>GUIASA</th>
+            <th>Objeto trazable</th>
+            <th>Tipo</th>
+            <th>Detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($anomalias as $a):
+            $tipoBadgeCls = match($a['tipo']) {
+                'sin_dni'    => 'background:#fee2e2;color:#991b1b;',
+                'no_padron'  => 'background:#fed7aa;color:#9a3412;',
+                'duplicado'  => 'background:#fef3c7;color:#92400e;',
+                'cantidad'   => 'background:#dbeafe;color:#1e40af;',
+                'estado'     => 'background:#fce7f3;color:#9d174d;',
+                default      => 'background:#e5e7eb;color:#374151;',
+            };
+            $tipoLbl = match($a['tipo']) {
+                'sin_dni'    => 'Sin DNI',
+                'no_padron'  => 'No en padrón',
+                'duplicado'  => 'Duplicado',
+                'cantidad'   => 'Cantidad',
+                'estado'     => 'Estado',
+                default      => 'Otro',
+            };
+          ?>
+          <tr>
+            <td>
+              <strong><?= htmlspecialchars($a['nombre']) ?></strong>
+              <?php if ($a['dni']): ?><br><small style="color:#666;">DNI: <?= htmlspecialchars($a['dni']) ?></small><?php endif; ?>
+            </td>
+            <td><?= htmlspecialchars($a['guiasa']) ?></td>
+            <td><?= htmlspecialchars($a['objeto'] ?: '—') ?></td>
+            <td><span style="<?= $tipoBadgeCls ?>padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:700;white-space:nowrap;"><?= $tipoLbl ?></span></td>
+            <td style="color:#92400e;"><?= htmlspecialchars($a['alerta']) ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+    <?php endif; ?>
+  </div>
+
 </div>
 
 <!-- ══ Modal Detalle ══ -->
@@ -324,6 +594,7 @@ window.OIRSA_MOVS = <?= $pMovs ?>;
 </script>
 
 <?php
-$jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/entregas.js"></script>';
+// asset() agrega ?v={mtime} para evitar caché del JS viejo
+$jsExtra = '<script src="' . asset('public/assets/js/modules/entregas.js') . '"></script>';
 require ROOT_PATH . '/app/views/layouts/footer.php';
 ?>

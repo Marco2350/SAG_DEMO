@@ -46,7 +46,7 @@ function navActive(string $segment): string {
   </a>
   <a class="nav-item-s <?= navActive('/beneficiarios') ?>" href="<?= BASE_URL ?>/beneficiarios">
     <i class="fas fa-users"></i>
-    <span class="nav-label">Beneficiarios</span>
+    <span class="nav-label">Productores</span>
   </a>
   <a class="nav-item-s <?= navActive('/asistencia') ?>" href="<?= BASE_URL ?>/asistencia">
     <i class="fas fa-person-chalkboard"></i>
@@ -62,6 +62,10 @@ function navActive(string $segment): string {
   <a class="nav-item-s <?= navActive('/entregas') ?>" href="<?= BASE_URL ?>/entregas">
     <i class="fas fa-truck-ramp-box"></i>
     <span class="nav-label">Entregas de Incentivos</span>
+    <?php $alertCount = (int)($_SESSION['entregas_alertas_count'] ?? 0); ?>
+    <?php if ($alertCount > 0): ?>
+      <span class="nav-badge-alert" title="<?= $alertCount ?> alerta(s) requieren revisión"><?= $alertCount ?></span>
+    <?php endif; ?>
   </a>
   <a class="nav-item-s <?= navActive('/inventarios') ?>" href="<?= BASE_URL ?>/inventarios">
     <i class="fas fa-warehouse"></i>

@@ -28,14 +28,22 @@ class EntregasController extends Controller
     {
         $pageTitle = 'Entregas de Incentivos — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
 
-        $movimientos = $this->cargarMovimientos();
-        $kpis        = $this->calcularKpis($movimientos);
-        $catalogos   = $this->cargarCatalogosFiltros();
+        $movimientos        = $this->cargarMovimientos();
+        $movimientos        = $this->enriquecerMovimientos($movimientos);
+        $reporteProductores = $this->reportePorProductor($movimientos);
+        $reporteBodegas     = $this->reportePorBodega($movimientos);
+        $anomalias          = $this->recolectarAnomalias($movimientos);
+        $kpis               = $this->calcularKpis($movimientos);
+        $catalogos          = $this->cargarCatalogosFiltros();
+
+        // Para badge en sidebar — actualiza el contador de alertas en sesión
+        $_SESSION['entregas_alertas_count'] = $kpis['con_alertas'] ?? 0;
 
         $esAdmin = in_array(($_SESSION['user']['rol_slug'] ?? ''), ['admin', 'coordinador']);
 
         $this->view('entregas/index', compact(
-            'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin'
+            'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
+            'reporteProductores', 'reporteBodegas', 'anomalias'
         ));
     }
 
@@ -138,11 +146,315 @@ class EntregasController extends Controller
         $kpis['beneficiarios_unicos'] = count($beneficiarios);
         $kpis['manifiestos_unicos']   = count($manifiestos);
 
+        // Conteo adicional de alertas
+        $kpis['con_alertas']      = 0;
+        $kpis['no_en_padron']     = 0;
+        foreach ($movimientos as $m) {
+            if (!empty($m['tiene_alerta'])) $kpis['con_alertas']++;
+            if (($m['validacion_padron'] ?? '') === 'no_padron') $kpis['no_en_padron']++;
+        }
+
         // Ordenar desglose por más movimientos
         usort($porObjeto, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
         $kpis['desglose_objetos'] = $porObjeto;
 
         return $kpis;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  ENRIQUECIMIENTO: validación padrón + detección anomalías
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Agrega a cada movimiento campos calculados:
+     *  - validacion_padron: 'en_padron', 'no_padron', 'sin_dni'
+     *  - alertas: array de strings con problemas detectados
+     *  - tiene_alerta: bool
+     */
+    private function enriquecerMovimientos(array $movs): array
+    {
+        if (empty($movs)) return [];
+
+        // 1) Cargar padrón del programa en memoria (DNI → fila)
+        $padron = [];
+        try {
+            $db = Database::programa();
+            $rows = $db->fetchAll("SELECT dni, estado, nombre_completo FROM sag_beneficiarios");
+            foreach ($rows as $r) {
+                if (!empty($r['dni'])) $padron[trim($r['dni'])] = $r;
+            }
+        } catch (\Throwable $e) {
+            // Tabla sin filas o columna distinta — seguimos sin padrón
+        }
+
+        // 2) Contar duplicados: misma combinación DNI + objeto trazable
+        $contDniObjeto = [];
+        foreach ($movs as $m) {
+            $dni  = trim((string)($m['destino_dni'] ?? ''));
+            $obj  = trim((string)($m['objeto_trazable'] ?? ''));
+            if ($dni === '' || $obj === '') continue;
+            $k = $dni . '||' . $obj;
+            $contDniObjeto[$k] = ($contDniObjeto[$k] ?? 0) + 1;
+        }
+
+        // 3) Enriquecer cada movimiento
+        foreach ($movs as &$m) {
+            $alertas = [];
+            $dni = trim((string)($m['destino_dni'] ?? ''));
+            $obj = trim((string)($m['objeto_trazable'] ?? ''));
+
+            // ── Validación padrón ──
+            if ($dni === '') {
+                $m['validacion_padron'] = 'sin_dni';
+                $alertas[] = 'Movimiento sin DNI de beneficiario';
+            } elseif (isset($padron[$dni])) {
+                $m['validacion_padron'] = 'en_padron';
+                $estado = strtolower((string)($padron[$dni]['estado'] ?? ''));
+                if ($estado && !in_array($estado, ['activo', 'activa', '1', 'vigente'])) {
+                    $alertas[] = "Beneficiario en estado: {$estado}";
+                }
+            } else {
+                $m['validacion_padron'] = empty($padron) ? 'padron_vacio' : 'no_padron';
+                if (!empty($padron)) {
+                    $alertas[] = 'DNI no encontrado en el padrón del programa';
+                }
+            }
+
+            // ── Detección de duplicado (mismo DNI + mismo objeto) ──
+            if ($dni && $obj) {
+                $k = $dni . '||' . $obj;
+                if (($contDniObjeto[$k] ?? 0) > 1) {
+                    $alertas[] = "Posible duplicado: este productor recibió '{$obj}' en {$contDniObjeto[$k]} movimientos";
+                }
+            }
+
+            // ── Cantidad sospechosa ──
+            if ((float)($m['cantidad'] ?? 0) <= 0) {
+                $alertas[] = 'Cantidad cero o no especificada';
+            }
+
+            // ── Sin objeto trazable y estado entregado (debería tener producto) ──
+            if (($m['estado_local'] ?? '') === 'entregado' && $obj === '') {
+                $alertas[] = 'Marcado como entregado pero sin objeto trazable definido';
+            }
+
+            $m['alertas']      = $alertas;
+            $m['tiene_alerta'] = !empty($alertas);
+        }
+        unset($m);
+
+        return $movs;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  REPORTE POR PRODUCTOR
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Agrupa movimientos por destino_dni y devuelve un array con la información
+     * consolidada de cada productor: nombre, ubicación, manifiestos, objetos recibidos.
+     */
+    private function reportePorProductor(array $movs): array
+    {
+        $byProd = [];
+        foreach ($movs as $m) {
+            $dni = trim((string)($m['destino_dni'] ?? ''));
+            $key = $dni !== '' ? $dni : '(sin-dni)-' . md5($m['destino_persona'] ?? '');
+
+            if (!isset($byProd[$key])) {
+                $byProd[$key] = [
+                    'dni'              => $dni ?: '(sin DNI)',
+                    'nombre'           => $m['destino_nombre'] ?: $m['destino_persona'] ?: '(sin nombre)',
+                    'departamento'     => $m['destino_departamento'] ?: '',
+                    'municipio'        => $m['destino_municipio'] ?: '',
+                    'establecimiento'  => $m['destino_establecimiento'] ?: '',
+                    'validacion'       => $m['validacion_padron'] ?? '',
+                    'objetos'          => [],
+                    'manifiestos_set'  => [],
+                    'total_cantidad'   => 0,
+                    'entregados'       => 0,
+                    'pendientes'       => 0,
+                    'tiene_alerta'     => false,
+                ];
+            }
+            $byProd[$key]['objetos'][] = [
+                'objeto'       => $m['objeto_trazable'] ?: '(sin nombre)',
+                'codigo_traza' => $m['codigo_trazabilidad'] ?: '',
+                'guiasa'       => $m['guiasa_no'] ?: '',
+                'fecha'        => $m['fecha_autorizacion'] ?: '',
+                'cantidad'     => (float)($m['cantidad'] ?? 0),
+                'unidad'       => $m['unidad'] ?: '',
+                'estado'       => $m['estado_local'] ?: 'pendiente',
+                'autoriza'     => $m['autorizado_por'] ?: '',
+                'movement_id'  => $m['movement_id'] ?? 0,
+            ];
+            $byProd[$key]['manifiestos_set'][$m['guiasa_no']] = true;
+            $byProd[$key]['total_cantidad'] += (float)($m['cantidad'] ?? 0);
+            if (($m['estado_local'] ?? '') === 'entregado') $byProd[$key]['entregados']++;
+            else                                            $byProd[$key]['pendientes']++;
+            if (!empty($m['tiene_alerta']))                 $byProd[$key]['tiene_alerta'] = true;
+        }
+
+        // Cerrar set y ordenar por # de objetos descendente
+        foreach ($byProd as &$p) {
+            $p['num_manifiestos'] = count($p['manifiestos_set']);
+            unset($p['manifiestos_set']);
+            $p['num_objetos'] = count($p['objetos']);
+        }
+        unset($p);
+        $out = array_values($byProd);
+        usort($out, fn($a, $b) => $b['num_objetos'] <=> $a['num_objetos']);
+        return $out;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  REPORTE POR BODEGA DE ORIGEN
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Agrupa movimientos por bodega de origen (origen_establecimiento) y devuelve:
+     *   - cantidad de movimientos despachados
+     *   - cantidad de beneficiarios atendidos
+     *   - top objetos despachados (3 más frecuentes)
+     *   - total cantidad despachada
+     */
+    private function reportePorBodega(array $movs): array
+    {
+        $byBod = [];
+        foreach ($movs as $m) {
+            $bod = trim((string)($m['origen_establecimiento'] ?? '')) ?: '(sin bodega)';
+            // Normalizar: quitar el código que viene como "; 3400301153824"
+            $bodLimpio = trim((string)preg_replace('/;\s*\d+\s*$/', '', $bod));
+            $bodLimpio = $bodLimpio ?: $bod;
+
+            if (!isset($byBod[$bodLimpio])) {
+                $byBod[$bodLimpio] = [
+                    'bodega'             => $bodLimpio,
+                    'cue'                => $m['origen_cue'] ?? '',
+                    'departamento'       => $m['origen_departamento'] ?? '',
+                    'movimientos'        => 0,
+                    'cantidad_total'     => 0,
+                    'entregados'         => 0,
+                    'pendientes'         => 0,
+                    'beneficiarios_set'  => [],
+                    'objetos_count'      => [],
+                    'manifiestos_set'    => [],
+                ];
+            }
+            $byBod[$bodLimpio]['movimientos']++;
+            $byBod[$bodLimpio]['cantidad_total'] += (float)($m['cantidad'] ?? 0);
+            if (($m['estado_local'] ?? '') === 'entregado') $byBod[$bodLimpio]['entregados']++;
+            else                                            $byBod[$bodLimpio]['pendientes']++;
+            if (!empty($m['destino_dni']))   $byBod[$bodLimpio]['beneficiarios_set'][$m['destino_dni']] = true;
+            if (!empty($m['guiasa_no']))     $byBod[$bodLimpio]['manifiestos_set'][$m['guiasa_no']]     = true;
+            $obj = $m['objeto_trazable'] ?: '(sin)';
+            $byBod[$bodLimpio]['objetos_count'][$obj] = ($byBod[$bodLimpio]['objetos_count'][$obj] ?? 0) + 1;
+        }
+
+        foreach ($byBod as &$b) {
+            $b['beneficiarios_unicos'] = count($b['beneficiarios_set']);
+            $b['manifiestos_unicos']   = count($b['manifiestos_set']);
+            unset($b['beneficiarios_set'], $b['manifiestos_set']);
+            // Top 3 objetos
+            arsort($b['objetos_count']);
+            $top = [];
+            $i = 0;
+            foreach ($b['objetos_count'] as $obj => $cnt) {
+                $top[] = ['objeto' => $obj, 'cantidad' => $cnt];
+                if (++$i >= 3) break;
+            }
+            $b['top_objetos']     = $top;
+            $b['objetos_unicos']  = count($b['objetos_count']);
+            unset($b['objetos_count']);
+        }
+        unset($b);
+
+        $out = array_values($byBod);
+        usort($out, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
+        return $out;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  ANOMALÍAS
+    // ════════════════════════════════════════════════════════════
+
+    private function recolectarAnomalias(array $movs): array
+    {
+        $out = [];
+        foreach ($movs as $m) {
+            if (empty($m['alertas'])) continue;
+            foreach ($m['alertas'] as $a) {
+                $out[] = [
+                    'movement_id'         => $m['movement_id'] ?? 0,
+                    'dni'                 => $m['destino_dni'] ?? '',
+                    'nombre'              => $m['destino_nombre'] ?: $m['destino_persona'] ?: '(sin nombre)',
+                    'guiasa'              => $m['guiasa_no'] ?? '',
+                    'objeto'              => $m['objeto_trazable'] ?? '',
+                    'codigo_trazabilidad' => $m['codigo_trazabilidad'] ?? '',
+                    'fecha'               => $m['fecha_autorizacion'] ?? '',
+                    'tipo'                => $this->clasificarAlerta($a),
+                    'alerta'              => $a,
+                ];
+            }
+        }
+        // Ordenar por tipo (más severas primero) y fecha
+        $orden = ['sin_dni' => 1, 'no_padron' => 2, 'duplicado' => 3, 'cantidad' => 4, 'otro' => 5];
+        usort($out, function ($a, $b) use ($orden) {
+            $oa = $orden[$a['tipo']] ?? 9;
+            $ob = $orden[$b['tipo']] ?? 9;
+            if ($oa !== $ob) return $oa <=> $ob;
+            return strcmp($b['fecha'], $a['fecha']);
+        });
+        return $out;
+    }
+
+    private function clasificarAlerta(string $a): string
+    {
+        $a = mb_strtolower($a);
+        if (str_contains($a, 'sin dni') || str_contains($a, 'sin_dni')) return 'sin_dni';
+        if (str_contains($a, 'padrón') || str_contains($a, 'padron'))   return 'no_padron';
+        if (str_contains($a, 'duplicado'))                              return 'duplicado';
+        if (str_contains($a, 'cantidad'))                               return 'cantidad';
+        if (str_contains($a, 'estado'))                                 return 'estado';
+        return 'otro';
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  DESCUENTO DE INVENTARIO (stub — pendiente módulo Inventarios real)
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * STUB: cuando una entrega tiene Código de Trazabilidad (= confirmada en OIRSA)
+     * deberíamos descontar el insumo del stock de la bodega de origen.
+     *
+     * Para que esto funcione completo necesitamos:
+     *  1) Mapear sag_bodegas con los SourceEndpointCode de OIRSA (CUE)
+     *  2) Mantener stock real en sag_inventario_movimientos
+     *  3) Cablear InventariosController::registrarSalida() — hoy es mock
+     *
+     * Por ahora SOLO registramos en sag_logs los movimientos que YA están
+     * confirmados, para tener trazabilidad de qué debería haberse descontado.
+     */
+    private function prepararDescuentoInventario(array $movs): void
+    {
+        try {
+            $db = Database::programa();
+        } catch (\Throwable $e) {
+            return;
+        }
+        $confirmados = 0;
+        foreach ($movs as $m) {
+            if (empty($m['codigo_trazabilidad'])) continue;
+            $confirmados++;
+            // TODO: cuando InventariosController esté real,
+            //       llamar a registrarSalida(bodega, producto, cantidad, ref_movement_id)
+        }
+        if ($confirmados > 0) {
+            $this->logAction(
+                'PENDIENTE_DESCUENTO_INV', 'entregas',
+                "Movimientos con código de trazabilidad que deberían descontar stock: {$confirmados}"
+            );
+        }
     }
 
     // ════════════════════════════════════════════════════════════
@@ -185,6 +497,9 @@ class EntregasController extends Controller
             ]);
 
             $stats = $this->persistirMovimientos($movimientos);
+
+            // Stub: registra qué movimientos deberían descontar stock cuando Inventarios esté listo
+            $this->prepararDescuentoInventario($movimientos);
 
             // Resumen amigable
             $resumen = "Trazaragro ({$ping['mode']}): {$stats['recibidos']} movimientos sincronizados";
@@ -457,6 +772,82 @@ class EntregasController extends Controller
             ], ';');
         }
         fclose($out);
+        exit;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  ACTA imprimible por productor
+    //  GET /entregas/acta?dni=XXXX
+    //  Devuelve una vista HTML formateada para imprimir (Ctrl+P → Guardar como PDF)
+    // ════════════════════════════════════════════════════════════
+    public function acta(): void
+    {
+        $dni = trim((string)($_GET['dni'] ?? ''));
+        if ($dni === '') {
+            http_response_code(400);
+            echo 'Falta parámetro ?dni=';
+            exit;
+        }
+
+        try {
+            $db = Database::programa();
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo 'Error: ' . $e->getMessage();
+            exit;
+        }
+
+        $movs = $db->fetchAll(
+            "SELECT * FROM sag_trazaragro_movimientos
+             WHERE destino_dni = ?
+             ORDER BY fecha_autorizacion ASC, guiasa_no ASC",
+            [$dni]
+        );
+
+        if (empty($movs)) {
+            http_response_code(404);
+            echo 'No se encontraron movimientos para DNI ' . htmlspecialchars($dni);
+            exit;
+        }
+
+        // Datos consolidados del productor
+        $primero = $movs[0];
+        $beneficiario = [
+            'dni'             => $primero['destino_dni'],
+            'nombre'          => $primero['destino_nombre'] ?: $primero['destino_persona'],
+            'departamento'    => $primero['destino_departamento'],
+            'municipio'       => $primero['destino_municipio'],
+            'establecimiento' => $primero['destino_establecimiento'],
+            'cue'             => $primero['destino_cue'],
+        ];
+
+        // Agrupar por GUIASA (cada acta puede tener múltiples GUIASAs)
+        $porGuiasa = [];
+        foreach ($movs as $m) {
+            $g = $m['guiasa_no'] ?: '(sin GUIASA)';
+            if (!isset($porGuiasa[$g])) {
+                $porGuiasa[$g] = [
+                    'guiasa'              => $g,
+                    'codigo_autorizacion' => $m['codigo_autorizacion'],
+                    'fecha'               => $m['fecha_autorizacion'],
+                    'autorizado_por'      => $m['autorizado_por'],
+                    'bodega_origen'       => $m['origen_establecimiento'],
+                    'rubro'               => $m['rubro'],
+                    'items'               => [],
+                    'total_items'         => 0,
+                    'total_cantidad'      => 0,
+                ];
+            }
+            $porGuiasa[$g]['items'][] = $m;
+            $porGuiasa[$g]['total_items']++;
+            $porGuiasa[$g]['total_cantidad'] += (float)($m['cantidad'] ?? 0);
+        }
+
+        $programa = $_SESSION['programa'] ?? [];
+        $usuario  = $_SESSION['user'] ?? [];
+
+        // Renderizar vista de acta (sin layout)
+        require ROOT_PATH . '/app/views/entregas/acta.php';
         exit;
     }
 

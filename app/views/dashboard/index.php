@@ -1,3 +1,12 @@
+<?php
+// R-003: Fondo discreto con íconos agrícolas (SVG inline en data URI)
+$bgAgri = "data:image/svg+xml;utf8," . rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" opacity="0.06"><g fill="#0B5D3D"><path d="M40 60 Q 38 40, 50 30 Q 60 40, 58 60 Q 50 65, 40 60 Z M48 30 L48 75"/><path d="M155 95 Q 145 80, 150 65 Q 160 70, 165 90 Z M158 70 Q 168 75, 175 85"/><circle cx="100" cy="140" r="6"/><circle cx="115" cy="150" r="5"/><circle cx="90" cy="155" r="4"/><path d="M30 175 L40 165 L50 175 L40 185 Z M55 170 L65 160 L75 170 L65 180 Z"/><path d="M170 35 Q 175 30, 180 35 Q 175 40, 170 35 Z M172 38 L172 50"/></g></svg>');
+$cssExtra = '<style>
+.dashboard-bg { background-image: url("' . $bgAgri . '"); background-repeat: repeat; background-attachment: fixed; }
+.tot-row td { background:#f8fafc;font-weight:800;color:#0B5D3D;border-top:2px solid var(--primario);border-bottom:none; }
+.tot-row td.lbl { font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;color:#555; }
+</style>';
+?>
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
 <?php
@@ -8,6 +17,8 @@ $progIco   = $prog['icono']  ?? 'fa-seedling';
 $progNombre = $prog['nombre'] ?? '';
 ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
+
+<style>body { background-image: url("<?= $bgAgri ?>"); background-repeat: repeat; background-attachment: fixed; background-size: 240px; }</style>
 
 <!-- ══ CONTENT ══ -->
 <div class="content">
@@ -31,7 +42,7 @@ $progNombre = $prog['nombre'] ?? '';
 
   <!-- ── KPI Cards ── -->
   <div class="row g-3 mb-3">
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-3 col-md-4">
       <div class="kpi-card">
         <div class="kpi-icon"><i class="fas fa-building-wheat"></i></div>
         <div>
@@ -40,16 +51,25 @@ $progNombre = $prog['nombre'] ?? '';
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-3 col-md-4">
       <div class="kpi-card gold">
         <div class="kpi-icon"><i class="fas fa-users"></i></div>
         <div>
           <div class="kpi-val" id="kpi-benes">0</div>
-          <div class="kpi-lbl">Beneficiarios activos</div>
+          <div class="kpi-lbl">Productores activos</div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-3 col-md-4">
+      <div class="kpi-card" style="border-left-color:#16a34a;">
+        <div class="kpi-icon" style="background:#d1fae5;color:#16a34a;"><i class="fas fa-seedling"></i></div>
+        <div>
+          <div class="kpi-val" id="kpi-ben-incentivo" style="color:#16a34a;">0</div>
+          <div class="kpi-lbl">Productores beneficiados con incentivos</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3 col-md-4">
       <div class="kpi-card blue">
         <div class="kpi-icon"><i class="fas fa-graduation-cap"></i></div>
         <div>
@@ -58,12 +78,22 @@ $progNombre = $prog['nombre'] ?? '';
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-3 col-md-4">
       <div class="kpi-card purple">
         <div class="kpi-icon"><i class="fas fa-handshake"></i></div>
         <div>
           <div class="kpi-val" id="kpi-at">0</div>
           <div class="kpi-lbl">Asistencias Técnicas</div>
+        </div>
+      </div>
+    </div>
+    <!-- Totales consolidados (R-006) -->
+    <div class="col-6 col-xl-3 col-md-4">
+      <div class="kpi-card" style="border-left-color:#6b7280;background:linear-gradient(135deg,#f8fafc,#fff);">
+        <div class="kpi-icon" style="background:#f1f5f9;color:#6b7280;"><i class="fas fa-calculator"></i></div>
+        <div>
+          <div class="kpi-val" id="kpi-total" style="color:#374151;">0</div>
+          <div class="kpi-lbl">Total consolidado (registros)</div>
         </div>
       </div>
     </div>
@@ -116,7 +146,7 @@ $progNombre = $prog['nombre'] ?? '';
               <i class="fas fa-user-plus" style="color:#d4891a;"></i>
             </div>
             <div>
-              <div style="font-weight:600;font-size:.84rem;">Registrar Beneficiario</div>
+              <div style="font-weight:600;font-size:.84rem;">Registrar Productor</div>
               <div style="font-size:.73rem;color:#888;">Carga individual o masiva</div>
             </div>
           </a>
@@ -171,7 +201,7 @@ $progNombre = $prog['nombre'] ?? '';
             <th>Organización</th>
             <th>Representante</th>
             <th>Departamento</th>
-            <th>Beneficiarios</th>
+            <th>Productores</th>
             <th>Estado</th>
             <th>Fecha Registro</th>
           </tr>
@@ -235,7 +265,7 @@ function pintarMarcador(org) {
       <div style="font-weight:700;font-size:.9rem;color:#1a1a1a;margin-bottom:4px;">${org.nombre}</div>
       <div style="font-size:.78rem;color:#555;margin-bottom:8px;">${org.departamento || ''}</div>
       <div style="font-size:.78rem;margin-bottom:3px;"><b>Representante:</b> ${org.representante || '—'}</div>
-      <div style="font-size:.78rem;margin-bottom:6px;"><b>Beneficiarios:</b>
+      <div style="font-size:.78rem;margin-bottom:6px;"><b>Productores:</b>
         <span style="color:#2d8a3e;font-weight:700;">${(org.num_beneficiarios || 0).toLocaleString()}</span>
       </div>
       <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700;
@@ -294,6 +324,10 @@ fetch(BASE_URL + '/dashboard/stats', {
   document.getElementById('kpi-benes').textContent = (k.benes || 0).toLocaleString();
   document.getElementById('kpi-caps').textContent  = (k.caps  || 0).toLocaleString();
   document.getElementById('kpi-at').textContent    = (k.at    || 0).toLocaleString();
+  document.getElementById('kpi-ben-incentivo').textContent = (k.benIncentivo || 0).toLocaleString();
+  // Total consolidado (R-006)
+  const total = (k.orgs||0) + (k.benes||0) + (k.caps||0) + (k.at||0) + (k.benIncentivo||0);
+  document.getElementById('kpi-total').textContent = total.toLocaleString();
 
   // Tabla últimas organizaciones
   const tbody = document.getElementById('tbodyUltimas');
@@ -314,6 +348,18 @@ fetch(BASE_URL + '/dashboard/stats', {
       <td style="color:#888;font-size:.78rem;">${o.fecha_registro || '—'}</td>
     </tr>
   `).join('');
+
+  // R-006: Fila de totales al pie de la tabla
+  const totBen = res.data.ultimas.reduce((s,o) => s + (parseInt(o.num_beneficiarios)||0), 0);
+  tbody.innerHTML += `
+    <tr class="tot-row">
+      <td class="lbl" colspan="3">TOTALES (mostrando ${res.data.ultimas.length} más recientes)</td>
+      <td>${totBen.toLocaleString()}</td>
+      <td colspan="2" style="text-align:right;color:#666;font-weight:500;font-size:.75rem;">
+        Programa: ${(k.orgs||0)} orgs · ${(k.benes||0)} prod. activos · ${(k.benIncentivo||0)} con incentivo
+      </td>
+    </tr>
+  `;
 })
 .catch(() => {
   document.getElementById('tbodyUltimas').innerHTML =

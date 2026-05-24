@@ -210,6 +210,7 @@ $router->get('/organizaciones',              'OrganizacionesController', 'index'
 $router->post('/organizaciones/listar',      'OrganizacionesController', 'listar');
 $router->post('/organizaciones/get',         'OrganizacionesController', 'get');
 $router->post('/organizaciones/save',        'OrganizacionesController', 'save');
+$router->post('/organizaciones/checkNombre', 'OrganizacionesController', 'checkNombre');
 $router->post('/organizaciones/estado',      'OrganizacionesController', 'estado');
 $router->post('/organizaciones/delete',      'OrganizacionesController', 'delete');
 $router->post('/organizaciones/miembros',    'OrganizacionesController', 'miembros');
@@ -296,6 +297,7 @@ $router->get('/presupuesto/api/lineas',          'PresupuestoController', 'apiLi
 $router->get('/entregas',                            'EntregasController', 'index');
 $router->get('/entregas/diag',                       'EntregasController', 'diag');
 $router->get('/entregas/exportar',                   'EntregasController', 'exportar');
+$router->get('/entregas/acta',                       'EntregasController', 'acta');
 $router->post('/entregas/sincronizar',               'EntregasController', 'sincronizar');
 $router->post('/entregas/sincronizarTrazaragro',     'EntregasController', 'sincronizarTrazaragro');
 $router->post('/entregas/aprobar',                   'EntregasController', 'aprobar');

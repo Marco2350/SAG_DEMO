@@ -6,7 +6,30 @@
  * - Filtros client-side sobre window.OIRSA_MOVS
  * - Sincronización: clic normal = incremental, Shift+Clic = limpia BD
  */
+// Tabs del módulo Entregas — expuesto globalmente porque los botones lo invocan inline
+window.switchEntregasTab = function (tab) {
+    ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'].forEach(t => {
+        const el = document.getElementById('tab-ent-' + t);
+        if (el) el.style.display = (t === tab) ? 'block' : 'none';
+    });
+    const order = ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'];
+    const idx = order.indexOf(tab);
+    document.querySelectorAll('.mode-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', i === idx);
+    });
+    // Recordar la pestaña activa para que sobreviva al reload tras sync
+    try { localStorage.setItem('sag_entregas_tab', tab); } catch (e) {}
+};
+
 $(function () {
+
+    // Restaurar última pestaña activa (si el usuario sincronizó y la página recargó)
+    try {
+        const saved = localStorage.getItem('sag_entregas_tab');
+        if (saved && ['resumen','movimientos','productores','anomalias'].includes(saved)) {
+            window.switchEntregasTab(saved);
+        }
+    } catch (e) {}
 
     // Data global desde PHP
     let MOVS = Array.isArray(window.OIRSA_MOVS) ? window.OIRSA_MOVS.slice() : [];
