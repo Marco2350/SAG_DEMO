@@ -223,6 +223,70 @@
             </div>
           </div>
         </form>
+
+        <!-- ══ R-027: EVIDENCIA DOCUMENTAL ══ -->
+        <div class="card-box mt-3" id="bloqueEvidenciaAT" style="border:1.5px dashed #cbd5e1;background:#fafafa;">
+          <div class="card-box-header" style="background:transparent;border-bottom:1px solid #e5e7eb;">
+            <h6><i class="fas fa-paperclip"></i> Evidencia / Listado de Atención
+              <span id="evATEstadoBadge" style="margin-left:8px;font-size:.7rem;padding:3px 10px;border-radius:12px;font-weight:700;background:#f1f5f9;color:#6b7280;">PENDIENTE</span>
+            </h6>
+            <small style="color:#888;font-size:.74rem;">PDF, Excel o imagen — máx 10 MB · Solo disponible al editar una visita ya guardada</small>
+          </div>
+          <div style="padding:14px 18px;">
+            <!-- Sin archivo: formulario de carga -->
+            <div id="evATSinArchivo">
+              <form id="formEvidenciaAT" enctype="multipart/form-data">
+                <input type="hidden" id="evATIdAt" name="id_at" value="0"/>
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-7">
+                    <label class="form-label-b">Archivo de evidencia</label>
+                    <input type="file" class="fc" id="evATArchivo" name="archivo"
+                           accept=".pdf,.xls,.xlsx,.jpg,.jpeg,.png" required disabled/>
+                    <small id="evATAviso" style="color:#92400e;font-size:.72rem;">⚠ Primero guarda la visita técnica para habilitar la carga.</small>
+                  </div>
+                  <div class="col-md-5">
+                    <label class="form-label-b">Observaciones</label>
+                    <input type="text" class="fc" id="evATObs" name="observaciones" placeholder="Ej. Hoja firmada por productores" disabled/>
+                  </div>
+                </div>
+                <div style="margin-top:12px;">
+                  <button type="button" class="btn-primario" id="btnSubirEvAT" disabled>
+                    <i class="fas fa-cloud-arrow-up"></i> Subir evidencia
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Con archivo -->
+            <div id="evATConArchivo" style="display:none;">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border-radius:8px;border:1.5px solid #e5e7eb;">
+                <div style="font-size:2rem;color:#0d9488;" id="evATIcono"><i class="fas fa-file"></i></div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:.88rem;" id="evATNombre">archivo</div>
+                  <div style="font-size:.74rem;color:#666;" id="evATMeta">—</div>
+                  <div id="evATObsBox" style="font-size:.76rem;color:#555;margin-top:4px;display:none;"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <a href="#" id="evATVerLink" target="_blank" class="btn-outline btn-sm-icon" title="Ver / Descargar">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  <button type="button" class="btn-outline btn-sm-icon" id="btnReemplazarEvAT" title="Reemplazar archivo">
+                    <i class="fas fa-arrows-rotate"></i>
+                  </button>
+                </div>
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn-primario btn-sm" id="btnValidarEvAT" style="background:#16a34a;border-color:#16a34a;">
+                  <i class="fas fa-circle-check"></i> Validar
+                </button>
+                <button type="button" class="btn-outline btn-sm" id="btnRechazarEvAT" style="color:#dc2626;border-color:#fecaca;">
+                  <i class="fas fa-circle-xmark"></i> Rechazar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <div style="padding:14px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0f0f0;">
         <button type="button" class="btn-gris" id="btnLimpiarAT"><i class="fas fa-rotate-left"></i> Limpiar</button>

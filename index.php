@@ -232,6 +232,10 @@ $router->post('/capacitaciones/finalizar',           'CapacitacionesController',
 $router->post('/capacitaciones/delete',              'CapacitacionesController', 'delete');
 $router->post('/capacitaciones/participante/add',    'CapacitacionesController', 'addParticipante');
 $router->post('/capacitaciones/participante/delete', 'CapacitacionesController', 'deleteParticipante');
+// R-028: Evidencia documental
+$router->post('/capacitaciones/evidencia/subir',     'CapacitacionesController', 'subirEvidencia');
+$router->post('/capacitaciones/evidencia/validar',   'CapacitacionesController', 'validarEvidencia');
+$router->get( '/capacitaciones/evidencia',           'CapacitacionesController', 'evidencia');
 
 // ── Asistencia Técnica ────────────────────────────
 $router->get('/asistencia',                  'AsistenciaTecnicaController', 'index');
@@ -240,6 +244,10 @@ $router->post('/asistencia/get',             'AsistenciaTecnicaController', 'get
 $router->post('/asistencia/save',            'AsistenciaTecnicaController', 'save');
 $router->post('/asistencia/finalizar',       'AsistenciaTecnicaController', 'finalizar');
 $router->post('/asistencia/delete',          'AsistenciaTecnicaController', 'delete');
+// R-027: Evidencia documental
+$router->post('/asistencia/evidencia/subir',   'AsistenciaTecnicaController', 'subirEvidencia');
+$router->post('/asistencia/evidencia/validar', 'AsistenciaTecnicaController', 'validarEvidencia');
+$router->get( '/asistencia/evidencia',         'AsistenciaTecnicaController', 'evidencia');
 
 // ── Estadísticas ──────────────────────────────────
 $router->get('/estadisticas',                'EstadisticasController', 'index');

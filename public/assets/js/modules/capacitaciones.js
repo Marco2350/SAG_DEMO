@@ -126,12 +126,108 @@ $(function () {
                 $('#pCapId').val(id);
                 actualizarBanner();
                 cargarParticipantes(id);
+                renderEvidenciaCap(capActivaData);
                 $('#sinCapActiva').hide();
                 $('#panelParticipantes').show();
                 $('#capActivaBanner').show();
             },
         });
     }
+
+    // ── R-028: Render del bloque de evidencia para la capacitación activa
+    function renderEvidenciaCap(c) {
+        if (!c) return;
+        $('#evCapIdCap').val(c.id_capacitacion);
+        const estado = c.evidencia_estado || 'pendiente';
+
+        // Badge de estado
+        const estLabels = {
+            'pendiente': ['PENDIENTE', '#f1f5f9', '#6b7280'],
+            'cargada':   ['CARGADA',   '#dbeafe', '#1e40af'],
+            'validada':  ['VALIDADA',  '#d1fae5', '#065f46'],
+            'rechazada': ['RECHAZADA', '#fee2e2', '#991b1b'],
+        };
+        const [lbl, bg, fg] = estLabels[estado] || estLabels.pendiente;
+        $('#evCapEstadoBadge').text(lbl).css({ background: bg, color: fg });
+
+        if (c.evidencia_archivo) {
+            // Tiene archivo subido
+            $('#evCapSinArchivo').hide();
+            $('#evCapConArchivo').show();
+
+            const icoMap = {
+                'application/pdf':                                              ['fa-file-pdf',   '#dc2626'],
+                'application/vnd.ms-excel':                                     ['fa-file-excel', '#15803d'],
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['fa-file-excel','#15803d'],
+                'image/jpeg':                                                   ['fa-file-image', '#7c3aed'],
+                'image/png':                                                    ['fa-file-image', '#7c3aed'],
+            };
+            const [ico, color] = icoMap[c.evidencia_mime] || ['fa-file', '#6b7280'];
+            $('#evCapIcono').html(`<i class="fas ${ico}" style="color:${color};"></i>`);
+            $('#evCapNombre').text(c.evidencia_nombre_original || c.evidencia_archivo);
+            const tam = c.evidencia_tamano ? (Math.round(c.evidencia_tamano/1024) + ' KB') : '';
+            $('#evCapMeta').text(`${tam} · subido ${c.evidencia_subida_at || '—'}`);
+            if (c.evidencia_observaciones) {
+                $('#evCapObsBox').text('Obs: ' + c.evidencia_observaciones).show();
+            } else {
+                $('#evCapObsBox').hide();
+            }
+            $('#evCapVerLink').attr('href', SAG.BASE_URL + '/capacitaciones/evidencia?id=' + c.id_capacitacion);
+        } else {
+            $('#evCapSinArchivo').show();
+            $('#evCapConArchivo').hide();
+        }
+    }
+
+    // Subir evidencia
+    $(document).on('click', '#btnSubirEvCap', function () {
+        const file = $('#evCapArchivo')[0].files[0];
+        if (!file) { SAG.toast('Seleccione un archivo.', 'warning'); return; }
+        if (!capActivaId) { SAG.toast('Sin capacitación activa.', 'warning'); return; }
+
+        const fd = new FormData();
+        fd.append('id_capacitacion', capActivaId);
+        fd.append('archivo', file);
+        fd.append('observaciones', $('#evCapObs').val());
+        if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+
+        $.ajax({
+            url: SAG.BASE_URL + '/capacitaciones/evidencia/subir',
+            method: 'POST',
+            data: fd, processData: false, contentType: false,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                SAG.toast(res.message, 'success');
+                activarCapacitacion(capActivaId); // recarga
+            },
+            error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
+        });
+    });
+
+    // Reemplazar archivo
+    $(document).on('click', '#btnReemplazarEvCap', function () {
+        $('#evCapConArchivo').hide();
+        $('#evCapSinArchivo').show();
+        $('#evCapArchivo').val('');
+    });
+
+    // Validar / Rechazar
+    function cambiarEstadoEvCap(estado) {
+        const obs = (estado === 'rechazada') ? (prompt('Motivo de rechazo:') || '') : '';
+        if (estado === 'rechazada' && !obs) return;
+        SAG.ajax({
+            url: '/capacitaciones/evidencia/validar',
+            data: { id_capacitacion: capActivaId, estado: estado, observaciones: obs },
+            success: function (res) {
+                if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                SAG.toast(res.message, 'success');
+                activarCapacitacion(capActivaId);
+            }
+        });
+    }
+    $(document).on('click', '#btnValidarEvCap',  () => cambiarEstadoEvCap('validada'));
+    $(document).on('click', '#btnRechazarEvCap', () => cambiarEstadoEvCap('rechazada'));
 
     function actualizarBanner() {
         if (!capActivaData) return;
