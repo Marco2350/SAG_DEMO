@@ -269,12 +269,108 @@ $(function () {
                     $('#atTecnico').val(a.id_tecnico);
                     $('#atProxVisita').val(a.prox_visita);
                     $('#atObservaciones').val(a.observaciones);
+                    renderEvidenciaAT(a);
                     window.scrollTo(0, 0);
                     SAG.toast('Visita cargada para edición.', 'warning');
                 }, 100);
             },
         });
     }
+
+    // ══ R-027: EVIDENCIA DOCUMENTAL ══
+    function renderEvidenciaAT(a) {
+        if (!a) return;
+        $('#evATIdAt').val(a.id_at);
+        // Habilitar inputs porque la visita ya existe
+        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', false);
+        $('#evATAviso').hide();
+
+        const estado = a.evidencia_estado || 'pendiente';
+        const estLabels = {
+            'pendiente': ['PENDIENTE', '#f1f5f9', '#6b7280'],
+            'cargada':   ['CARGADA',   '#dbeafe', '#1e40af'],
+            'validada':  ['VALIDADA',  '#d1fae5', '#065f46'],
+            'rechazada': ['RECHAZADA', '#fee2e2', '#991b1b'],
+        };
+        const [lbl, bg, fg] = estLabels[estado] || estLabels.pendiente;
+        $('#evATEstadoBadge').text(lbl).css({ background: bg, color: fg });
+
+        if (a.evidencia_archivo) {
+            $('#evATSinArchivo').hide();
+            $('#evATConArchivo').show();
+
+            const icoMap = {
+                'application/pdf':                                                  ['fa-file-pdf',   '#dc2626'],
+                'application/vnd.ms-excel':                                         ['fa-file-excel', '#15803d'],
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['fa-file-excel', '#15803d'],
+                'image/jpeg':                                                       ['fa-file-image', '#7c3aed'],
+                'image/png':                                                        ['fa-file-image', '#7c3aed'],
+            };
+            const [ico, color] = icoMap[a.evidencia_mime] || ['fa-file', '#6b7280'];
+            $('#evATIcono').html(`<i class="fas ${ico}" style="color:${color};"></i>`);
+            $('#evATNombre').text(a.evidencia_nombre_original || a.evidencia_archivo);
+            const tam = a.evidencia_tamano ? (Math.round(a.evidencia_tamano/1024) + ' KB') : '';
+            $('#evATMeta').text(`${tam} · subido ${a.evidencia_subida_at || '—'}`);
+            if (a.evidencia_observaciones) {
+                $('#evATObsBox').text('Obs: ' + a.evidencia_observaciones).show();
+            } else {
+                $('#evATObsBox').hide();
+            }
+            $('#evATVerLink').attr('href', SAG.BASE_URL + '/asistencia/evidencia?id=' + a.id_at);
+        } else {
+            $('#evATSinArchivo').show();
+            $('#evATConArchivo').hide();
+        }
+    }
+
+    $(document).on('click', '#btnSubirEvAT', function () {
+        const file = $('#evATArchivo')[0].files[0];
+        const id   = $('#evATIdAt').val();
+        if (!id || id == '0') { SAG.toast('Primero guarda la visita.', 'warning'); return; }
+        if (!file)            { SAG.toast('Seleccione un archivo.', 'warning'); return; }
+
+        const fd = new FormData();
+        fd.append('id_at', id);
+        fd.append('archivo', file);
+        fd.append('observaciones', $('#evATObs').val());
+        if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+
+        $.ajax({
+            url: SAG.BASE_URL + '/asistencia/evidencia/subir',
+            method: 'POST',
+            data: fd, processData: false, contentType: false,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                SAG.toast(res.message, 'success');
+                cargarParaEditar(id); // recarga con evidencia
+            },
+            error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
+        });
+    });
+
+    $(document).on('click', '#btnReemplazarEvAT', function () {
+        $('#evATConArchivo').hide();
+        $('#evATSinArchivo').show();
+        $('#evATArchivo').val('');
+    });
+
+    function cambiarEstadoEvAT(estado) {
+        const id  = $('#evATIdAt').val();
+        const obs = (estado === 'rechazada') ? (prompt('Motivo de rechazo:') || '') : '';
+        if (estado === 'rechazada' && !obs) return;
+        SAG.ajax({
+            url: '/asistencia/evidencia/validar',
+            data: { id_at: id, estado: estado, observaciones: obs },
+            success: function (res) {
+                if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                SAG.toast(res.message, 'success');
+                cargarParaEditar(id);
+            }
+        });
+    }
+    $(document).on('click', '#btnValidarEvAT',  () => cambiarEstadoEvAT('validada'));
+    $(document).on('click', '#btnRechazarEvAT', () => cambiarEstadoEvAT('rechazada'));
 
     // ── FINALIZAR ─────────────────────────────────────
     function finalizarAT(id) {

@@ -42,7 +42,9 @@ class OrganizacionesController extends Controller
             };
             $n = (int)($o['num_beneficiarios'] ?? 0);
             $acciones = '
-                <button class="btn-outline btn-sm-icon btn-miembros" data-id="' . $o['id_organizacion'] . '" data-nombre="' . htmlspecialchars($o['nombre'], ENT_QUOTES) . '" title="Ver miembros">
+                <button class="btn-outline btn-sm-icon btn-agregar-productor" data-id="' . $o['id_organizacion'] . '" data-nombre="' . htmlspecialchars($o['nombre'], ENT_QUOTES) . '" title="Agregar productor a esta organización" style="background:#d1fae5;color:#15803d;border-color:#86efac;">
+                    <i class="fas fa-user-plus"></i></button>
+                <button class="btn-outline btn-sm-icon btn-miembros ms-1" data-id="' . $o['id_organizacion'] . '" data-nombre="' . htmlspecialchars($o['nombre'], ENT_QUOTES) . '" title="Ver productores miembros">
                     <i class="fas fa-users"></i></button>
                 <button class="btn-outline btn-sm-icon btn-editar ms-1" data-id="' . $o['id_organizacion'] . '" title="Editar">
                     <i class="fas fa-pen"></i></button>
@@ -82,7 +84,7 @@ class OrganizacionesController extends Controller
     public function save(): void
     {
         $id     = (int) $this->getPost('id_organizacion', 0);
-        $nombre = $this->getPost('nombre', '');
+        $nombre = trim((string)$this->getPost('nombre', ''));
         $idDep  = (int) $this->getPost('id_departamento', 0);
         $idMun  = (int) $this->getPost('id_municipio', 0);
 
@@ -90,19 +92,58 @@ class OrganizacionesController extends Controller
         if (!$idDep)        { $this->error('Seleccione un departamento.');  return; }
         if (!$idMun)        { $this->error('Seleccione un municipio.');     return; }
 
+        // R-012: Validar nombre único (ignora mayúsculas/acentos cuando se trate de la misma org en edición)
+        $db = Database::programa();
+        $dup = $db->fetchOne(
+            "SELECT id_organizacion FROM sag_organizaciones
+             WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               AND id_organizacion <> ?
+             LIMIT 1",
+            [$nombre, $id]
+        );
+        if ($dup) {
+            $this->error('Ya existe una organización registrada con ese nombre.');
+            return;
+        }
+
+        // R-017: Coordenadas separadas (latitud / longitud), con fallback al campo combinado por compat
+        $lat = $this->getPost('latitud', '');
+        $lon = $this->getPost('longitud', '');
+        $coord = $this->getPost('coordenadas', '');
+        if ($lat === '' && $lon === '' && $coord !== '') {
+            // Parsear "lat,lon" legacy
+            $parts = explode(',', $coord);
+            if (count($parts) === 2) {
+                $lat = trim($parts[0]);
+                $lon = trim($parts[1]);
+            }
+        }
+        $latFloat = is_numeric($lat) ? (float)$lat : null;
+        $lonFloat = is_numeric($lon) ? (float)$lon : null;
+
+        // R-016: DNI representante (validar formato HN: 13 dígitos)
+        $repDni = preg_replace('/\D/', '', (string)$this->getPost('representante_dni', ''));
+        if ($repDni !== '' && strlen($repDni) !== 13) {
+            $this->error('El DNI del representante debe tener 13 dígitos.');
+            return;
+        }
+
         $data = [
-            'nombre'         => $nombre,
-            'tipo'           => $this->getPost('tipo', 'cooperativa'),
-            'id_departamento'=> $idDep,
-            'id_municipio'   => $idMun,
-            'aldea'          => $this->getPost('aldea', ''),
-            'representante'  => $this->getPost('representante', ''),
-            'telefono'       => $this->getPost('telefono', ''),
-            'email'          => $this->getPost('email', ''),
-            'estado'         => $this->getPost('estado', 'pendiente'),
-            'fecha_registro' => $this->getPost('fecha_registro') ?: null,
-            'coordenadas'    => $this->getPost('coordenadas', ''),
-            'updated_at'     => date('Y-m-d H:i:s'),
+            'nombre'             => $nombre,
+            'tipo'               => $this->getPost('tipo', 'cooperativa'),
+            'id_departamento'    => $idDep,
+            'id_municipio'       => $idMun,
+            'aldea'              => $this->getPost('aldea', ''),
+            'representante'      => $this->getPost('representante', ''),
+            'representante_dni'  => $repDni ?: null,
+            'telefono'           => $this->getPost('telefono', ''),
+            'email'              => $this->getPost('email', ''),
+            'estado'             => $this->getPost('estado', 'pendiente'),
+            'fecha_registro'     => $this->getPost('fecha_registro') ?: null,
+            'latitud'            => $latFloat,
+            'longitud'           => $lonFloat,
+            'coordenadas'        => ($latFloat !== null && $lonFloat !== null) ? "{$latFloat},{$lonFloat}" : '',
+            'updated_at'         => date('Y-m-d H:i:s'),
         ];
         if ($id === 0) $data['created_by'] = $_SESSION['user']['id_usuario'];
 
@@ -112,7 +153,31 @@ class OrganizacionesController extends Controller
             $this->success($id ? 'Organización actualizada.' : 'Organización creada correctamente.', ['id' => $newId]);
         } catch (Exception $e) {
             error_log('OrganizacionesController::save — ' . $e->getMessage());
-            $this->error('Error al guardar. Intente nuevamente.');
+            $this->error('Error al guardar: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * R-012: AJAX para validar en vivo si el nombre ya existe (mientras escribe).
+     */
+    public function checkNombre(): void
+    {
+        $nombre = trim((string)$this->getPost('nombre', ''));
+        $id     = (int) $this->getPost('id_organizacion', 0);
+        if ($nombre === '') { $this->success('OK', ['existe' => false]); return; }
+
+        try {
+            $db = Database::programa();
+            $r = $db->fetchOne(
+                "SELECT id_organizacion FROM sag_organizaciones
+                 WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                   AND id_organizacion <> ?
+                 LIMIT 1",
+                [$nombre, $id]
+            );
+            $this->success('OK', ['existe' => (bool)$r]);
+        } catch (\Throwable $e) {
+            $this->success('OK', ['existe' => false]);
         }
     }
 

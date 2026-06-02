@@ -5,6 +5,16 @@
 
 <div class="content">
 
+  <!-- R-009: Breadcrumb visual del módulo activo -->
+  <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:#888;margin-bottom:8px;">
+    <i class="fas fa-house"></i>
+    <span>Inicio</span>
+    <i class="fas fa-chevron-right" style="font-size:.65rem;color:#bbb;"></i>
+    <span style="background:var(--primario);color:#fff;padding:3px 12px;border-radius:14px;font-weight:700;font-size:.74rem;letter-spacing:.3px;">
+      <i class="fas fa-building-wheat"></i> Organizaciones
+    </span>
+  </div>
+
   <!-- Page Header -->
   <div class="page-header">
     <div class="page-title">
@@ -71,8 +81,8 @@
         <thead>
           <tr>
             <th>#</th><th>Nombre</th><th>Tipo</th><th>Ubicación</th>
-            <th>Representante</th><th>Tel.</th><th>Benef.</th>
-            <th>Estado</th><th style="width:110px;">Acciones</th>
+            <th>Representante</th><th>Tel.</th><th>Productores</th>
+            <th>Estado</th><th style="width:160px;">Acciones</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -96,27 +106,46 @@
         <form id="formOrganizacion" novalidate>
           <input type="hidden" id="orgId" name="id_organizacion" value="0"/>
 
+          <!-- R-011: Sección Identificación -->
+          <div class="form-section-title" style="background:#f0fdf4;padding:8px 12px;border-left:4px solid #16a34a;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-id-card me-1" style="color:#16a34a;"></i>Identificación de la Organización
+          </div>
           <div class="row g-3 mb-3">
             <div class="col-md-8">
               <label class="form-label-b">Nombre de la Organización <span class="req">*</span></label>
-              <input type="text" class="fc" id="orgNombre" name="nombre" placeholder="Nombre completo" required/>
+              <input type="text" class="fc" id="orgNombre" name="nombre" placeholder="Nombre completo de la organización" required/>
+              <small id="orgNombreErr" style="color:#dc2626;display:none;font-size:.74rem;margin-top:3px;">
+                <i class="fas fa-circle-exclamation"></i> Ya existe una organización con este nombre.
+              </small>
             </div>
             <div class="col-md-4">
-              <label class="form-label-b">Tipo</label>
-              <select class="fs" id="orgTipo" name="tipo">
-                <?php foreach ($tipos as $t): ?>
+              <label class="form-label-b">Tipo de Organización <span class="req">*</span></label>
+              <select class="fs" id="orgTipo" name="tipo" required>
+                <option value="">— Seleccione tipo —</option>
+                <?php
+                // R-013: Asegurar que "Caja Rural" esté disponible
+                $tieneCajaRural = false;
+                foreach ($tipos as $t):
+                  if (stripos($t['nombre'], 'caja rural') !== false) $tieneCajaRural = true;
+                ?>
                 <option value="<?= $t['valor'] ?>"><?= $t['nombre'] ?></option>
                 <?php endforeach; ?>
+                <?php if (!$tieneCajaRural): ?>
+                  <option value="caja_rural">Caja Rural</option>
+                <?php endif; ?>
               </select>
             </div>
           </div>
 
-          <div class="form-section-title"><i class="fas fa-location-dot me-1"></i>Ubicación</div>
+          <!-- Ubicación -->
+          <div class="form-section-title" style="background:#eff6ff;padding:8px 12px;border-left:4px solid #1e40af;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-location-dot me-1" style="color:#1e40af;"></i>Ubicación geográfica
+          </div>
           <div class="row g-3 mb-3">
             <div class="col-md-4">
               <label class="form-label-b">Departamento <span class="req">*</span></label>
               <select class="fs" id="orgDep" name="id_departamento" required>
-                <option value="">— Seleccione —</option>
+                <option value="">— Seleccione departamento —</option>
                 <?php foreach ($departamentos as $dep): ?>
                 <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
                 <?php endforeach; ?>
@@ -125,8 +154,10 @@
             <div class="col-md-4">
               <label class="form-label-b">Municipio <span class="req">*</span></label>
               <select class="fs" id="orgMun" name="id_municipio" required>
-                <option value="">— Seleccione departamento primero —</option>
+                <!-- R-015: placeholder corregido -->
+                <option value="">Seleccione municipio</option>
               </select>
+              <small style="color:#888;font-size:.7rem;">298 municipios de Honduras disponibles</small>
             </div>
             <div class="col-md-4">
               <label class="form-label-b">Aldea / Comunidad</label>
@@ -134,23 +165,18 @@
             </div>
           </div>
 
-          <div class="form-section-title"><i class="fas fa-address-card me-1"></i>Datos de Contacto</div>
+          <!-- R-017: Coordenadas separadas en Latitud y Longitud -->
           <div class="row g-3 mb-3">
             <div class="col-md-4">
-              <label class="form-label-b">Representante Legal</label>
-              <input type="text" class="fc" id="orgRepresentante" name="representante" placeholder="Nombre del representante"/>
+              <label class="form-label-b">Latitud</label>
+              <input type="number" step="0.0000001" class="fc" id="orgLatitud" name="latitud" placeholder="Ej. 14.0818"/>
+              <small style="color:#888;font-size:.7rem;">Rango: 12.9 a 16.5 (Honduras)</small>
             </div>
             <div class="col-md-4">
-              <label class="form-label-b">Teléfono</label>
-              <input type="text" class="fc" id="orgTelefono" name="telefono" placeholder="9999-9999"/>
+              <label class="form-label-b">Longitud</label>
+              <input type="number" step="0.0000001" class="fc" id="orgLongitud" name="longitud" placeholder="Ej. -87.2068"/>
+              <small style="color:#888;font-size:.7rem;">Rango: -89.4 a -83.1 (Honduras)</small>
             </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Correo Electrónico</label>
-              <input type="email" class="fc" id="orgEmail" name="email" placeholder="correo@org.hn"/>
-            </div>
-          </div>
-
-          <div class="row g-3 mb-2">
             <div class="col-md-4">
               <label class="form-label-b">Estado <span class="req">*</span></label>
               <select class="fs" id="orgEstado" name="estado" required>
@@ -159,13 +185,41 @@
                 <option value="inactiva">Inactiva</option>
               </select>
             </div>
+          </div>
+
+          <!-- Representante Legal -->
+          <div class="form-section-title" style="background:#fef3c7;padding:8px 12px;border-left:4px solid #d97706;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-user-tie me-1" style="color:#d97706;"></i>Representante Legal
+          </div>
+          <div class="row g-3 mb-3">
+            <!-- R-016: DNI del representante + indicador RNP -->
             <div class="col-md-4">
+              <label class="form-label-b">DNI / Identidad <span class="req">*</span></label>
+              <input type="text" class="fc" id="orgRepDni" name="representante_dni" placeholder="0000-0000-00000" maxlength="15" required/>
+              <small id="orgRepRnpStatus" style="color:#888;font-size:.7rem;">Validable contra RNP (cuando esté disponible)</small>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label-b">Nombre completo del Representante <span class="req">*</span></label>
+              <input type="text" class="fc" id="orgRepresentante" name="representante" placeholder="Nombres y apellidos" required/>
+            </div>
+            <div class="col-md-3">
               <label class="form-label-b">Fecha de Registro</label>
               <input type="date" class="fc" id="orgFechaReg" name="fecha_registro"/>
             </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Coordenadas (lat,lng)</label>
-              <input type="text" class="fc" id="orgCoordenadas" name="coordenadas" placeholder="14.08,-87.20"/>
+          </div>
+
+          <!-- Contacto -->
+          <div class="form-section-title" style="background:#f5f3ff;padding:8px 12px;border-left:4px solid #7c3aed;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-address-card me-1" style="color:#7c3aed;"></i>Datos de Contacto
+          </div>
+          <div class="row g-3 mb-2">
+            <div class="col-md-6">
+              <label class="form-label-b">Teléfono</label>
+              <input type="text" class="fc" id="orgTelefono" name="telefono" placeholder="9999-9999"/>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label-b">Correo Electrónico</label>
+              <input type="email" class="fc" id="orgEmail" name="email" placeholder="correo@organizacion.hn"/>
             </div>
           </div>
 

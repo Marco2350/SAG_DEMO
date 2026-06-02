@@ -54,16 +54,29 @@
       z-index: 0;
     }
     .bg-illu-left {
-      position: absolute; left: 0; bottom: 0;
-      width: 460px; max-width: 40vw; height: auto;
+      position: absolute; left: 0; right: 0; bottom: 0;
+      width: 100%; height: auto;
+      max-height: 70vh;
       opacity: .55;
+      pointer-events: none;
     }
     .bg-dots-right {
-      position: absolute; right: 90px; bottom: 110px;
+      position: absolute; right: 6vw; bottom: 14vh;
       width: 180px; height: 180px;
       background-image: radial-gradient(circle, #b8b8b8 1.6px, transparent 1.6px);
       background-size: 18px 18px;
       opacity: .35;
+    }
+    /* Patrón sutil de íconos agrícolas en toda la página */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        radial-gradient(circle at 10% 20%, rgba(22,163,74,.04) 0, transparent 12%),
+        radial-gradient(circle at 85% 15%, rgba(11,93,61,.04) 0, transparent 12%),
+        radial-gradient(circle at 70% 80%, rgba(22,163,74,.05) 0, transparent 14%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     /* ── Login card ── */
@@ -231,38 +244,58 @@
 <!-- ══ Decoración de fondo ══ -->
 <div class="bg-decor">
   <!-- Ilustración SVG: colinas, sol, árbol y plantas -->
-  <svg class="bg-illu-left" viewBox="0 0 460 720" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMid meet">
+  <svg class="bg-illu-left" viewBox="0 0 1600 720" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax slice">
     <!-- Sol -->
-    <circle cx="140" cy="260" r="78" fill="#F2E3CC" opacity=".6"/>
+    <circle cx="280" cy="220" r="90" fill="#F2E3CC" opacity=".55"/>
 
-    <!-- Colina lejana -->
-    <path d="M-20 540 Q 120 440, 260 490 T 480 470 L 480 720 L -20 720 Z"
+    <!-- Colinas que abarcan TODO el ancho (viewBox 1600x720) -->
+    <path d="M-20 540 Q 220 440, 460 490 T 920 470 T 1380 480 L 1620 470 L 1620 720 L -20 720 Z"
           fill="#B8D4BD" opacity=".55"/>
-    <!-- Colina media -->
-    <path d="M-20 590 Q 110 530, 230 555 T 480 540 L 480 720 L -20 720 Z"
+    <path d="M-20 590 Q 200 530, 430 555 T 880 540 T 1320 550 L 1620 540 L 1620 720 L -20 720 Z"
           fill="#9DC3A5" opacity=".55"/>
-    <!-- Colina cercana -->
-    <path d="M-20 650 Q 160 610, 340 630 L 480 625 L 480 720 L -20 720 Z"
+    <path d="M-20 650 Q 260 610, 540 630 T 1100 625 L 1620 630 L 1620 720 L -20 720 Z"
           fill="#82B58D" opacity=".55"/>
 
-    <!-- Árbol (silueta sobre la colina lejana) -->
-    <g opacity=".75">
-      <rect x="178" y="500" width="3" height="35" fill="#3F5A42"/>
-      <ellipse cx="180" cy="490" rx="24" ry="30" fill="#3F5A42"/>
-      <ellipse cx="166" cy="500" rx="14" ry="18" fill="#3F5A42"/>
-      <ellipse cx="194" cy="500" rx="14" ry="18" fill="#3F5A42"/>
+    <!-- Árboles dispersos a lo largo del paisaje -->
+    <g opacity=".75" fill="#3F5A42">
+      <!-- Árbol 1 (izquierda) -->
+      <rect x="298" y="500" width="3" height="35"/>
+      <ellipse cx="300" cy="490" rx="24" ry="30"/>
+      <ellipse cx="286" cy="500" rx="14" ry="18"/>
+      <ellipse cx="314" cy="500" rx="14" ry="18"/>
+      <!-- Árbol 2 (centro-izquierda) -->
+      <rect x="678" y="515" width="3" height="32"/>
+      <ellipse cx="680" cy="505" rx="20" ry="26"/>
+      <ellipse cx="668" cy="513" rx="12" ry="15"/>
+      <ellipse cx="692" cy="513" rx="12" ry="15"/>
+      <!-- Árbol 3 (centro-derecha) -->
+      <rect x="1098" y="510" width="3" height="32"/>
+      <ellipse cx="1100" cy="500" rx="22" ry="28"/>
+      <ellipse cx="1086" cy="510" rx="13" ry="17"/>
+      <ellipse cx="1114" cy="510" rx="13" ry="17"/>
+      <!-- Árbol 4 (derecha) -->
+      <rect x="1428" y="495" width="3" height="35"/>
+      <ellipse cx="1430" cy="485" rx="25" ry="32"/>
+      <ellipse cx="1414" cy="498" rx="14" ry="19"/>
+      <ellipse cx="1446" cy="498" rx="14" ry="19"/>
     </g>
 
-    <!-- Plantas/fronds a la izquierda inferior -->
+    <!-- Plantas y frondas en ambos extremos inferiores -->
     <g opacity=".75" fill="#6FA478">
+      <!-- Izquierda -->
       <path d="M5 720 Q 8 620, 30 580 Q 38 605, 28 660 Q 32 700, 12 720 Z"/>
       <path d="M40 720 Q 38 640, 65 600 Q 72 625, 62 680 Q 68 710, 45 720 Z"/>
       <path d="M75 720 Q 72 660, 95 625 Q 102 645, 92 690 Q 98 715, 80 720 Z"/>
-      <!-- Hojas finas -->
       <path d="M28 580 Q 22 560, 14 555 Q 22 568, 28 580 Z"/>
       <path d="M30 580 Q 36 562, 44 558 Q 36 570, 30 580 Z"/>
       <path d="M65 600 Q 58 582, 50 578 Q 58 590, 65 600 Z"/>
       <path d="M65 600 Q 72 584, 80 580 Q 72 592, 65 600 Z"/>
+      <!-- Derecha -->
+      <path d="M1595 720 Q 1592 620, 1570 580 Q 1562 605, 1572 660 Q 1568 700, 1588 720 Z"/>
+      <path d="M1560 720 Q 1562 640, 1535 600 Q 1528 625, 1538 680 Q 1532 710, 1555 720 Z"/>
+      <path d="M1525 720 Q 1528 660, 1505 625 Q 1498 645, 1508 690 Q 1502 715, 1520 720 Z"/>
+      <path d="M1572 580 Q 1578 560, 1586 555 Q 1578 568, 1572 580 Z"/>
+      <path d="M1570 580 Q 1564 562, 1556 558 Q 1564 570, 1570 580 Z"/>
     </g>
   </svg>
 
@@ -313,7 +346,7 @@
           <label class="form-label" for="password">Contraseña</label>
           <i class="fas fa-unlock-keyhole icon-left"></i>
           <input type="password" class="form-control" id="password" name="password"
-                 placeholder="••••••••••" autocomplete="current-password" required/>
+                 placeholder="Digitar contraseña" autocomplete="current-password" required/>
           <i class="fas fa-eye icon-right" id="togglePwd" title="Mostrar/ocultar"></i>
         </div>
         <button type="submit" class="btn-login" id="btnLogin">

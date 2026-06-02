@@ -236,6 +236,73 @@
           </div>
         </div>
       </div>
+
+      <!-- ══ R-028: EVIDENCIA DOCUMENTAL ══ -->
+      <div class="card-box mt-3" id="bloqueEvidencia">
+        <div class="card-box-header">
+          <h6><i class="fas fa-paperclip"></i> Evidencia / Listado de Asistencia
+            <span id="evCapEstadoBadge" style="margin-left:8px;font-size:.7rem;padding:3px 10px;border-radius:12px;font-weight:700;background:#f1f5f9;color:#6b7280;">PENDIENTE</span>
+          </h6>
+          <small style="color:#888;font-size:.74rem;">PDF, Excel (.xls/.xlsx) o imágenes (.jpg/.png) — máx 10 MB</small>
+        </div>
+        <div style="padding:16px 18px;">
+
+          <!-- Estado: SIN evidencia → mostrar formulario de carga -->
+          <div id="evCapSinArchivo">
+            <form id="formEvidenciaCap" enctype="multipart/form-data">
+              <input type="hidden" id="evCapIdCap" name="id_capacitacion" value="0"/>
+              <div class="row g-3 align-items-end">
+                <div class="col-md-7">
+                  <label class="form-label-b">Archivo de evidencia</label>
+                  <input type="file" class="fc" id="evCapArchivo" name="archivo"
+                         accept=".pdf,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png" required/>
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label-b">Observaciones (opcional)</label>
+                  <input type="text" class="fc" id="evCapObs" name="observaciones" placeholder="Ej. Listado escaneado del taller"/>
+                </div>
+              </div>
+              <div style="margin-top:12px;">
+                <button type="button" class="btn-primario" id="btnSubirEvCap">
+                  <i class="fas fa-cloud-arrow-up"></i> Subir evidencia
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Estado: CON evidencia → mostrar info + acciones -->
+          <div id="evCapConArchivo" style="display:none;">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#f8fafc;border-radius:8px;border:1.5px solid #e5e7eb;">
+              <div style="font-size:2rem;color:#0d9488;" id="evCapIcono"><i class="fas fa-file-pdf"></i></div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:.88rem;" id="evCapNombre">archivo.pdf</div>
+                <div style="font-size:.74rem;color:#666;" id="evCapMeta">— · subido por —</div>
+                <div id="evCapObsBox" style="font-size:.76rem;color:#555;margin-top:4px;display:none;"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <a href="#" id="evCapVerLink" target="_blank" class="btn-outline btn-sm-icon" title="Ver / Descargar">
+                  <i class="fas fa-eye"></i>
+                </a>
+                <button type="button" class="btn-outline btn-sm-icon" id="btnReemplazarEvCap" title="Reemplazar archivo">
+                  <i class="fas fa-arrows-rotate"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Validación admin -->
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn-primario btn-sm" id="btnValidarEvCap" style="background:#16a34a;border-color:#16a34a;">
+                <i class="fas fa-circle-check"></i> Marcar como Validada
+              </button>
+              <button type="button" class="btn-outline btn-sm" id="btnRechazarEvCap" style="color:#dc2626;border-color:#fecaca;">
+                <i class="fas fa-circle-xmark"></i> Rechazar
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 

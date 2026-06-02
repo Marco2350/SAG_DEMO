@@ -184,4 +184,44 @@ class AsistenciaTecnicaController extends Controller
             $this->error('Error al eliminar.');
         }
     }
+
+    // ════════════════════════════════════════════════════════════
+    //  EVIDENCIA DOCUMENTAL (R-027)
+    // ════════════════════════════════════════════════════════════
+
+    public function subirEvidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id = (int)($_POST['id_at'] ?? 0);
+        if (!$id) { $this->error('Asistencia técnica no especificada.'); return; }
+        if (empty($_FILES['archivo'])) { $this->error('No se recibió archivo.'); return; }
+
+        $r = EvidenciaService::guardarEvidencia(
+            'sag_asistencias_tecnicas', $id, $_FILES['archivo'],
+            $_SESSION['user']['id_usuario'] ?? null,
+            $_POST['observaciones'] ?? null
+        );
+        $this->logAction($r['ok'] ? 'EVIDENCIA_OK' : 'EVIDENCIA_FAIL', 'asistencias_tecnicas', "ID:{$id} — {$r['msg']}");
+        if ($r['ok']) $this->success($r['msg'], $r);
+        else          $this->error($r['msg']);
+    }
+
+    public function validarEvidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id     = (int) $this->getPost('id_at', 0);
+        $estado = $this->getPost('estado', '');
+        $obs    = $this->getPost('observaciones', '');
+        $r = EvidenciaService::cambiarEstado('sag_asistencias_tecnicas', $id, $estado, $obs);
+        $this->logAction('VALIDAR_EVIDENCIA', 'asistencias_tecnicas', "ID:{$id} → {$estado}");
+        if ($r['ok']) $this->success($r['msg']);
+        else          $this->error($r['msg']);
+    }
+
+    public function evidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id = (int)($_GET['id'] ?? 0);
+        EvidenciaService::servirArchivo('sag_asistencias_tecnicas', $id);
+    }
 }

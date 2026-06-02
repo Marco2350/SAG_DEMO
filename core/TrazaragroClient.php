@@ -44,6 +44,9 @@ class TrazaragroClient
     /** Ubicación del cache del token (archivo) */
     private string $tokenCacheFile;
 
+    /** Última info de diagnóstico tras una llamada HTTP (status, cuerpo, error cURL) */
+    private array $lastDiag = [];
+
     public function __construct()
     {
         $this->tokenCacheFile = sys_get_temp_dir() . '/sag_trazaragro_token.json';
@@ -80,6 +83,7 @@ class TrazaragroClient
             $j = @json_decode((string) @file_get_contents($this->tokenCacheFile), true);
             if (is_array($j) && !empty($j['access_token']) && !empty($j['expires_at'])) {
                 if (time() < (int)$j['expires_at'] - 60) {
+                    $this->lastDiag = ['source' => 'cache', 'status' => 200];
                     return (string) $j['access_token'];
                 }
             }
@@ -94,9 +98,11 @@ class TrazaragroClient
             'grant_type'    => 'password',
         ]);
 
+        $url = $this->baseUrl . '/Services/token';
+
         // Postman lo hace como GET con body urlencoded — replicamos.
-        $ch = curl_init($this->baseUrl . '/Services/token');
-        curl_setopt_array($ch, [
+        $ch = curl_init($url);
+        $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CUSTOMREQUEST  => 'GET',
             CURLOPT_POSTFIELDS     => $body,
@@ -105,20 +111,48 @@ class TrazaragroClient
                 'Accept: application/json',
             ],
             CURLOPT_TIMEOUT        => $this->timeout,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
+            CURLOPT_CONNECTTIMEOUT => 10,
+        ];
+
+        // SSL: si XAMPP en Windows no tiene CA bundle configurado, intentamos
+        // localizar el cacert.pem; si no existe, desactivamos verificación
+        // (solo aceptable en dev local — emite warning al error_log)
+        $caBundle = $this->findCaBundle();
+        if ($caBundle) {
+            $opts[CURLOPT_SSL_VERIFYPEER] = true;
+            $opts[CURLOPT_CAINFO]         = $caBundle;
+        } else {
+            $opts[CURLOPT_SSL_VERIFYPEER] = false;
+            $opts[CURLOPT_SSL_VERIFYHOST] = 0;
+            error_log('TrazaragroClient: cacert.pem no encontrado, verificación SSL desactivada (dev only).');
+        }
+
+        curl_setopt_array($ch, $opts);
         $raw    = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err    = curl_error($ch);
+        $errNo  = curl_errno($ch);
         curl_close($ch);
 
+        // Guardar diagnóstico para que ping()/sincronizar() puedan reportarlo
+        $this->lastDiag = [
+            'source'     => 'live',
+            'url'        => $url,
+            'status'     => $status,
+            'curl_errno' => $errNo,
+            'curl_error' => $err,
+            'body_snip'  => $raw ? mb_substr((string)$raw, 0, 400) : null,
+            'ca_bundle'  => $caBundle ?: '(ninguno — SSL verify off)',
+        ];
+
         if ($status !== 200 || !$raw) {
-            error_log("TrazaragroClient::getToken FAIL status={$status} err={$err}");
+            error_log("TrazaragroClient::getToken FAIL status={$status} errno={$errNo} err={$err}");
             return '';
         }
         $data = json_decode($raw, true);
         if (!is_array($data) || empty($data['access_token'])) {
-            error_log('TrazaragroClient::getToken sin access_token');
+            error_log('TrazaragroClient::getToken sin access_token: ' . mb_substr((string)$raw, 0, 200));
+            $this->lastDiag['parse_error'] = 'No se encontró access_token en la respuesta';
             return '';
         }
 
@@ -131,6 +165,40 @@ class TrazaragroClient
             'operator'     => $data['operator'] ?? null,
         ]));
         return $token;
+    }
+
+    /**
+     * Busca cacert.pem en ubicaciones típicas de XAMPP/PHP.
+     * Devuelve la ruta absoluta si existe, o null.
+     */
+    private function findCaBundle(): ?string
+    {
+        // 1) Si php.ini ya tiene curl.cainfo o openssl.cafile, usar esos
+        $iniPaths = [
+            ini_get('curl.cainfo'),
+            ini_get('openssl.cafile'),
+        ];
+        foreach ($iniPaths as $p) {
+            if ($p && is_file($p)) return $p;
+        }
+        // 2) Ubicaciones comunes en XAMPP / PHP
+        $candidates = [
+            'C:/xampp/apache/bin/curl-ca-bundle.crt',
+            'C:/xampp/php/extras/ssl/cacert.pem',
+            'C:/xampp/php/cacert.pem',
+            '/etc/ssl/certs/ca-certificates.crt',
+            '/etc/pki/tls/certs/ca-bundle.crt',
+        ];
+        foreach ($candidates as $p) {
+            if (is_file($p)) return $p;
+        }
+        return null;
+    }
+
+    /** Diagnóstico de la última llamada HTTP (para ping() y debugging). */
+    public function getLastDiag(): array
+    {
+        return $this->lastDiag;
     }
 
     /** Borra el cache del token (forzar re-auth) */
@@ -153,12 +221,30 @@ class TrazaragroClient
             ];
         }
         $tok = $this->getToken();
+        $diag = $this->getLastDiag();
+
+        // Construir un mensaje descriptivo basado en el diagnóstico
+        $msg = $tok ? 'Token obtenido correctamente' : 'No se pudo autenticar';
+        if (!$tok) {
+            if (!empty($diag['curl_errno'])) {
+                $msg .= ' — cURL error ' . $diag['curl_errno'] . ': ' . ($diag['curl_error'] ?? '');
+            } elseif (!empty($diag['status']) && $diag['status'] !== 200) {
+                $msg .= ' — HTTP ' . $diag['status'];
+                if (!empty($diag['body_snip'])) {
+                    $msg .= ' · ' . preg_replace('/\s+/', ' ', mb_substr($diag['body_snip'], 0, 200));
+                }
+            } elseif (!empty($diag['parse_error'])) {
+                $msg .= ' — ' . $diag['parse_error'];
+            }
+        }
+
         return [
             'ok'       => $tok !== '',
             'mode'     => 'live',
-            'msg'      => $tok ? 'Token obtenido correctamente' : 'No se pudo autenticar',
+            'msg'      => $msg,
             'base'     => $this->baseUrl,
             'instance' => $this->instance,
+            'diag'     => $diag,
             'ts'       => date('c'),
         ];
     }
@@ -198,6 +284,16 @@ class TrazaragroClient
             $code = strtolower(addslashes($filtros['authCode']));
             $parts[] = "substringof('{$code}',tolower(AuthorizationCode))";
         }
+        // Filtro por rubro (ProductActivityName) — clave para mostrar solo el rubro
+        // del programa activo: agrícola para PIPA, café para PIPC, pecuario/pesquero para PIPG.
+        // Usamos substringof para tolerar pequeñas variaciones de capitalización/acento.
+        if (!empty($filtros['rubro'])) {
+            $r = strtolower(addslashes($filtros['rubro']));
+            // Extraer la palabra clave después del último espacio (agrícola/café/pecuario)
+            $kw = trim((string)preg_replace('/.*\s/', '', $r));
+            if ($kw === '') $kw = $r;
+            $parts[] = "substringof('{$kw}',tolower(ProductActivityName))";
+        }
         if (!empty($filtros['desde'])) {
             $d = date('Y-m-d', strtotime($filtros['desde']));
             $parts[] = "AuthorizationDate ge datetime'{$d}T00:00:00'";
@@ -218,11 +314,16 @@ class TrazaragroClient
             '$filter'       => implode(' and ', $parts),
         ]);
 
-        $res = $this->http('GET', '/Services/odata/QueryMovementProducts?' . $query);
+        // Endpoint CORRECTO: QueryMovementNationalPrograms es el que usa la pestaña
+        // "Programas nacionales" de OIRSA web. Trae el objeto trazable, código de
+        // trazabilidad, cantidad real y nombre del autorizador.
+        // (El antiguo QueryMovementProducts devuelve esos campos en NULL.)
+        $endpoint = '/Services/odata/QueryMovementNationalPrograms?';
+
+        $res = $this->http('GET', $endpoint . $query);
         if ($res['status'] === 401) {
-            // Token expirado o inválido -> refrescar y reintentar 1 vez
             $this->clearToken();
-            $res = $this->http('GET', '/Services/odata/QueryMovementProducts?' . $query);
+            $res = $this->http('GET', $endpoint . $query);
         }
 
         $values = $res['body']['value'] ?? [];
@@ -256,7 +357,7 @@ class TrazaragroClient
             '$inlinecount' => 'allpages',
             '$filter'      => implode(' and ', $parts),
         ]);
-        $res = $this->http('GET', '/Services/odata/QueryMovementProducts?' . $query);
+        $res = $this->http('GET', '/Services/odata/QueryMovementNationalPrograms?' . $query);
         return (int)($res['body']['odata.count'] ?? 0);
     }
 
@@ -274,47 +375,143 @@ class TrazaragroClient
         ];
     }
 
+    /**
+     * Devuelve el primer campo presente y no-vacío del array $r entre las claves $keys.
+     * Útil porque QueryMovementNationalPrograms devuelve algunos campos con nombre en
+     * español y otros en inglés (a veces ambos coexisten).
+     */
+    private function pick(array $r, array $keys, $default = null) {
+        foreach ($keys as $k) {
+            if (array_key_exists($k, $r) && $r[$k] !== null && $r[$k] !== '') {
+                return $r[$k];
+            }
+        }
+        return $default;
+    }
+
     // PARSER OData row -> entrega normalizada -----------------------------
     private function parseMovement(array $r): array
     {
-        // DestinyEndpointCounterpart: "Nombre Apellidos; 0801196802642"
-        [$nombreBen, $dniBen] = $this->splitNombreDni($r['DestinyEndpointCounterpart'] ?? '');
+        // Counterparts: "Nombre Apellidos; 0801196802642"
+        $destinyCp = $this->pick($r, ['DestinyEndpointCounterpart']);
+        [$nombreBen, $dniBen] = $this->splitNombreDni((string)$destinyCp);
 
-        // SourceEndpointDescription: "SAG DUMT (Bodega); 3400801153822"
-        [$bodegaNombre, $bodegaCodigo] = $this->splitNombreDni($r['SourceEndpointDescription'] ?? '');
+        // Source establishment: "SAG DUMT (Bodega); 3400801153822"
+        $sourceDesc = $this->pick($r, ['SourceEndpointDescription', 'Descripción del punto final de origen', 'FuenteEndpointDescripción']);
+        [$bodegaNombre, $bodegaCodigo] = $this->splitNombreDni((string)$sourceDesc);
 
-        $fechaAuth = $this->isoToDate($r['AuthorizationDate'] ?? null)
-                  ?: $this->isoToDate($r['RegistrationDate']  ?? null);
+        $fechaAuthRaw = $this->pick($r, ['AuthorizationDate', 'Fecha de autorización']);
+        $fechaRegRaw  = $this->pick($r, ['RegistrationDate', 'Fecha de registro']);
+        $fechaExpRaw  = $this->pick($r, ['ExpirationDate', 'Fecha de caducidad']);
+        $fechaAuth    = $this->isoToDate($fechaAuthRaw) ?: $this->isoToDate($fechaRegRaw);
+
+        // Código de trazabilidad — el campo "Código del artículo" (ItemCode) es el HNPIPA...
+        $codigoTraza = trim((string)$this->pick($r, [
+            'ItemCode', 'Código del artículo', 'Código del Artículo',
+            'SealCodes', 'Códigos de sello'
+        ]));
+
+        // Helpers para campos donde OIRSA usa nombre ES y/o EN
+        $movTypeName  = (string)$this->pick($r, ['MovementTypeName', 'Nombre del tipo de movimiento']);
+        $actName      = (string)$this->pick($r, ['ActivityName',    'Nombre de la actividad']);
+        $rubro        = (string)$this->pick($r, ['ProductActivityName','NombreActividadProducto']);
+        $rubroId      = (int)   $this->pick($r, ['ProductActivityId', 'IdActividadProducto'], 0);
+        $objeto       = (string)$this->pick($r, ['ProductTypeName',  'Nombre del tipo de producto']);
+        $objetoCod    = (string)$this->pick($r, ['ProductTypeCode',  'Código de tipo de producto']);
+        $cantidad     = (float) $this->pick($r, ['ProductQuantity',  'Cantidad del producto'], 0);
+        $unidad       = (string)$this->pick($r, ['UnitName',         'Nombre de la unidad']);
+        $regCode      = (string)$this->pick($r, ['RegistrationCode', 'Código de registro']);
+        $authCode     = (string)$this->pick($r, ['AuthorizationCode','Código de autorización']);
+        $authUser     = (string)$this->pick($r, ['AuthorizationUserName', 'Nombre de usuario de autorización']);
+        $createUser   = (string)$this->pick($r, ['CreationUserName',     'Nombre de usuario de creación', 'CreaciónUsuarioNombre']);
+        $status       = (string)$this->pick($r, ['Status',           'Estado']);
+        $statusId     = (int)   $this->pick($r, ['StatusId'], 0);
+        $eventStage   = (string)$this->pick($r, ['EventStage',       'Escenario del evento']);
+        $isCompleted  = (bool)  $this->pick($r, ['IsCompleted',      'Completado'], false);
+        $carrier      = (string)$this->pick($r, ['Carrier',          'Portador', 'Transportista']);
+        $condition    = (string)$this->pick($r, ['Condition',        'Condición']);
+        $purpose      = (string)$this->pick($r, ['Purpose',          'Objeto', 'Objetivo', 'Propósito']);
+        $vehicle      = (string)$this->pick($r, ['Vehicle',          'Vehículo']);
+        // Destino
+        $destDesc     = (string)$this->pick($r, ['DestinyEndpointDescription', 'Descripción del punto final del destino']);
+        $destCode     = (string)$this->pick($r, ['DestinyEndpointCode',        'Código de punto final de destino', 'Código de DestinyEndpoint']);
+        $destLoc1     = (string)$this->pick($r, ['DestinyLocation1', 'DestinoUbicación1']);
+        $destLoc2     = (string)$this->pick($r, ['DestinyLocation2', 'DestinoUbicación2']);
+        // Origen
+        $srcCp        = (string)$this->pick($r, ['SourceEndpointCounterpart', 'FuenteEndpointContraparte']);
+        $srcCode      = (string)$this->pick($r, ['SourceEndpointCode',        'Código de punto final de origen']);
+        $srcLoc1      = (string)$this->pick($r, ['SourceLocation1', 'FuenteUbicación1', 'Ubicación de origen1', 'Ubicación de origen 1']);
+        $srcLoc2      = (string)$this->pick($r, ['SourceLocation2', 'FuenteUbicación2', 'Ubicación de origen 2']);
 
         return [
+            // Identidad y clasificación
             'trazaragro_id'           => (string)($r['MovementId']        ?? ''),
-            'registration_code'       => (string)($r['RegistrationCode']  ?? ''),
-            'authorization_code'      => (string)($r['AuthorizationCode'] ?? ''),
-            'status'                  => (string)($r['Status']            ?? ''),
-            'dni'                     => $dniBen,
-            'nombre_beneficiario'     => $nombreBen,
-            'destino_departamento'    => (string)($r['DestinyLocation1'] ?? ''),
-            'destino_municipio'       => (string)($r['DestinyLocation2'] ?? ''),
-            'destino_establecimiento' => (string)($r['DestinyEndpointDescription'] ?? ''),
+            'registration_code'       => $regCode,
+            'authorization_code'      => $authCode,
+            'status'                  => $status,
+            'status_id'               => $statusId,
+            'event_stage'             => $eventStage,
+            'is_completed'            => $isCompleted,
+            'actividad_id'            => (int)($r['ActivityId'] ?? 0),
+            'tipo_movimiento'         => $movTypeName,
+            'tipo_movimiento_id'      => (int)($r['MovementTypeId'] ?? 0),
+            'rubro'                   => $rubro,
+            'rubro_id'                => $rubroId,
+            'objeto_trazable'         => $objeto,
+            'objeto_trazable_codigo'  => $objetoCod,
+            'codigo_trazabilidad'     => $codigoTraza,
+
+            // Destino
+            'destino_persona'         => (string)$destinyCp,
+            'destino_nombre'          => $nombreBen,
+            'destino_dni'             => $dniBen,
+            'destino_establecimiento' => $destDesc,
+            'destino_cue'             => $destCode,
+            'destino_departamento'    => $destLoc1,
+            'destino_municipio'       => $destLoc2,
+
+            // Origen
+            'origen_persona'          => $srcCp,
+            'origen_establecimiento'  => (string)$sourceDesc,
+            'origen_cue'              => $srcCode,
+            'origen_departamento'     => $srcLoc1,
+            'origen_municipio'        => $srcLoc2,
+
+            // Cantidad / logística
+            'cantidad'                => $cantidad,
+            'unidad'                  => $unidad,
+            'transportista'           => $carrier,
+            'vehiculo'                => $vehicle,
+            'condicion'               => $condition,
+            'proposito'               => $purpose,
+
+            // Fechas
+            'fecha_registro'          => $this->isoToDateTime($fechaRegRaw),
+            'fecha_autorizacion'      => $this->isoToDateTime($fechaAuthRaw),
+            'fecha_expiracion'        => $this->isoToDateTime($fechaExpRaw),
+            // Compat
+            'fecha_entrega'           => $fechaAuth,
             'bodega'                  => $bodegaNombre,
             'bodega_codigo'           => $bodegaCodigo,
-            'origen_departamento'     => (string)($r['SourceLocation1'] ?? ''),
-            'origen_municipio'        => (string)($r['SourceLocation2'] ?? ''),
-            'producto'                => (string)($r['ProductTypeName']     ?? ''),
-            'producto_actividad'      => (string)($r['ProductActivityName'] ?? ''),
-            'cantidad'                => (float) ($r['ProductQuantity']     ?? 0),
-            'unidad'                  => (string)($r['UnitName']            ?? ''),
-            'transportista'           => (string)($r['Carrier']  ?? ''),
-            'vehiculo'                => (string)($r['Vehicle']  ?? ''),
-            'condicion'               => (string)($r['Condition']?? ''),
-            'proposito'               => (string)($r['Purpose']  ?? ''),
-            'fecha_entrega'           => $fechaAuth,
-            'fecha_registro'          => $this->isoToDate($r['RegistrationDate'] ?? null),
-            'fecha_expiracion'        => $this->isoToDate($r['ExpirationDate']   ?? null),
-            'usuario_autoriza'        => (string)($r['AuthorizationUserName'] ?? ''),
-            'is_completed'            => (bool)  ($r['IsCompleted']           ?? false),
+            'producto'                => $objeto,
+            'producto_actividad'      => $rubro,
+            'nombre_beneficiario'     => $nombreBen,
+            'dni'                     => $dniBen,
+
+            // Usuarios
+            'usuario_autoriza'        => $authUser,
+            'usuario_crea'            => $createUser,
+
+            // Backup
             'raw'                     => $r,
         ];
+    }
+
+    private function isoToDateTime(?string $iso): ?string
+    {
+        if (!$iso) return null;
+        $ts = strtotime($iso);
+        return $ts ? date('Y-m-d H:i:s', $ts) : null;
     }
 
     private function splitNombreDni(string $s): array
@@ -343,13 +540,25 @@ class TrazaragroClient
         ];
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => $this->timeout,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
+            CURLOPT_CONNECTTIMEOUT => 10,
+        ];
+
+        // Mismo manejo SSL que en getToken()
+        $caBundle = $this->findCaBundle();
+        if ($caBundle) {
+            $opts[CURLOPT_SSL_VERIFYPEER] = true;
+            $opts[CURLOPT_CAINFO]         = $caBundle;
+        } else {
+            $opts[CURLOPT_SSL_VERIFYPEER] = false;
+            $opts[CURLOPT_SSL_VERIFYHOST] = 0;
+        }
+
+        curl_setopt_array($ch, $opts);
         if ($body !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
             $headers[] = 'Content-Type: application/json';
@@ -358,9 +567,21 @@ class TrazaragroClient
         $raw    = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err    = curl_error($ch);
+        $errNo  = curl_errno($ch);
         curl_close($ch);
 
         $decoded = $raw ? json_decode($raw, true) : null;
+
+        // Guardar diagnóstico para sincronizarTrazaragro()
+        $this->lastDiag = [
+            'source'     => 'odata',
+            'url'        => $url,
+            'status'     => $status,
+            'curl_errno' => $errNo,
+            'curl_error' => $err,
+            'body_snip'  => $raw ? mb_substr((string)$raw, 0, 400) : null,
+        ];
+
         return [
             'status' => $status,
             'body'   => is_array($decoded) ? $decoded : ['raw' => $raw, 'curl_error' => $err],

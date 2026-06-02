@@ -194,4 +194,47 @@ class CapacitacionesController extends Controller
             $this->error('Error al eliminar.');
         }
     }
+
+    // ════════════════════════════════════════════════════════════
+    //  EVIDENCIA DOCUMENTAL (R-028)
+    // ════════════════════════════════════════════════════════════
+
+    /** POST multipart — sube el archivo de evidencia */
+    public function subirEvidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id = (int)($_POST['id_capacitacion'] ?? 0);
+        if (!$id) { $this->error('Capacitación no especificada.'); return; }
+        if (empty($_FILES['archivo'])) { $this->error('No se recibió archivo.'); return; }
+
+        $r = EvidenciaService::guardarEvidencia(
+            'sag_capacitaciones', $id, $_FILES['archivo'],
+            $_SESSION['user']['id_usuario'] ?? null,
+            $_POST['observaciones'] ?? null
+        );
+        $this->logAction($r['ok'] ? 'EVIDENCIA_OK' : 'EVIDENCIA_FAIL', 'capacitaciones', "ID:{$id} — {$r['msg']}");
+        if ($r['ok']) $this->success($r['msg'], $r);
+        else          $this->error($r['msg']);
+    }
+
+    /** POST — cambia el estado de validación */
+    public function validarEvidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id     = (int) $this->getPost('id_capacitacion', 0);
+        $estado = $this->getPost('estado', '');
+        $obs    = $this->getPost('observaciones', '');
+        $r = EvidenciaService::cambiarEstado('sag_capacitaciones', $id, $estado, $obs);
+        $this->logAction('VALIDAR_EVIDENCIA', 'capacitaciones', "ID:{$id} → {$estado}");
+        if ($r['ok']) $this->success($r['msg']);
+        else          $this->error($r['msg']);
+    }
+
+    /** GET — descarga/preview del archivo */
+    public function evidencia(): void
+    {
+        require_once ROOT_PATH . '/core/EvidenciaService.php';
+        $id = (int)($_GET['id'] ?? 0);
+        EvidenciaService::servirArchivo('sag_capacitaciones', $id);
+    }
 }

@@ -1,394 +1,283 @@
 /**
- * entregas.js — Módulo de Incentivos Entregados (mock)
- * Mayo 2026 — Vista de prueba antes de conectar con KoBoToolbox.
+ * entregas.js — Movimientos Trazaragro (vista nativa OIRSA)
+ * Refactor mayo 2026
+ *
+ * - Render flat: una fila por MovementId
+ * - Filtros client-side sobre window.OIRSA_MOVS
+ * - Sincronización: clic normal = incremental, Shift+Clic = limpia BD
  */
-$(function () {
-    'use strict';
-
-    const E = SAG_ENT;
-    const BASE = SAG.BASE_URL;
-
-    // ── Helpers ──────────────────────────────────────────────
-    const ESTADOS = {
-        aprobada:           { label: 'Aprobada',           cls: 'eb-aprobada' },
-        pendiente_revision: { label: 'Pendiente revisión', cls: 'eb-pendiente_revision' },
-        con_alerta:         { label: 'Con alerta',         cls: 'eb-con_alerta' },
-        rechazada:          { label: 'Rechazada',          cls: 'eb-rechazada' }
-    };
-    const RAZONES_NO = {
-        stock_insuficiente:       'Stock insuficiente en bodega',
-        beneficiario_rechazo:     'Beneficiario rechazó parte',
-        beneficiario_no_presente: 'Beneficiario no se presentó',
-        logistica:                'Problema logístico/transporte',
-        otro:                     'Otro'
-    };
-
-    function badge(estado) {
-        const e = ESTADOS[estado] || { label: estado, cls: 'eb-pendiente_revision' };
-        const alertaIcon = (estado === 'con_alerta' || estado === 'pendiente_revision')
-            ? '<i class="fas fa-triangle-exclamation alerta-icon"></i>' : '';
-        return `${alertaIcon}<span class="ent-badge ${e.cls}">${e.label}</span>`;
-    }
-
-    function fechaHora(fecha, hora) {
-        return `${fecha}<br><small style="color:#888;">${hora || ''}</small>`;
-    }
-
-    // ── Modal helpers ────────────────────────────────────────
-    window.cerrarModal = function (id) {
-        document.getElementById(id).classList.remove('show');
-    };
-    function abrirModal(id) {
-        document.getElementById(id).classList.add('show');
-    }
-    document.querySelectorAll('.modal-overlay').forEach(mo => {
-        mo.addEventListener('click', e => { if (e.target === mo) mo.classList.remove('show'); });
+// Tabs del módulo Entregas — expuesto globalmente porque los botones lo invocan inline
+window.switchEntregasTab = function (tab) {
+    ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'].forEach(t => {
+        const el = document.getElementById('tab-ent-' + t);
+        if (el) el.style.display = (t === tab) ? 'block' : 'none';
     });
+    const order = ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'];
+    const idx = order.indexOf(tab);
+    document.querySelectorAll('.mode-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', i === idx);
+    });
+    // Recordar la pestaña activa para que sobreviva al reload tras sync
+    try { localStorage.setItem('sag_entregas_tab', tab); } catch (e) {}
+};
 
-    // ── Render tabla ─────────────────────────────────────────
-    function renderTabla(filas) {
-        const $tb = $('#tblEntregas');
-        if (!filas.length) {
-            $tb.html(`<tr><td colspan="8" class="tbl-empty">
-                <i class="fas fa-inbox"></i>
-                No hay entregas que coincidan con los filtros.
+$(function () {
+
+    // Restaurar última pestaña activa (si el usuario sincronizó y la página recargó)
+    try {
+        const saved = localStorage.getItem('sag_entregas_tab');
+        if (saved && ['resumen','movimientos','productores','anomalias'].includes(saved)) {
+            window.switchEntregasTab(saved);
+        }
+    } catch (e) {}
+
+    // Data global desde PHP
+    let MOVS = Array.isArray(window.OIRSA_MOVS) ? window.OIRSA_MOVS.slice() : [];
+    let MOVS_FILTRADOS = MOVS.slice();
+
+    const $tbody    = $('#tbodyOirsa');
+    const $contador = $('#contadorFiltrados');
+
+    // ── HELPERS ──────────────────────────────────────────────
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function fmtFecha(s) {
+        if (!s) return '';
+        // Acepta "YYYY-MM-DD HH:MM:SS" o ISO
+        const d = new Date(s.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return escapeHtml(s);
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ` +
+               `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function fmtNum(n) {
+        if (n === null || n === undefined || n === '') return '';
+        const v = parseFloat(n);
+        return isNaN(v) ? '' : v.toLocaleString('es-HN', { maximumFractionDigits: 2 });
+    }
+
+    function badgeEstado(estado) {
+        const map = {
+            'entregado':  ['est-entregado','Entregado'],
+            'pendiente':  ['est-pendiente','Pendiente'],
+            'observado':  ['est-observado','Observado'],
+            'anulado':    ['est-anulado','Anulado'],
+        };
+        const [cls, lbl] = map[estado] || ['est-pendiente', estado || 'Pendiente'];
+        return `<span class="est-badge ${cls}">${lbl}</span>`;
+    }
+
+    // ── RENDER ───────────────────────────────────────────────
+    function renderTabla() {
+        if (!MOVS_FILTRADOS.length) {
+            $tbody.html(`<tr><td colspan="18" style="text-align:center;padding:30px;color:#888;">
+                <i class="fas fa-inbox" style="font-size:1.5rem;margin-bottom:6px;"></i><br>
+                Sin movimientos para mostrar.
             </td></tr>`);
+            $contador.html('');
             return;
         }
-        const html = filas.map(e => `
-            <tr data-id="${e.id_entrega}">
-                <td><strong>#${e.id_entrega}</strong></td>
-                <td style="white-space:nowrap;">${fechaHora(e.fecha_entrega, e.hora_entrega)}</td>
-                <td><code style="font-size:.74rem;color:#0f766e;">${e.dni}</code></td>
-                <td>${e.beneficiario}<br><small style="color:#888;">${(e.municipio||'—')} / ${(e.aldea||'—')}</small></td>
-                <td><small>${e.bodega}</small></td>
-                <td><small>${e.tecnico}</small></td>
-                <td style="text-align:center;">
-                    <strong>${e.sacos_entregados ?? '—'}</strong>
-                    <small style="color:#888;">/ ${e.sacos_asignados ?? '—'}</small>
-                </td>
-                <td>${badge(e.estado)}</td>
-            </tr>
-        `).join('');
-        $tb.html(html);
+
+        const rows = MOVS_FILTRADOS.map(m => {
+            const fecha = fmtFecha(m.fecha_autorizacion);
+            const destDeptMun = [m.destino_departamento, m.destino_municipio].filter(Boolean).join(' / ');
+            const codigoTraza = m.codigo_trazabilidad
+                ? `<strong style="color:#0f766e;">${escapeHtml(m.codigo_trazabilidad)}</strong>`
+                : `<span style="color:#bbb;font-style:italic;">— sin código —</span>`;
+            return `
+            <tr data-id="${m.movement_id}" class="row-mov">
+              <td class="wrap">${escapeHtml(m.rubro)}</td>
+              <td class="wrap">${escapeHtml(m.tipo_movimiento)}</td>
+              <td class="wrap"><strong>${escapeHtml(m.objeto_trazable)}</strong></td>
+              <td>${codigoTraza}</td>
+              <td><strong>${escapeHtml(m.guiasa_no)}</strong></td>
+              <td>${escapeHtml(m.codigo_autorizacion)}</td>
+              <td>${fecha}</td>
+              <td class="wrap">${escapeHtml(m.origen_persona)}</td>
+              <td class="wrap">${escapeHtml(m.origen_establecimiento)}</td>
+              <td>${escapeHtml(m.origen_departamento)}</td>
+              <td class="wrap"><strong>${escapeHtml(m.destino_nombre || m.destino_persona)}</strong></td>
+              <td>${escapeHtml(m.destino_dni)}</td>
+              <td class="wrap">${escapeHtml(m.destino_establecimiento)}</td>
+              <td>${escapeHtml(destDeptMun)}</td>
+              <td class="cantidad">${fmtNum(m.cantidad)}</td>
+              <td>${escapeHtml(m.unidad)}</td>
+              <td class="wrap"><strong style="color:#0d9488;">${escapeHtml(m.autorizado_por)}</strong></td>
+              <td>${badgeEstado(m.estado_local)}</td>
+            </tr>`;
+        }).join('');
+
+        $tbody.html(rows);
+        $contador.html(`Mostrando <strong>${MOVS_FILTRADOS.length}</strong> de ${MOVS.length} movimientos`);
     }
 
-    // ── Catálogos dinámicos: Departamento → Municipio ───────
-    // Construye el catálogo único de departamentos y municipios desde los datos
-    function construirCatalogos() {
-        const deptos = new Set();
-        const muniPorDepto = {}; // { 'Francisco Morazán': Set('Tegucigalpa', 'Distrito Central', ...) }
-
-        E.entregas.forEach(e => {
-            if (e.departamento) {
-                deptos.add(e.departamento);
-                if (!muniPorDepto[e.departamento]) muniPorDepto[e.departamento] = new Set();
-                if (e.municipio) muniPorDepto[e.departamento].add(e.municipio);
-            }
-        });
-
-        // Llenar select de departamentos (ordenados alfabéticamente)
-        const $dep = $('#fDepartamento');
-        const deptosList = Array.from(deptos).sort();
-        deptosList.forEach(d => $dep.append(`<option value="${d}">${d}</option>`));
-
-        // Guardar el mapa para usarlo cuando cambien el departamento
-        E._muniPorDepto = muniPorDepto;
-    }
-
-    function actualizarMunicipios() {
-        const dep = $('#fDepartamento').val();
-        const $mun = $('#fMunicipio');
-        $mun.html('<option value="">Todos</option>');
-        if (dep && E._muniPorDepto && E._muniPorDepto[dep]) {
-            const munis = Array.from(E._muniPorDepto[dep]).sort();
-            munis.forEach(m => $mun.append(`<option value="${m}">${m}</option>`));
-            $mun.prop('disabled', false);
-        } else if (!dep) {
-            // Si no hay depto, mostrar TODOS los municipios de todos los deptos
-            const todos = new Set();
-            Object.values(E._muniPorDepto || {}).forEach(set => set.forEach(m => todos.add(m)));
-            Array.from(todos).sort().forEach(m => $mun.append(`<option value="${m}">${m}</option>`));
-            $mun.prop('disabled', false);
-        }
-    }
-
-    // ── Filtrado ─────────────────────────────────────────────
+    // ── FILTROS ──────────────────────────────────────────────
     function aplicarFiltros() {
-        const fEstado  = $('#fEstado').val();
-        const fDepto   = $('#fDepartamento').val();
-        const fMuni    = $('#fMunicipio').val();
-        const fBodega  = $('#fBodega').val();
-        const fTecnico = $('#fTecnico').val();
-        const fDesde   = $('#fDesde').val();
-        const fHasta   = $('#fHasta').val();
-        const fBuscar  = $('#fBuscar').val().toLowerCase().trim();
+        const fRubro  = $('#fRubro').val();
+        const fTipo   = $('#fTipo').val();
+        const fObjeto = $('#fObjeto').val();
+        const fDepto  = $('#fDepto').val();
+        const fEstado = $('#fEstado').val();
+        const fDesde  = $('#fDesde').val();
+        const fHasta  = $('#fHasta').val();
+        const fBusca  = ($('#fBusca').val() || '').trim().toLowerCase();
 
-        const filas = E.entregas.filter(e => {
-            if (fEstado  && e.estado !== fEstado) return false;
-            if (fDepto   && e.departamento !== fDepto) return false;
-            if (fMuni    && e.municipio !== fMuni) return false;
-            if (fBodega  && e.bodega_codigo !== fBodega) return false;
-            if (fTecnico && e.tecnico_codigo !== fTecnico) return false;
-            if (fDesde   && e.fecha_entrega < fDesde) return false;
-            if (fHasta   && e.fecha_entrega > fHasta) return false;
-            if (fBuscar) {
-                const haystack = `${e.dni} ${e.beneficiario}`.toLowerCase();
-                if (!haystack.includes(fBuscar)) return false;
+        MOVS_FILTRADOS = MOVS.filter(m => {
+            if (fRubro  && m.rubro  !== fRubro)  return false;
+            if (fTipo   && m.tipo_movimiento !== fTipo) return false;
+            if (fObjeto && m.objeto_trazable !== fObjeto) return false;
+            if (fDepto  && m.destino_departamento !== fDepto) return false;
+            if (fEstado && m.estado_local !== fEstado) return false;
+            if (fDesde && (m.fecha_autorizacion || '') < fDesde) return false;
+            if (fHasta && (m.fecha_autorizacion || '').substring(0,10) > fHasta) return false;
+            if (fBusca) {
+                const haystack = [
+                    m.destino_dni, m.destino_nombre, m.destino_persona,
+                    m.guiasa_no, m.codigo_autorizacion, m.codigo_trazabilidad,
+                    m.objeto_trazable, m.autorizado_por,
+                ].filter(Boolean).join(' ').toLowerCase();
+                if (!haystack.includes(fBusca)) return false;
             }
             return true;
         });
-        renderTabla(filas);
+        renderTabla();
     }
 
-    // Cuando cambia el departamento → actualizar municipios y re-filtrar
-    $('#fDepartamento').on('change', function () {
-        actualizarMunicipios();
-        aplicarFiltros();
-    });
+    $('#fRubro, #fTipo, #fObjeto, #fDepto, #fEstado, #fDesde, #fHasta').on('change', aplicarFiltros);
+    $('#fBusca').on('input', aplicarFiltros);
 
-    $('#fEstado, #fMunicipio, #fBodega, #fTecnico, #fDesde, #fHasta').on('change', aplicarFiltros);
-    $('#fBuscar').on('input', aplicarFiltros);
-
-    // Botón limpiar filtros
     $('#btnLimpiarFiltros').on('click', function () {
-        $('#fEstado, #fDepartamento, #fMunicipio, #fBodega, #fTecnico, #fDesde, #fHasta, #fBuscar').val('');
-        actualizarMunicipios();
+        $('#fRubro, #fTipo, #fObjeto, #fDepto, #fEstado').val('');
+        $('#fDesde, #fHasta, #fBusca').val('');
         aplicarFiltros();
     });
 
-    // ── Click en fila → modal de detalle ─────────────────────
-    $(document).on('click', '#tblEntregas tr[data-id]', function () {
+    // ── DETALLE (modal) ──────────────────────────────────────
+    $tbody.on('click', '.row-mov', function () {
         const id = $(this).data('id');
-        const e = E.entregas.find(x => x.id_entrega == id);
-        if (!e) return;
-        abrirDetalle(e);
+        const m = MOVS.find(x => String(x.movement_id) === String(id));
+        if (!m) return;
+        mostrarDetalle(m);
     });
 
-    function abrirDetalle(e) {
-        $('#dTitulo').html(`<i class="fas fa-truck-ramp-box me-2" style="color:var(--primario);"></i>Entrega #${e.id_entrega} — ${e.beneficiario}`);
+    function mostrarDetalle(m) {
+        const row = (lbl, val) =>
+            `<label>${lbl}</label><div class="v">${val || '<span style="color:#bbb;">—</span>'}</div>`;
 
-        let alertaHtml = '';
-        if (e.estado === 'con_alerta' || e.estado === 'pendiente_revision') {
-            alertaHtml = `<div class="det-alerta">
-                <i class="fas fa-triangle-exclamation me-1"></i>
-                <strong>Atención:</strong> ${e.alerta_motivo || 'Esta entrega requiere revisión manual.'}
-            </div>`;
-        }
-        if (e.estado === 'rechazada') {
-            alertaHtml = `<div class="det-rechazo">
-                <i class="fas fa-circle-xmark me-1"></i>
-                <strong>Entrega rechazada:</strong> ${e.alerta_motivo || 'Sin motivo especificado.'}
-                ${e.revisado_por ? `<br><small>Por ${e.revisado_por} el ${e.fecha_revision || ''}</small>` : ''}
-            </div>`;
-        }
-
-        const razonNo = e.razon_no_completa ? (RAZONES_NO[e.razon_no_completa] || e.razon_no_completa) : null;
-
-        const body = `
-            ${alertaHtml}
-
-            <!-- Beneficiario -->
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-id-card me-1"></i>Beneficiario</div>
-                <div class="det-grid">
-                    <div class="det-item"><div class="k">DNI</div><div class="v"><code>${e.dni}</code></div></div>
-                    <div class="det-item"><div class="k">Nombre completo</div><div class="v">${e.beneficiario}</div></div>
-                    <div class="det-item"><div class="k">Sexo</div><div class="v">${e.sexo === 'F' ? 'Femenino' : (e.sexo === 'M' ? 'Masculino' : '—')}</div></div>
-                    <div class="det-item"><div class="k">Departamento</div><div class="v">${e.departamento || '—'}</div></div>
-                    <div class="det-item"><div class="k">Municipio</div><div class="v">${e.municipio || '—'}</div></div>
-                    <div class="det-item"><div class="k">Aldea</div><div class="v">${e.aldea || '—'}</div></div>
-                </div>
-                ${e.telefono_actualizado || e.direccion_actualizada ? `
-                <div style="background:#fef9e7;border-left:3px solid #d97706;padding:8px 12px;margin-top:8px;border-radius:4px;font-size:.78rem;">
-                    <strong>📝 El técnico actualizó:</strong>
-                    ${e.telefono_actualizado ? `Teléfono → <strong>${e.telefono_actualizado}</strong>` : ''}
-                    ${e.telefono_actualizado && e.direccion_actualizada ? ' · ' : ''}
-                    ${e.direccion_actualizada ? `Dirección → <strong>${e.direccion_actualizada}</strong>` : ''}
-                </div>` : ''}
+        const html = `
+          <div class="det-section">
+            <div class="det-section-title">Identificación</div>
+            <div class="det-grid">
+              ${row('Movement ID', escapeHtml(m.movement_id))}
+              ${row('Rubro', escapeHtml(m.rubro))}
+              ${row('Tipo movimiento', escapeHtml(m.tipo_movimiento))}
+              ${row('Objeto trazable', '<strong>'+escapeHtml(m.objeto_trazable)+'</strong>')}
+              ${row('Código de trazabilidad', m.codigo_trazabilidad
+                  ? '<strong style="color:#0f766e;">'+escapeHtml(m.codigo_trazabilidad)+'</strong>'
+                  : '<em style="color:#bbb;">aún no asignado (entrega pendiente)</em>')}
+              ${row('GUIASA No.', '<strong>'+escapeHtml(m.guiasa_no)+'</strong>')}
+              ${row('Código autorización', escapeHtml(m.codigo_autorizacion))}
+              ${row('Status OIRSA', escapeHtml(m.status_oirsa))}
+              ${row('Estado local', badgeEstado(m.estado_local))}
             </div>
+          </div>
 
-            <!-- Entrega -->
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-boxes-stacked me-1"></i>Entrega</div>
-                <div class="det-grid">
-                    <div class="det-item"><div class="k">Insumo</div><div class="v"><strong>Fertilizante 20-3-18</strong></div></div>
-                    <div class="det-item"><div class="k">Sacos asignados</div><div class="v">${e.sacos_asignados ?? '—'}</div></div>
-                    <div class="det-item"><div class="k">Sacos entregados</div><div class="v"><strong style="color:${e.entrega_completa ? '#16a34a' : '#d97706'};">${e.sacos_entregados ?? 0}</strong></div></div>
-                    <div class="det-item"><div class="k">Entrega completa</div><div class="v">${e.entrega_completa === 1 ? '<span style="color:#16a34a;">✓ Sí</span>' : (e.entrega_completa === 0 ? '<span style="color:#d97706;">✗ No</span>' : '—')}</div></div>
-                    ${razonNo ? `<div class="det-item" style="grid-column:span 2;"><div class="k">Razón no completa</div><div class="v">${razonNo}</div></div>` : ''}
-                </div>
+          <div class="det-section">
+            <div class="det-section-title">Origen</div>
+            <div class="det-grid">
+              ${row('Persona', escapeHtml(m.origen_persona))}
+              ${row('Establecimiento', escapeHtml(m.origen_establecimiento))}
+              ${row('CUE', escapeHtml(m.origen_cue))}
+              ${row('Departamento', escapeHtml(m.origen_departamento))}
+              ${row('Municipio', escapeHtml(m.origen_municipio))}
             </div>
+          </div>
 
-            <!-- Logística -->
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-warehouse me-1"></i>Logística</div>
-                <div class="det-grid">
-                    <div class="det-item"><div class="k">Bodega</div><div class="v">${e.bodega} <small style="color:#888;">(${e.bodega_codigo})</small></div></div>
-                    <div class="det-item"><div class="k">Técnico</div><div class="v">${e.tecnico}</div></div>
-                    <div class="det-item"><div class="k">Fecha y hora</div><div class="v">${e.fecha_entrega} ${e.hora_entrega || ''}</div></div>
-                    <div class="det-item"><div class="k">Ubicación GPS</div><div class="v">
-                        ${e.gps_lat && e.gps_lon
-                            ? `<a class="gps-link" href="https://www.google.com/maps?q=${e.gps_lat},${e.gps_lon}" target="_blank">
-                                  <i class="fas fa-map-location-dot"></i> ${e.gps_lat.toFixed(4)}, ${e.gps_lon.toFixed(4)}
-                                  ${e.gps_precision ? ` (±${e.gps_precision}m)` : ''}
-                               </a>`
-                            : '—'}
-                    </div></div>
-                </div>
+          <div class="det-section">
+            <div class="det-section-title">Destino (Beneficiario)</div>
+            <div class="det-grid">
+              ${row('Persona', '<strong>'+escapeHtml(m.destino_nombre || m.destino_persona)+'</strong>')}
+              ${row('DNI', escapeHtml(m.destino_dni))}
+              ${row('Establecimiento', escapeHtml(m.destino_establecimiento))}
+              ${row('CUE', escapeHtml(m.destino_cue))}
+              ${row('Departamento', escapeHtml(m.destino_departamento))}
+              ${row('Municipio', escapeHtml(m.destino_municipio))}
             </div>
+          </div>
 
-            ${e.observaciones ? `
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-comment me-1"></i>Observaciones del técnico</div>
-                <div style="background:#f8fafc;padding:10px 12px;border-radius:6px;font-size:.85rem;font-style:italic;color:#475569;">
-                    "${e.observaciones}"
-                </div>
-            </div>` : ''}
-
-            <!-- Imágenes y firmas -->
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-camera me-1"></i>Verificación visual</div>
-                <div class="det-imgs">
-                    ${e.foto_dni ? `<div class="det-img"><img src="${e.foto_dni}" alt="DNI"/><div class="label">📷 Foto DNI</div></div>` : ''}
-                    ${e.foto_entrega ? `<div class="det-img"><img src="${e.foto_entrega}" alt="Entrega"/><div class="label">📷 Foto Entrega</div></div>` : ''}
-                    ${e.firma_beneficiario ? `<div class="det-img"><img src="${e.firma_beneficiario}" alt="Firma"/><div class="label">✍️ Firma Beneficiario</div></div>` : ''}
-                    ${e.firma_tecnico ? `<div class="det-img"><img src="${e.firma_tecnico}" alt="Firma técnico"/><div class="label">✍️ Firma Técnico</div></div>` : ''}
-                    ${(!e.foto_dni && !e.foto_entrega && !e.firma_beneficiario && !e.firma_tecnico)
-                        ? '<div style="color:#aaa;font-size:.85rem;padding:14px;">Sin imágenes adjuntas.</div>' : ''}
-                </div>
+          <div class="det-section">
+            <div class="det-section-title">Cantidad / Logística</div>
+            <div class="det-grid">
+              ${row('Cantidad', '<strong>'+fmtNum(m.cantidad)+' '+escapeHtml(m.unidad)+'</strong>')}
+              ${row('Condición', escapeHtml(m.condicion))}
+              ${row('Propósito', escapeHtml(m.proposito))}
+              ${row('Transportista', escapeHtml(m.transportista))}
+              ${row('Vehículo', escapeHtml(m.vehiculo))}
             </div>
+          </div>
 
-            <!-- Metadata técnica -->
-            <div class="det-section">
-                <div class="det-section-title"><i class="fas fa-database me-1"></i>Sincronización</div>
-                <div class="det-grid">
-                    <div class="det-item"><div class="k">ID KoBo</div><div class="v"><code style="font-size:.75rem;">${e.kobo_submission_id}</code></div></div>
-                    <div class="det-item"><div class="k">Sincronizado</div><div class="v">${e.synced_at || '—'}</div></div>
-                    ${e.revisado_por ? `<div class="det-item"><div class="k">Revisado por</div><div class="v">${e.revisado_por}</div></div>` : ''}
-                    ${e.fecha_revision ? `<div class="det-item"><div class="k">Fecha revisión</div><div class="v">${e.fecha_revision}</div></div>` : ''}
-                </div>
+          <div class="det-section">
+            <div class="det-section-title">Autorización</div>
+            <div class="det-grid">
+              ${row('Autorizado por (SAG/OIRSA)', '<strong style="color:#0d9488;">'+escapeHtml(m.autorizado_por)+'</strong>')}
+              ${row('Creado por', escapeHtml(m.creado_por))}
+              ${row('Fecha registro', fmtFecha(m.fecha_registro))}
+              ${row('Fecha autorización', fmtFecha(m.fecha_autorizacion))}
+              ${row('Fecha expiración', fmtFecha(m.fecha_expiracion))}
+              ${row('Última sincronización', fmtFecha(m.synced_at))}
             </div>
+          </div>
         `;
-        $('#dBody').html(body);
-
-        // Botones de acción según estado y rol
-        let foot = `<div></div><div>`;
-        if (E.esAdmin && (e.estado === 'pendiente_revision' || e.estado === 'con_alerta')) {
-            foot += `<button class="btn-rechazar me-2" data-id="${e.id_entrega}" data-accion="rechazar">
-                <i class="fas fa-circle-xmark"></i> Rechazar
-            </button>`;
-            foot += `<button class="btn-aprobar" data-id="${e.id_entrega}" data-accion="aprobar">
-                <i class="fas fa-circle-check"></i> Aprobar entrega
-            </button>`;
-        }
-        foot += `<button class="btn-cerrar ms-2" onclick="cerrarModal('modalDetalle')">Cerrar</button></div>`;
-        $('#dFoot').html(foot);
-
-        abrirModal('modalDetalle');
+        $('#detBody').html(html);
+        $('#modalDetalle').addClass('show');
     }
 
-    // ── Botones aprobar/rechazar ─────────────────────────────
-    $(document).on('click', '#dFoot button[data-accion]', function () {
-        const id = $(this).data('id');
-        const accion = $(this).data('accion');
-        const e = E.entregas.find(x => x.id_entrega == id);
-        if (!e) return;
+    window.cerrarDetalle = function () {
+        $('#modalDetalle').removeClass('show');
+    };
 
-        $('#oId').val(id);
-        $('#oAccion').val(accion);
-        $('#oTexto').val('');
-
-        const colorAccion = accion === 'aprobar' ? '#16a34a' : '#dc2626';
-        $('#oTitulo').html(`<i class="fas fa-${accion === 'aprobar' ? 'check' : 'ban'} me-2" style="color:${colorAccion};"></i>${accion === 'aprobar' ? 'Aprobar' : 'Rechazar'} entrega`);
-        $('#oResumen').html(`
-            <strong>${e.beneficiario}</strong> &mdash; DNI ${e.dni}<br>
-            <small style="color:#666;">Entrega #${e.id_entrega} en ${e.bodega}</small>
-        `);
-        $('#oBtnConfirmar')
-            .removeClass('btn-aprobar btn-rechazar')
-            .addClass(accion === 'aprobar' ? 'btn-aprobar' : 'btn-rechazar')
-            .html(`<i class="fas fa-${accion === 'aprobar' ? 'check' : 'ban'}"></i> Confirmar ${accion === 'aprobar' ? 'aprobación' : 'rechazo'}`);
-
-        cerrarModal('modalDetalle');
-        abrirModal('modalObs');
+    // Cerrar modal con click en overlay o tecla Escape
+    $('#modalDetalle').on('click', function (e) {
+        if (e.target === this) cerrarDetalle();
+    });
+    $(document).on('keydown', function (e) {
+        if (e.key === 'Escape') cerrarDetalle();
     });
 
-    $('#oBtnConfirmar').on('click', function () {
-        const id = $('#oId').val();
-        const accion = $('#oAccion').val();
-        const obs = $('#oTexto').val().trim();
-        if (accion === 'rechazar' && !obs) {
-            SAG.toast('Debe escribir el motivo del rechazo.', 'warning');
+    // ── BOTÓN SINCRONIZAR ────────────────────────────────────
+    $('#btnSincronizarTrazaragro').on('click', function (e) {
+        const $btn = $(this);
+        const limpiar = e.shiftKey ? 1 : 0;
+
+        if (limpiar && !confirm('Esto BORRARÁ todos los movimientos sincronizados y volverá a traerlos desde OIRSA.\n\n¿Estás seguro?')) {
             return;
         }
-        SAG.btnLoading('#oBtnConfirmar', true);
-        SAG.ajax({
-            url: '/entregas/' + accion,
-            data: { id, observacion: obs },
-            success: r => {
-                SAG.btnLoading('#oBtnConfirmar', false);
-                if (!r.success) { SAG.toast(r.message, 'error'); return; }
-                SAG.toast(r.message, 'success');
-                cerrarModal('modalObs');
-                // Mock: actualizar visualmente la entrega en el array local
-                const e = E.entregas.find(x => x.id_entrega == id);
-                if (e) {
-                    e.estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
-                    e.alerta_motivo = obs || e.alerta_motivo;
-                }
-                aplicarFiltros();
-            },
-            error: () => SAG.btnLoading('#oBtnConfirmar', false)
-        });
-    });
 
-    // ── Botón sincronizar (KoBo) ─────────────────────────────
-    $('#btnSincronizar').on('click', function () {
-        const $btn = $(this);
         $btn.addClass('is-loading').prop('disabled', true);
-        $btn.html('<i class="fas fa-rotate"></i> Sincronizando con KoBo...');
-
-        SAG.ajax({
-            url: '/entregas/sincronizar',
-            data: {},
-            success: r => {
-                $btn.removeClass('is-loading').prop('disabled', false);
-                $btn.html('<i class="fas fa-rotate"></i> Sincronizar con KoBo');
-                if (!r.success) { SAG.toast(r.message, 'error'); return; }
-                SAG.toast(r.message, 'success');
-            },
-            error: () => {
-                $btn.removeClass('is-loading').prop('disabled', false);
-                $btn.html('<i class="fas fa-rotate"></i> Sincronizar con KoBo');
-            }
-        });
-    });
-
-    // ── Botón sincronizar (Trazaragro) ───────────────────────
-    $('#btnSincronizarTrazaragro').on('click', function () {
-        const $btn = $(this);
-        $btn.addClass('is-loading').prop('disabled', true);
-        $btn.html('<i class="fas fa-link"></i> Conectando con Trazaragro...');
+        $btn.html('<i class="fas fa-rotate"></i> ' + (limpiar ? 'Limpiando y sincronizando...' : 'Sincronizando con OIRSA...'));
 
         SAG.ajax({
             url: '/entregas/sincronizarTrazaragro',
-            data: {},
+            data: { limpiar: limpiar },
             success: r => {
                 $btn.removeClass('is-loading').prop('disabled', false);
-                $btn.html('<i class="fas fa-link"></i> Sincronizar con Trazaragro');
+                $btn.html('<i class="fas fa-rotate"></i> Sincronizar con Trazaragro');
                 if (!r.success) { SAG.toast(r.message, 'error'); return; }
                 SAG.toast(r.message, 'success');
+                setTimeout(() => window.location.reload(), 1200);
             },
             error: () => {
                 $btn.removeClass('is-loading').prop('disabled', false);
-                $btn.html('<i class="fas fa-link"></i> Sincronizar con Trazaragro');
+                $btn.html('<i class="fas fa-rotate"></i> Sincronizar con Trazaragro');
             }
         });
     });
 
     // ── INIT ─────────────────────────────────────────────────
-    construirCatalogos();
-    actualizarMunicipios();
-    aplicarFiltros();
+    renderTabla();
 });

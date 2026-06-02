@@ -210,6 +210,7 @@ $router->get('/organizaciones',              'OrganizacionesController', 'index'
 $router->post('/organizaciones/listar',      'OrganizacionesController', 'listar');
 $router->post('/organizaciones/get',         'OrganizacionesController', 'get');
 $router->post('/organizaciones/save',        'OrganizacionesController', 'save');
+$router->post('/organizaciones/checkNombre', 'OrganizacionesController', 'checkNombre');
 $router->post('/organizaciones/estado',      'OrganizacionesController', 'estado');
 $router->post('/organizaciones/delete',      'OrganizacionesController', 'delete');
 $router->post('/organizaciones/miembros',    'OrganizacionesController', 'miembros');
@@ -231,6 +232,10 @@ $router->post('/capacitaciones/finalizar',           'CapacitacionesController',
 $router->post('/capacitaciones/delete',              'CapacitacionesController', 'delete');
 $router->post('/capacitaciones/participante/add',    'CapacitacionesController', 'addParticipante');
 $router->post('/capacitaciones/participante/delete', 'CapacitacionesController', 'deleteParticipante');
+// R-028: Evidencia documental
+$router->post('/capacitaciones/evidencia/subir',     'CapacitacionesController', 'subirEvidencia');
+$router->post('/capacitaciones/evidencia/validar',   'CapacitacionesController', 'validarEvidencia');
+$router->get( '/capacitaciones/evidencia',           'CapacitacionesController', 'evidencia');
 
 // ── Asistencia Técnica ────────────────────────────
 $router->get('/asistencia',                  'AsistenciaTecnicaController', 'index');
@@ -239,6 +244,10 @@ $router->post('/asistencia/get',             'AsistenciaTecnicaController', 'get
 $router->post('/asistencia/save',            'AsistenciaTecnicaController', 'save');
 $router->post('/asistencia/finalizar',       'AsistenciaTecnicaController', 'finalizar');
 $router->post('/asistencia/delete',          'AsistenciaTecnicaController', 'delete');
+// R-027: Evidencia documental
+$router->post('/asistencia/evidencia/subir',   'AsistenciaTecnicaController', 'subirEvidencia');
+$router->post('/asistencia/evidencia/validar', 'AsistenciaTecnicaController', 'validarEvidencia');
+$router->get( '/asistencia/evidencia',         'AsistenciaTecnicaController', 'evidencia');
 
 // ── Estadísticas ──────────────────────────────────
 $router->get('/estadisticas',                'EstadisticasController', 'index');
@@ -295,6 +304,8 @@ $router->get('/presupuesto/api/lineas',          'PresupuestoController', 'apiLi
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
 $router->get('/entregas/diag',                       'EntregasController', 'diag');
+$router->get('/entregas/exportar',                   'EntregasController', 'exportar');
+$router->get('/entregas/acta',                       'EntregasController', 'acta');
 $router->post('/entregas/sincronizar',               'EntregasController', 'sincronizar');
 $router->post('/entregas/sincronizarTrazaragro',     'EntregasController', 'sincronizarTrazaragro');
 $router->post('/entregas/aprobar',                   'EntregasController', 'aprobar');

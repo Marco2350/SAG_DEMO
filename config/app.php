@@ -35,6 +35,8 @@ define('PROGRAMAS', [
         'gradient'    => 'linear-gradient(180deg, #ab9a8a 0%, #4f2a09 100%)',
         'color_light' => '#f5ede5',
         'descripcion' => 'Incentivos y asistencia para productores de café en Honduras',
+        // Rubro de Trazaragro (ProductActivityName) a filtrar para este programa
+        'trazaragro_rubro' => 'Insumo/Incentivo café',
     ],
     'pipg' => [
         'id'          => 'pipg',
@@ -45,6 +47,8 @@ define('PROGRAMAS', [
         'color'       => '#2563eb',
         'color_light' => '#eff6ff',
         'descripcion' => 'Incentivos y asistencia técnica para el sector ganadero',
+        // Rubro Trazaragro: captura tanto pecuario como pesquero (substring "pecuario" o "pesquero")
+        'trazaragro_rubro' => 'Insumo/Incentivo pecuario',
     ],
     'pipa' => [
         'id'          => 'pipa',
@@ -55,6 +59,7 @@ define('PROGRAMAS', [
         'color'       => '#16a34a',
         'color_light' => '#f0fdf4',
         'descripcion' => 'Apoyo integral a la producción agrícola nacional',
+        'trazaragro_rubro' => 'Insumo/Incentivo agrícola',
     ],
 ]);
 
@@ -70,8 +75,9 @@ define('DB_MAIN', [
 
 // ── Trazaragro (OIRSA) ─────────────────────────────
 // API OData v3 con OAuth2 password grant.
-// Mientras username/password estén vacíos, el cliente trabaja en MOCK.
-// Cambia a 'https://trazaragro.oirsa.org' cuando estés en producción.
+// Si username/password están vacíos, el cliente trabaja en MOCK.
+// Ambiente de pruebas: 'https://pruebas-trazaragro.oirsa.org'
+// Ambiente productivo: 'https://trazaragro.oirsa.org'
 define('TRAZARAGRO', [
     'base_url'      => Env::get('TRAZARAGRO_BASE_URL', 'https://pruebas-trazaragro.oirsa.org'),
     'username'      => Env::get('TRAZARAGRO_USERNAME', ''),   // ← usuario otorgado por OIRSA

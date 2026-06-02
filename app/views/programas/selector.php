@@ -287,7 +287,7 @@
         </div>
         <div class="prog-stat">
           <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['benes']) ?></div>
-          <div class="lbl"><i class="fas fa-users"></i>Beneficiarios</div>
+          <div class="lbl"><i class="fas fa-users"></i>Productores</div>
         </div>
         <div class="prog-stat">
           <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['caps']) ?></div>
@@ -326,7 +326,7 @@
       <div class="sf-icon"><i class="fas fa-users"></i></div>
       <div>
         <div class="sf-val"><?= number_format($totBenes) ?></div>
-        <div class="sf-lbl">Beneficiarios totales</div>
+        <div class="sf-lbl">Productores totales</div>
       </div>
     </div>
     <div class="sf-item">

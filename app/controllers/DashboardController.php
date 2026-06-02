@@ -33,6 +33,19 @@ class DashboardController extends Controller
             )['c'];
             $revision = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='revision' AND id_proyecto=?", [$pid])['c'];
 
+            // R-005: Productores beneficiados con incentivos = DNIs únicos en movimientos Trazaragro
+            $benIncentivo = 0;
+            try {
+                $r = $db->fetchOne(
+                    "SELECT COUNT(DISTINCT destino_dni) AS c
+                     FROM sag_trazaragro_movimientos
+                     WHERE destino_dni IS NOT NULL AND destino_dni <> ''"
+                );
+                $benIncentivo = (int)($r['c'] ?? 0);
+            } catch (\Throwable $e) {
+                // Tabla aún no existe en esa BD — no es error grave
+            }
+
             // Últimas 5 organizaciones
             $ultimas = $db->fetchAll(
                 "SELECT o.nombre, o.representante, o.email,
@@ -50,14 +63,14 @@ class DashboardController extends Controller
             );
 
             $this->success('OK', [
-                'kpis'   => compact('orgs', 'benes', 'caps', 'at', 'deptos', 'revision'),
+                'kpis'   => compact('orgs', 'benes', 'caps', 'at', 'deptos', 'revision', 'benIncentivo'),
                 'ultimas' => $ultimas,
             ]);
 
         } catch (Exception $e) {
             error_log('DashboardController::stats — ' . $e->getMessage());
             $this->success('OK', [
-                'kpis'    => ['orgs' => 0, 'benes' => 0, 'caps' => 0, 'at' => 0, 'deptos' => 0, 'revision' => 0],
+                'kpis'    => ['orgs' => 0, 'benes' => 0, 'caps' => 0, 'at' => 0, 'deptos' => 0, 'revision' => 0, 'benIncentivo' => 0],
                 'ultimas' => [],
             ]);
         }

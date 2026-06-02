@@ -1,6 +1,9 @@
 # Variables de entorno con secretos
 .env
 
+# Archivo de prueba con credenciales de producción
+test_oirsa_prod.php
+
 # Subidas de usuarios
 /public/uploads/*
 !/public/uploads/.gitkeep
@@ -13,16 +16,7 @@ _test_*.php
 /.vscode/
 /.idea/
 
-# SQL — dumps/backups locales. Se conserva solo el esquema canónico.
-*.sql
-!bd.sql
-!sql/bd_mddesarr_sag.sql
-!sql/seed_catalogos.sql
-
 # Misceláneos
 *.log
 .DS_Store
 Thumbs.db
-
-
-/sql
