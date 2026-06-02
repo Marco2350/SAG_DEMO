@@ -887,7 +887,7 @@ class EntregasController extends Controller
             'app/views/inventarios/index.php'               => $base . '/app/views/inventarios/index.php',
             'public/assets/js/modules/inventarios.js'       => $base . '/public/assets/js/modules/inventarios.js',
             'sql/migracion_004_trazaragro_movimientos.sql'  => $base . '/sql/migracion_004_trazaragro_movimientos.sql',
-            'bd.sql'                                        => $base . '/bd.sql',
+            'sql/bd_mddesarr_sag.sql'                       => $base . '/sql/bd_mddesarr_sag.sql',
         ];
         $report = [];
         foreach ($checks as $rel => $abs) {
