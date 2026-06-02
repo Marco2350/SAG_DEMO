@@ -6,7 +6,7 @@ class AsistenciaTecnicaModel extends Model
 
     public function getListado(array $filtros = []): array
     {
-        $where = ['1=1']; $params = [];
+        $where = ['a.id_proyecto = ?']; $params = [Database::proyectoId()];
 
         if (!empty($filtros['id_departamento'])) { $where[] = 'a.id_departamento=?'; $params[] = $filtros['id_departamento']; }
         if (!empty($filtros['id_tecnico']))       { $where[] = 'a.id_tecnico=?';      $params[] = $filtros['id_tecnico']; }
@@ -57,8 +57,8 @@ class AsistenciaTecnicaModel extends Model
              INNER JOIN sag_tipo_at       ta ON ta.id_tipo_at     = a.id_tipo_at
              LEFT  JOIN sag_cultivos      cu ON cu.id_cultivo     = a.id_cultivo
              LEFT  JOIN sag_organizaciones o ON o.id_organizacion = a.id_organizacion
-             WHERE a.id_at = ?",
-            [$id]
+             WHERE a.id_at = ? AND a.id_proyecto = ?",
+            [$id, Database::proyectoId()]
         );
         if (!$at) return false;
 
@@ -82,8 +82,8 @@ class AsistenciaTecnicaModel extends Model
             $r = trim($r);
             if ($r !== '') {
                 $this->db->execute(
-                    "INSERT INTO sag_at_resultados (id_at, resultado) VALUES (?,?)",
-                    [$idAt, $r]
+                    "INSERT INTO sag_at_resultados (id_proyecto, id_at, resultado) VALUES (?,?,?)",
+                    [Database::proyectoId(), $idAt, $r]
                 );
             }
         }
@@ -102,7 +102,8 @@ class AsistenciaTecnicaModel extends Model
                     SUM(estado='borrador')   AS borrador,
                     SUM(productor_sexo='M')  AS hombres,
                     SUM(productor_sexo='F')  AS mujeres
-             FROM sag_asistencias_tecnicas"
+             FROM sag_asistencias_tecnicas WHERE id_proyecto=?",
+            [Database::proyectoId()]
         );
         return [
             'total'       => (int) ($r['total']       ?? 0),
@@ -116,14 +117,16 @@ class AsistenciaTecnicaModel extends Model
     public function getTiposAT(): array
     {
         return $this->db->fetchAll(
-            "SELECT id_tipo_at, nombre, icono FROM sag_tipo_at WHERE activo=1 ORDER BY nombre"
+            "SELECT id_tipo_at, nombre, icono FROM sag_tipo_at WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [Database::proyectoId()]
         );
     }
 
     public function getCultivos(): array
     {
         return $this->db->fetchAll(
-            "SELECT id_cultivo, nombre, tipo FROM sag_cultivos WHERE activo=1 ORDER BY tipo, nombre"
+            "SELECT id_cultivo, nombre, tipo FROM sag_cultivos WHERE activo=1 AND id_proyecto=? ORDER BY tipo, nombre",
+            [Database::proyectoId()]
         );
     }
 }

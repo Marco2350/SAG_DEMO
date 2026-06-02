@@ -17,11 +17,13 @@ class EstadisticasController extends Controller
     {
         try {
             $db   = Database::programa();
+            $pid  = Database::proyectoId();
             $anio = (int) $this->getQuery('anio', date('Y'));
 
             // ── Beneficiarios por sexo ─────────────────
             $sexo = $db->fetchAll(
-                "SELECT sexo, COUNT(*) AS total FROM sag_beneficiarios WHERE estado='activo' GROUP BY sexo"
+                "SELECT sexo, COUNT(*) AS total FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=? GROUP BY sexo",
+                [$pid]
             );
 
             // ── Beneficiarios por departamento (top 10) ─
@@ -29,18 +31,21 @@ class EstadisticasController extends Controller
                 "SELECT d.nombre AS departamento, COUNT(b.id_beneficiario) AS total
                  FROM sag_beneficiarios b
                  INNER JOIN sag_departamentos d ON d.id_departamento = b.id_departamento
-                 WHERE b.estado='activo'
-                 GROUP BY b.id_departamento ORDER BY total DESC LIMIT 10"
+                 WHERE b.estado='activo' AND b.id_proyecto=?
+                 GROUP BY b.id_departamento ORDER BY total DESC LIMIT 10",
+                [$pid]
             );
 
             // ── Organizaciones por tipo ────────────────
             $orgTipo = $db->fetchAll(
-                "SELECT tipo, COUNT(*) AS total FROM sag_organizaciones GROUP BY tipo ORDER BY total DESC"
+                "SELECT tipo, COUNT(*) AS total FROM sag_organizaciones WHERE id_proyecto=? GROUP BY tipo ORDER BY total DESC",
+                [$pid]
             );
 
             // ── Organizaciones por estado ──────────────
             $orgEstado = $db->fetchAll(
-                "SELECT estado, COUNT(*) AS total FROM sag_organizaciones GROUP BY estado"
+                "SELECT estado, COUNT(*) AS total FROM sag_organizaciones WHERE id_proyecto=? GROUP BY estado",
+                [$pid]
             );
 
             // ── Capacitaciones por mes (año seleccionado) ─
@@ -49,9 +54,9 @@ class EstadisticasController extends Controller
                         COUNT(*) AS total_eventos,
                         SUM(num_participantes) AS total_participantes
                  FROM sag_capacitaciones
-                 WHERE YEAR(fecha_capacitacion) = ? AND estado='finalizado'
+                 WHERE YEAR(fecha_capacitacion) = ? AND estado='finalizado' AND id_proyecto=?
                  GROUP BY mes ORDER BY mes",
-                [$anio]
+                [$anio, $pid]
             );
 
             // ── AT por tipo ────────────────────────────
@@ -60,35 +65,38 @@ class EstadisticasController extends Controller
                  FROM sag_tipo_at t
                  LEFT JOIN sag_asistencias_tecnicas a ON a.id_tipo_at = t.id_tipo_at
                     AND YEAR(a.fecha_visita) = ? AND a.estado='finalizado'
+                 WHERE t.id_proyecto=?
                  GROUP BY t.id_tipo_at ORDER BY total DESC",
-                [$anio]
+                [$anio, $pid]
             );
 
             // ── AT por mes (año seleccionado) ──────────
             $atMes = $db->fetchAll(
                 "SELECT MONTH(fecha_visita) AS mes, COUNT(*) AS total
                  FROM sag_asistencias_tecnicas
-                 WHERE YEAR(fecha_visita) = ? AND estado='finalizado'
+                 WHERE YEAR(fecha_visita) = ? AND estado='finalizado' AND id_proyecto=?
                  GROUP BY mes ORDER BY mes",
-                [$anio]
+                [$anio, $pid]
             );
 
             // ── Resumen general ────────────────────────
             $resumen = $db->fetchOne(
                 "SELECT
-                    (SELECT COUNT(*) FROM sag_beneficiarios WHERE estado='activo') AS beneficiarios,
-                    (SELECT COUNT(*) FROM sag_organizaciones WHERE estado='activa') AS organizaciones,
-                    (SELECT COUNT(*) FROM sag_capacitaciones WHERE estado='finalizado') AS capacitaciones,
-                    (SELECT COUNT(*) FROM sag_asistencias_tecnicas WHERE estado='finalizado') AS asistencias,
-                    (SELECT SUM(num_participantes) FROM sag_capacitaciones WHERE estado='finalizado') AS participantes_cap"
+                    (SELECT COUNT(*) FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=?) AS beneficiarios,
+                    (SELECT COUNT(*) FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=?) AS organizaciones,
+                    (SELECT COUNT(*) FROM sag_capacitaciones WHERE estado='finalizado' AND id_proyecto=?) AS capacitaciones,
+                    (SELECT COUNT(*) FROM sag_asistencias_tecnicas WHERE estado='finalizado' AND id_proyecto=?) AS asistencias,
+                    (SELECT SUM(num_participantes) FROM sag_capacitaciones WHERE estado='finalizado' AND id_proyecto=?) AS participantes_cap",
+                [$pid, $pid, $pid, $pid, $pid]
             );
 
             // ── Años disponibles ───────────────────────
             $anios = $db->fetchAll(
-                "SELECT DISTINCT YEAR(fecha_capacitacion) AS anio FROM sag_capacitaciones
+                "SELECT DISTINCT YEAR(fecha_capacitacion) AS anio FROM sag_capacitaciones WHERE id_proyecto=?
                  UNION
-                 SELECT DISTINCT YEAR(fecha_visita) FROM sag_asistencias_tecnicas
-                 ORDER BY anio DESC"
+                 SELECT DISTINCT YEAR(fecha_visita) FROM sag_asistencias_tecnicas WHERE id_proyecto=?
+                 ORDER BY anio DESC",
+                [$pid, $pid]
             );
 
             $this->json([

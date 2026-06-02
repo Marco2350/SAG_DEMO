@@ -3,10 +3,15 @@
  * Configuración principal — SAG Programas
  */
 
+// ── Variables de entorno (.env) ───────────────────
+// Carga el .env de la raíz del proyecto antes de definir constantes.
+require_once __DIR__ . '/../core/Env.php';
+Env::load(__DIR__ . '/../.env');
+
 // ── URL base ──────────────────────────────────────
-define('BASE_URL',   'http://localhost/sag_programas');
-define('APP_NAME',   'SAG Honduras Sin Hambre');
-define('APP_ENV',    'development');
+define('BASE_URL',   Env::get('BASE_URL', 'http://localhost/PROYECTOS-PHP/SAG'));
+define('APP_NAME',   Env::get('APP_NAME', 'SAG Honduras Sin Hambre'));
+define('APP_ENV',    Env::get('APP_ENV', 'development'));
 define('APP_VERSION','2.0');
 
 // ── Sesión ────────────────────────────────────────
@@ -17,12 +22,14 @@ define('SESSION_TIMEOUT', 3600);   // 1 hora
 date_default_timezone_set('America/Tegucigalpa');
 
 // ── Programas disponibles ─────────────────────────
+// Todos los programas comparten la base sag_main; se distinguen por
+// id_proyecto (alineado con el seed de la tabla sag_proyectos en bd.sql).
 define('PROGRAMAS', [
     'pipc' => [
         'id'          => 'pipc',
+        'id_proyecto' => 1,
         'nombre'      => 'Programa de Incentivos para la Producción de Café',
         'sigla'       => 'PIPC',
-        'db'          => 'sag_pipc',
         'icono'       => 'svg:bean',
         'color'       => '#7d6249',
         'gradient'    => 'linear-gradient(180deg, #ab9a8a 0%, #4f2a09 100%)',
@@ -31,9 +38,9 @@ define('PROGRAMAS', [
     ],
     'pipg' => [
         'id'          => 'pipg',
+        'id_proyecto' => 2,
         'nombre'      => 'Programa de Incentivos para la Producción Ganadera',
         'sigla'       => 'PIPG',
-        'db'          => 'sag_pipg',
         'icono'       => 'fa-cow',
         'color'       => '#2563eb',
         'color_light' => '#eff6ff',
@@ -41,9 +48,9 @@ define('PROGRAMAS', [
     ],
     'pipa' => [
         'id'          => 'pipa',
+        'id_proyecto' => 3,
         'nombre'      => 'Programa para la Producción Agrícola',
         'sigla'       => 'PIPA',
-        'db'          => 'sag_pipa',
         'icono'       => 'fa-wheat-awn',
         'color'       => '#16a34a',
         'color_light' => '#f0fdf4',
@@ -51,14 +58,14 @@ define('PROGRAMAS', [
     ],
 ]);
 
-// ── Base de datos principal (autenticación) ────────
+// ── Base de datos única (autenticación + todos los programas) ──
 define('DB_MAIN', [
-    'host'     => 'localhost',
-    'port'     => 3306,
-    'database' => 'sag_main',
-    'username' => 'root',
-    'password' => '',
-    'charset'  => 'utf8mb4',
+    'host'     => Env::get('DB_HOST', 'localhost'),
+    'port'     => (int) Env::get('DB_PORT', 3306),
+    'database' => Env::get('DB_NAME', 'mddesarr_sag'),
+    'username' => Env::get('DB_USER', 'root'),
+    'password' => Env::get('DB_PASS', ''),
+    'charset'  => Env::get('DB_CHARSET', 'utf8mb4'),
 ]);
 
 // ── Trazaragro (OIRSA) ─────────────────────────────
@@ -66,13 +73,13 @@ define('DB_MAIN', [
 // Mientras username/password estén vacíos, el cliente trabaja en MOCK.
 // Cambia a 'https://trazaragro.oirsa.org' cuando estés en producción.
 define('TRAZARAGRO', [
-    'base_url'      => 'https://pruebas-trazaragro.oirsa.org',
-    'username'      => '',   // ← TODO: usuario otorgado por OIRSA
-    'password'      => '',   // ← TODO: contraseña
-    'client_id'     => 'TZWEB',
-    'client_secret' => '44007759-8c91-4557-9347-53708a1bb5c5',
-    'instance'      => 'HN',
-    'timeout'       => 30,
+    'base_url'      => Env::get('TRAZARAGRO_BASE_URL', 'https://pruebas-trazaragro.oirsa.org'),
+    'username'      => Env::get('TRAZARAGRO_USERNAME', ''),   // ← usuario otorgado por OIRSA
+    'password'      => Env::get('TRAZARAGRO_PASSWORD', ''),   // ← contraseña
+    'client_id'     => Env::get('TRAZARAGRO_CLIENT_ID', 'TZWEB'),
+    'client_secret' => Env::get('TRAZARAGRO_CLIENT_SECRET', '44007759-8c91-4557-9347-53708a1bb5c5'),
+    'instance'      => Env::get('TRAZARAGRO_INSTANCE', 'HN'),
+    'timeout'       => (int) Env::get('TRAZARAGRO_TIMEOUT', 30),
 ]);
 
 // ── Error reporting ───────────────────────────────

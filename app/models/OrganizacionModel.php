@@ -6,8 +6,8 @@ class OrganizacionModel extends Model
 
     public function getListado(array $filtros = []): array
     {
-        $where  = ['1=1'];
-        $params = [];
+        $where  = ['o.id_proyecto = ?'];
+        $params = [Database::proyectoId()];
 
         if (!empty($filtros['estado'])) {
             $where[]  = 'o.estado = ?';
@@ -46,8 +46,8 @@ class OrganizacionModel extends Model
              FROM sag_organizaciones o
              INNER JOIN sag_departamentos d ON d.id_departamento = o.id_departamento
              INNER JOIN sag_municipios    m ON m.id_municipio    = o.id_municipio
-             WHERE o.id_organizacion = ?",
-            [$id]
+             WHERE o.id_organizacion = ? AND o.id_proyecto = ?",
+            [$id, Database::proyectoId()]
         );
         return $org ?: false;
     }
@@ -61,15 +61,16 @@ class OrganizacionModel extends Model
     public function cambiarEstado(int $id, string $estado): void
     {
         $this->db->execute(
-            "UPDATE sag_organizaciones SET estado=?, updated_at=NOW() WHERE id_organizacion=?",
-            [$estado, $id]
+            "UPDATE sag_organizaciones SET estado=?, updated_at=NOW() WHERE id_organizacion=? AND id_proyecto=?",
+            [$estado, $id, Database::proyectoId()]
         );
     }
 
     public function getResumen(): array
     {
         $rows = $this->db->fetchAll(
-            "SELECT estado, COUNT(*) AS total FROM sag_organizaciones GROUP BY estado"
+            "SELECT estado, COUNT(*) AS total FROM sag_organizaciones WHERE id_proyecto=? GROUP BY estado",
+            [Database::proyectoId()]
         );
         $res = ['total' => 0, 'activa' => 0, 'inactiva' => 0, 'pendiente' => 0];
         foreach ($rows as $r) {

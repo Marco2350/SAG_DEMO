@@ -15,7 +15,8 @@ class OrganizacionesController extends Controller
         $resumen = $this->model->getResumen();
         $tipos   = $this->model->getTipos();
         $departamentos = $db->fetchAll(
-            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 ORDER BY nombre"
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [Database::proyectoId()]
         );
         $pageTitle = 'Organizaciones — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
         $this->view('organizaciones/index', compact('resumen', 'tipos', 'departamentos', 'pageTitle'));
@@ -132,8 +133,8 @@ class OrganizacionesController extends Controller
 
         $db    = Database::programa();
         $count = $db->fetchOne(
-            "SELECT COUNT(*) AS t FROM sag_beneficiarios WHERE id_organizacion=? AND estado='activo'",
-            [$id]
+            "SELECT COUNT(*) AS t FROM sag_beneficiarios WHERE id_organizacion=? AND estado='activo' AND id_proyecto=?",
+            [$id, Database::proyectoId()]
         );
         if (($count['t'] ?? 0) > 0) {
             $this->error('No se puede eliminar: la organización tiene beneficiarios activos.'); return;
@@ -160,9 +161,9 @@ class OrganizacionesController extends Controller
              FROM sag_beneficiarios b
              LEFT JOIN sag_departamentos d ON d.id_departamento = b.id_departamento
              LEFT JOIN sag_municipios    m ON m.id_municipio    = b.id_municipio
-             WHERE b.id_organizacion = ?
+             WHERE b.id_organizacion = ? AND b.id_proyecto = ?
              ORDER BY b.apellido, b.nombre",
-            [$id]
+            [$id, Database::proyectoId()]
         );
 
         $data = array_map(function ($b) {

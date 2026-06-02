@@ -6,8 +6,8 @@ class BeneficiarioModel extends Model
 
     public function getListado(array $filtros = []): array
     {
-        $where  = ['b.estado = "activo"'];
-        $params = [];
+        $where  = ['b.id_proyecto = ?', 'b.estado = "activo"'];
+        $params = [Database::proyectoId()];
 
         if (!empty($filtros['id_organizacion'])) {
             $where[]  = 'b.id_organizacion = ?';
@@ -50,15 +50,15 @@ class BeneficiarioModel extends Model
              INNER JOIN sag_departamentos  d ON d.id_departamento = b.id_departamento
              INNER JOIN sag_municipios     m ON m.id_municipio    = b.id_municipio
              LEFT  JOIN sag_organizaciones o ON o.id_organizacion = b.id_organizacion
-             WHERE b.id_beneficiario = ?",
-            [$id]
+             WHERE b.id_beneficiario = ? AND b.id_proyecto = ?",
+            [$id, Database::proyectoId()]
         ) ?: false;
     }
 
     public function existeDNI(string $dni, int $excludeId = 0): bool
     {
-        $sql    = "SELECT COUNT(*) AS t FROM sag_beneficiarios WHERE dni=? AND estado='activo'";
-        $params = [$dni];
+        $sql    = "SELECT COUNT(*) AS t FROM sag_beneficiarios WHERE dni=? AND estado='activo' AND id_proyecto=?";
+        $params = [$dni, Database::proyectoId()];
         if ($excludeId > 0) { $sql .= " AND id_beneficiario != ?"; $params[] = $excludeId; }
         return ((int) ($this->db->fetchOne($sql, $params)['t'] ?? 0)) > 0;
     }
@@ -108,13 +108,16 @@ class BeneficiarioModel extends Model
 
     public function getResumen(): array
     {
+        $pid = Database::proyectoId();
         $total = $this->db->fetchOne(
             "SELECT COUNT(*) AS t, SUM(sexo='M') AS hombres, SUM(sexo='F') AS mujeres
-             FROM sag_beneficiarios WHERE estado='activo'"
+             FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=?",
+            [$pid]
         );
         $orgs = $this->db->fetchOne(
             "SELECT COUNT(DISTINCT id_organizacion) AS t
-             FROM sag_beneficiarios WHERE estado='activo' AND id_organizacion IS NOT NULL"
+             FROM sag_beneficiarios WHERE estado='activo' AND id_organizacion IS NOT NULL AND id_proyecto=?",
+            [$pid]
         );
         return [
             'total'   => (int) ($total['t']       ?? 0),

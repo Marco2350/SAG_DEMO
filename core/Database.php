@@ -20,32 +20,30 @@ class Database
     }
 
     /**
-     * Conexión a la base de datos del programa activo
-     * Se determina por $_SESSION['programa']['db']
+     * Conexión del programa activo.
+     * Tras la unificación todos los programas viven en sag_main, por lo que
+     * esta conexión es la misma que main(); la separación entre programas la
+     * da la columna id_proyecto (ver self::proyectoId()).
      */
     public static function programa(): self
     {
-        if (empty($_SESSION['programa']['db'])) {
+        if (empty($_SESSION['programa']['id_proyecto'])) {
             throw new RuntimeException('No hay programa activo en la sesión.');
         }
+        return self::main();
+    }
 
-        $key = $_SESSION['programa']['db'];
-
-        if (!isset(self::$instances[$key])) {
-            $programas = PROGRAMAS;
-            $progId    = $_SESSION['programa']['id'] ?? null;
-
-            if (!$progId || !isset($programas[$progId])) {
-                throw new RuntimeException("Programa '{$progId}' no configurado.");
-            }
-
-            $cfg = array_merge(DB_MAIN, [
-                'database' => $programas[$progId]['db'],
-            ]);
-            self::getConnection($key, $cfg);
+    /**
+     * id_proyecto del programa activo en sesión.
+     * Usar para filtrar/sellar consultas por programa.
+     */
+    public static function proyectoId(): int
+    {
+        $id = (int) ($_SESSION['programa']['id_proyecto'] ?? 0);
+        if ($id <= 0) {
+            throw new RuntimeException('No hay programa activo en la sesión.');
         }
-
-        return self::$instances[$key];
+        return $id;
     }
 
     /**

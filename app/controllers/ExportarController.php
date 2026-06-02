@@ -9,17 +9,19 @@ class ExportarController extends Controller
     public function index(): void
     {
         $db            = Database::programa();
+        $pid           = Database::proyectoId();
         $departamentos = $db->fetchAll(
-            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 ORDER BY nombre"
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
 
         // Conteos para tarjetas de módulo
         $conteos = [
-            'beneficiarios'   => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios")['c'] ?? 0),
-            'organizaciones'  => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones")['c'] ?? 0),
-            'capacitaciones'  => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones")['c'] ?? 0),
-            'participantes'   => (int) ($db->fetchOne("SELECT COALESCE(SUM(num_participantes),0) AS c FROM sag_capacitaciones")['c'] ?? 0),
-            'asistencias'     => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas")['c'] ?? 0),
+            'beneficiarios'   => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios WHERE id_proyecto=?", [$pid])['c'] ?? 0),
+            'organizaciones'  => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE id_proyecto=?", [$pid])['c'] ?? 0),
+            'capacitaciones'  => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones WHERE id_proyecto=?", [$pid])['c'] ?? 0),
+            'participantes'   => (int) ($db->fetchOne("SELECT COALESCE(SUM(num_participantes),0) AS c FROM sag_capacitaciones WHERE id_proyecto=?", [$pid])['c'] ?? 0),
+            'asistencias'     => (int) ($db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas WHERE id_proyecto=?", [$pid])['c'] ?? 0),
         ];
 
         $pageTitle = 'Exportar Datos — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
@@ -79,10 +81,12 @@ class ExportarController extends Controller
     {
         $where  = ['1=1'];
         $params = [];
+        $pid    = Database::proyectoId();
 
         switch ($modulo) {
 
             case 'beneficiarios':
+                $where[] = 'b.id_proyecto=?'; $params[] = $pid;
                 if ($f['id_departamento']) { $where[] = 'b.id_departamento=?'; $params[] = $f['id_departamento']; }
                 if ($f['estado'])          { $where[] = 'b.estado=?';          $params[] = $f['estado']; }
                 if ($f['anio'])            { $where[] = 'YEAR(b.created_at)=?';$params[] = $f['anio']; }
@@ -108,6 +112,7 @@ class ExportarController extends Controller
                 );
 
             case 'organizaciones':
+                $where[] = 'o.id_proyecto=?'; $params[] = $pid;
                 if ($f['id_departamento']) { $where[] = 'o.id_departamento=?'; $params[] = $f['id_departamento']; }
                 if ($f['estado'])          { $where[] = 'o.estado=?';          $params[] = $f['estado']; }
                 return $db->fetchAll(
@@ -130,6 +135,7 @@ class ExportarController extends Controller
                 );
 
             case 'capacitaciones':
+                $where[] = 'c.id_proyecto=?'; $params[] = $pid;
                 if ($f['id_departamento']) { $where[] = 'c.id_departamento=?'; $params[] = $f['id_departamento']; }
                 if ($f['anio'])            { $where[] = 'YEAR(c.fecha_capacitacion)=?'; $params[] = $f['anio']; }
                 if ($f['estado'])          { $where[] = 'c.estado=?'; $params[] = $f['estado']; }
@@ -155,6 +161,7 @@ class ExportarController extends Controller
                 );
 
             case 'asistencias':
+                $where[] = 'a.id_proyecto=?'; $params[] = $pid;
                 if ($f['id_departamento']) { $where[] = 'a.id_departamento=?'; $params[] = $f['id_departamento']; }
                 if ($f['anio'])            { $where[] = 'YEAR(a.fecha_visita)=?'; $params[] = $f['anio']; }
                 if ($f['estado'])          { $where[] = 'a.estado=?'; $params[] = $f['estado']; }

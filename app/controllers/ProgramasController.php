@@ -12,20 +12,18 @@ class ProgramasController extends Controller
 
         $programas = PROGRAMAS;
 
-        // Stats rápidas por programa (para mostrar en las tarjetas)
+        // Stats rápidas por programa (para mostrar en las tarjetas).
+        // Todo vive en sag_main; se filtra por id_proyecto.
         $stats = [];
+        $db    = Database::main();
         foreach ($programas as $key => $prog) {
+            $pid = (int) ($prog['id_proyecto'] ?? 0);
             try {
-                // Conexión temporal al programa
-                $cfg = array_merge(DB_MAIN, ['database' => $prog['db']]);
-                // Usamos PDO directamente para no contaminar el singleton
-                $dsn = "mysql:host={$cfg['host']};port={$cfg['port']};dbname={$cfg['database']};charset={$cfg['charset']}";
-                $pdo = new PDO($dsn, $cfg['username'], $cfg['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_SILENT]);
                 $stats[$key] = [
-                    'orgs'     => (int) $pdo->query("SELECT COUNT(*) FROM sag_organizaciones WHERE estado='activa'")->fetchColumn(),
-                    'benes'    => (int) $pdo->query("SELECT COUNT(*) FROM sag_beneficiarios WHERE estado='activo'")->fetchColumn(),
-                    'caps'     => (int) $pdo->query("SELECT COUNT(*) FROM sag_capacitaciones")->fetchColumn(),
-                    'at'       => (int) $pdo->query("SELECT COUNT(*) FROM sag_asistencias_tecnicas")->fetchColumn(),
+                    'orgs'  => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=?", [$pid])['c'],
+                    'benes' => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=?", [$pid])['c'],
+                    'caps'  => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones WHERE id_proyecto=?", [$pid])['c'],
+                    'at'    => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas WHERE id_proyecto=?", [$pid])['c'],
                 ];
             } catch (Exception $e) {
                 $stats[$key] = ['orgs' => 0, 'benes' => 0, 'caps' => 0, 'at' => 0];

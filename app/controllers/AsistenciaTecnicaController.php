@@ -12,18 +12,23 @@ class AsistenciaTecnicaController extends Controller
     public function index(): void
     {
         $db = Database::programa();
+        $pid = Database::proyectoId();
         $resumen = $this->model->getResumen();
         $departamentos = $db->fetchAll(
-            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 ORDER BY nombre"
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $temas = $db->fetchAll(
-            "SELECT id_tema, nombre FROM sag_temas WHERE activo=1 AND tipo IN ('at','ambos') ORDER BY nombre"
+            "SELECT id_tema, nombre FROM sag_temas WHERE activo=1 AND tipo IN ('at','ambos') AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $tecnicos = $db->fetchAll(
-            "SELECT id_tecnico, nombre_completo FROM sag_tecnicos WHERE activo=1 ORDER BY nombre_completo"
+            "SELECT id_tecnico, nombre_completo FROM sag_tecnicos WHERE activo=1 AND id_proyecto=? ORDER BY nombre_completo",
+            [$pid]
         );
         $organizaciones = $db->fetchAll(
-            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' ORDER BY nombre"
+            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $tiposAT  = $this->model->getTiposAT();
         $cultivos = $this->model->getCultivos();
@@ -172,7 +177,7 @@ class AsistenciaTecnicaController extends Controller
         if (!$id) { $this->error('ID no válido.'); return; }
         try {
             $db = Database::programa();
-            $db->execute("DELETE FROM sag_asistencias_tecnicas WHERE id_at=?", [$id]);
+            $db->execute("DELETE FROM sag_asistencias_tecnicas WHERE id_at=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'asistencias_tecnicas', "ID:{$id}");
             $this->success('Asistencia técnica eliminada correctamente.');
         } catch (Exception $e) {

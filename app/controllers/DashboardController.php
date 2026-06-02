@@ -16,31 +16,37 @@ class DashboardController extends Controller
         $this->requirePrograma();
 
         try {
-            $db = Database::programa();
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
 
-            $orgs  = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='activa'")['c'];
-            $benes = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios WHERE estado='activo'")['c'];
-            $caps  = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones")['c'];
-            $at    = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas")['c'];
+            $orgs  = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=?", [$pid])['c'];
+            $benes = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=?", [$pid])['c'];
+            $caps  = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones WHERE id_proyecto=?", [$pid])['c'];
+            $at    = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas WHERE id_proyecto=?", [$pid])['c'];
             $deptos = (int) $db->fetchOne(
                 "SELECT COUNT(DISTINCT d.id_departamento) AS c
                  FROM sag_organizaciones o
                  INNER JOIN sag_municipios m ON m.id_municipio = o.id_municipio
                  INNER JOIN sag_departamentos d ON d.id_departamento = m.id_departamento
-                 WHERE o.estado='activa'"
+                 WHERE o.estado='activa' AND o.id_proyecto=?",
+                [$pid]
             )['c'];
-            $revision = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='revision'")['c'];
+            $revision = (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='revision' AND id_proyecto=?", [$pid])['c'];
 
             // Últimas 5 organizaciones
             $ultimas = $db->fetchAll(
                 "SELECT o.nombre, o.representante, o.email,
                         d.nombre AS departamento,
-                        o.num_beneficiarios, o.estado, o.fecha_registro
+                        (SELECT COUNT(*) FROM sag_beneficiarios b
+                         WHERE b.id_organizacion = o.id_organizacion AND b.estado='activo') AS num_beneficiarios,
+                        o.estado, o.fecha_registro
                  FROM sag_organizaciones o
                  LEFT JOIN sag_municipios m ON m.id_municipio = o.id_municipio
                  LEFT JOIN sag_departamentos d ON d.id_departamento = m.id_departamento
+                 WHERE o.id_proyecto=?
                  ORDER BY o.id_organizacion DESC
-                 LIMIT 5"
+                 LIMIT 5",
+                [$pid]
             );
 
             $this->success('OK', [
@@ -67,13 +73,17 @@ class DashboardController extends Controller
 
             $puntos = $db->fetchAll(
                 "SELECT o.nombre, o.representante,
-                        o.latitud, o.longitud,
-                        o.num_beneficiarios, o.estado,
+                        TRIM(SUBSTRING_INDEX(o.coordenadas, ',', 1))  AS latitud,
+                        TRIM(SUBSTRING_INDEX(o.coordenadas, ',', -1)) AS longitud,
+                        (SELECT COUNT(*) FROM sag_beneficiarios b
+                         WHERE b.id_organizacion = o.id_organizacion AND b.estado='activo') AS num_beneficiarios,
+                        o.estado,
                         d.nombre AS departamento
                  FROM sag_organizaciones o
                  LEFT JOIN sag_municipios m ON m.id_municipio = o.id_municipio
                  LEFT JOIN sag_departamentos d ON d.id_departamento = m.id_departamento
-                 WHERE o.latitud IS NOT NULL AND o.longitud IS NOT NULL"
+                 WHERE o.coordenadas IS NOT NULL AND o.coordenadas LIKE '%,%' AND o.id_proyecto=?",
+                [Database::proyectoId()]
             );
 
             $this->success('OK', $puntos);

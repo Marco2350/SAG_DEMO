@@ -68,14 +68,16 @@ class PresupuestoController extends Controller
     // ════════════════════════════════════════════════════════════
     public function index(): void
     {
-        $db = Database::programa();
+        $db     = Database::programa();
+        $proyId = Database::proyectoId();
 
         // Presupuesto activo
         $presupuesto = $db->fetchOne(
             "SELECT p.*, u.nombre AS nombre_autorizador
              FROM sag_presupuestos p
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario = p.id_usuario_autoriza
-             WHERE p.estado = 'activo' ORDER BY p.anio DESC LIMIT 1"
+             LEFT JOIN sag_usuarios u ON u.id_usuario = p.id_usuario_autoriza
+             WHERE p.estado = 'activo' AND p.id_proyecto=? ORDER BY p.anio DESC LIMIT 1",
+            [$proyId]
         );
 
         // KPIs del presupuesto activo
@@ -115,18 +117,20 @@ class PresupuestoController extends Controller
 
         // Conteos de estados recientes
         $conteos = [
-            'compras_pendientes'  => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_compras WHERE estado='solicitada'")['c'] ?? 0),
-            'viaticos_pendientes' => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_solicitudes_viaticos WHERE estado='pendiente'")['c'] ?? 0),
-            'viaticos_visto'      => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_solicitudes_viaticos WHERE estado='visto_bueno'")['c'] ?? 0),
-            'documentos'          => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_documentos_programa WHERE activo=1")['c'] ?? 0),
+            'compras_pendientes'  => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_compras WHERE estado='solicitada' AND id_proyecto=?", [$proyId])['c'] ?? 0),
+            'viaticos_pendientes' => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_solicitudes_viaticos WHERE estado='pendiente' AND id_proyecto=?", [$proyId])['c'] ?? 0),
+            'viaticos_visto'      => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_solicitudes_viaticos WHERE estado='visto_bueno' AND id_proyecto=?", [$proyId])['c'] ?? 0),
+            'documentos'          => (int)($db->fetchOne("SELECT COUNT(*) AS c FROM sag_documentos_programa WHERE activo=1 AND id_proyecto=?", [$proyId])['c'] ?? 0),
         ];
 
         // Lista de presupuestos con nombre del autorizador
         $presupuestos = $db->fetchAll(
             "SELECT p.*, CONCAT(COALESCE(u.nombre,''),' ',COALESCE(u.apellido,'')) AS nombre_autorizador
              FROM sag_presupuestos p
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario = p.id_usuario_autoriza
-             ORDER BY p.anio DESC, p.id_presupuesto DESC"
+             LEFT JOIN sag_usuarios u ON u.id_usuario = p.id_usuario_autoriza
+             WHERE p.id_proyecto=?
+             ORDER BY p.anio DESC, p.id_presupuesto DESC",
+            [$proyId]
         );
 
         $pageTitle  = 'Ejecución Presupuestaria — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
@@ -174,21 +178,22 @@ class PresupuestoController extends Controller
 
             if ($id) {
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_presupuestos SET $sets WHERE id_presupuesto=?",
-                    [...array_values($data), $id]);
+                $db->execute("UPDATE sag_presupuestos SET $sets WHERE id_presupuesto=? AND id_proyecto=?",
+                    [...array_values($data), $id, Database::proyectoId()]);
             } else {
-                $data['created_by'] = $this->userId();
+                $data['created_by']  = $this->userId();
+                $data['id_proyecto'] = Database::proyectoId();
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
                 $db->execute("INSERT INTO sag_presupuestos ($keys) VALUES ($vals)", array_values($data));
                 $id = $db->lastInsertId();
             }
 
-            // Si se guardó como activo, cerrar otros presupuestos activos
+            // Si se guardó como activo, cerrar otros presupuestos activos del programa
             if ($data['estado'] === 'activo') {
                 $db->execute(
-                    "UPDATE sag_presupuestos SET estado='cerrado' WHERE estado='activo' AND id_presupuesto!=?",
-                    [$id]
+                    "UPDATE sag_presupuestos SET estado='cerrado' WHERE estado='activo' AND id_presupuesto!=? AND id_proyecto=?",
+                    [$id, Database::proyectoId()]
                 );
                 // Registrar quién lo autorizó
                 $db->execute(
@@ -221,10 +226,10 @@ class PresupuestoController extends Controller
                  documento_respaldo=COALESCE(?, documento_respaldo) WHERE id_presupuesto=?",
                 [$this->userId(), $archivo, $id]
             );
-            // Cerrar otros presupuestos activos del mismo año (solo uno activo a la vez)
+            // Cerrar otros presupuestos activos del programa (solo uno activo a la vez)
             $db->execute(
-                "UPDATE sag_presupuestos SET estado='cerrado' WHERE estado='activo' AND id_presupuesto!=?",
-                [$id]
+                "UPDATE sag_presupuestos SET estado='cerrado' WHERE estado='activo' AND id_presupuesto!=? AND id_proyecto=?",
+                [$id, Database::proyectoId()]
             );
             $this->logAction('AUTORIZAR', 'presupuesto', "ID:$id");
             $this->success('Presupuesto autorizado y activado.');
@@ -277,13 +282,14 @@ class PresupuestoController extends Controller
                 if ($anterior && (float)$anterior['monto_aprobado'] !== $monto) {
                     $tipo = $monto > (float)$anterior['monto_aprobado'] ? 'ampliacion' : 'reduccion';
                     $db->execute(
-                        "INSERT INTO sag_modificaciones_presupuesto (id_linea,tipo,monto_anterior,monto_nuevo,justificacion,id_usuario) VALUES (?,?,?,?,?,?)",
-                        [$id, $tipo, $anterior['monto_aprobado'], $monto, $this->getPost('justificacion_ajuste', 'Modificación desde interfaz.'), $this->userId()]
+                        "INSERT INTO sag_modificaciones_presupuesto (id_proyecto,id_linea,tipo,monto_anterior,monto_nuevo,justificacion,id_usuario) VALUES (?,?,?,?,?,?,?)",
+                        [Database::proyectoId(), $id, $tipo, $anterior['monto_aprobado'], $monto, $this->getPost('justificacion_ajuste', 'Modificación desde interfaz.'), $this->userId()]
                     );
                 }
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_lineas_presupuestarias SET $sets WHERE id_linea=?", [...array_values($data), $id]);
+                $db->execute("UPDATE sag_lineas_presupuestarias SET $sets WHERE id_linea=? AND id_proyecto=?", [...array_values($data), $id, Database::proyectoId()]);
             } else {
+                $data['id_proyecto'] = Database::proyectoId();
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
                 $db->execute("INSERT INTO sag_lineas_presupuestarias ($keys) VALUES ($vals)", array_values($data));
@@ -340,8 +346,8 @@ class PresupuestoController extends Controller
     {
         $db    = Database::programa();
         $estado = $this->getPost('estado', '');
-        $where = ['1=1'];
-        $params = [];
+        $where = ['c.id_proyecto=?'];
+        $params = [Database::proyectoId()];
 
         // Técnicos/no-admin solo ven sus propias solicitudes
         if (!$this->esJefeOSuperior()) {
@@ -355,7 +361,7 @@ class PresupuestoController extends Controller
                     CONCAT(u.nombre,' ',u.apellido) AS solicitante
              FROM sag_compras c
              LEFT JOIN sag_lineas_presupuestarias l ON l.id_linea=c.id_linea
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario=c.id_usuario_solicita
+             LEFT JOIN sag_usuarios u ON u.id_usuario=c.id_usuario_solicita
              WHERE " . implode(' AND ', $where) . " ORDER BY c.created_at DESC",
             $params
         );
@@ -407,11 +413,12 @@ class PresupuestoController extends Controller
 
             if ($id) {
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_compras SET $sets WHERE id_compra=?", [...array_values($data), $id]);
+                $db->execute("UPDATE sag_compras SET $sets WHERE id_compra=? AND id_proyecto=?", [...array_values($data), $id, Database::proyectoId()]);
             } else {
                 $data['id_usuario_solicita'] = $this->userId();
                 $data['estado']              = 'borrador';
-                $n = $db->fetchOne("SELECT COUNT(*)+1 AS n FROM sag_compras")['n'] ?? 1;
+                $data['id_proyecto']         = Database::proyectoId();
+                $n = $db->fetchOne("SELECT COUNT(*)+1 AS n FROM sag_compras WHERE id_proyecto=?", [Database::proyectoId()])['n'] ?? 1;
                 $data['numero_solicitud']    = 'SOL-' . date('Y') . '-' . str_pad($n, 4, '0', STR_PAD_LEFT);
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
@@ -460,8 +467,8 @@ class PresupuestoController extends Controller
     {
         $db     = Database::programa();
         $estado = $this->getPost('estado', '');
-        $where  = ['1=1'];
-        $params = [];
+        $where  = ['v.id_proyecto=?'];
+        $params = [Database::proyectoId()];
 
         if (!$this->esJefeOSuperior()) {
             // Usuario normal: solo ve las suyas
@@ -476,7 +483,7 @@ class PresupuestoController extends Controller
                     u.email AS email_solicitante
              FROM sag_solicitudes_viaticos v
              LEFT JOIN sag_lineas_presupuestarias l ON l.id_linea=v.id_linea
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario=v.id_solicitante
+             LEFT JOIN sag_usuarios u ON u.id_usuario=v.id_solicitante
              WHERE " . implode(' AND ', $where) . " ORDER BY v.created_at DESC",
             $params
         );
@@ -537,11 +544,12 @@ class PresupuestoController extends Controller
             }
             if ($id) {
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_solicitudes_viaticos SET $sets WHERE id_solicitud=?", [...array_values($data), $id]);
+                $db->execute("UPDATE sag_solicitudes_viaticos SET $sets WHERE id_solicitud=? AND id_proyecto=?", [...array_values($data), $id, Database::proyectoId()]);
             } else {
                 $data['id_solicitante']  = $this->userId();
                 $data['estado']          = 'pendiente';
-                $n = $db->fetchOne("SELECT COUNT(*)+1 AS n FROM sag_solicitudes_viaticos")['n'] ?? 1;
+                $data['id_proyecto']     = Database::proyectoId();
+                $n = $db->fetchOne("SELECT COUNT(*)+1 AS n FROM sag_solicitudes_viaticos WHERE id_proyecto=?", [Database::proyectoId()])['n'] ?? 1;
                 $data['numero_solicitud']= 'VIA-' . date('Y') . '-' . str_pad($n, 4, '0', STR_PAD_LEFT);
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
@@ -626,8 +634,10 @@ class PresupuestoController extends Controller
             "SELECT g.*, l.nombre AS linea_nombre, CONCAT(u.nombre,' ',u.apellido) AS registrado_por
              FROM sag_gastos_varios g
              LEFT JOIN sag_lineas_presupuestarias l ON l.id_linea=g.id_linea
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario=g.id_usuario
-             ORDER BY g.fecha_gasto DESC"
+             LEFT JOIN sag_usuarios u ON u.id_usuario=g.id_usuario
+             WHERE g.id_proyecto=?
+             ORDER BY g.fecha_gasto DESC",
+            [Database::proyectoId()]
         );
         $this->json(['data' => $rows]);
     }
@@ -655,10 +665,11 @@ class PresupuestoController extends Controller
             }
             if ($id) {
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_gastos_varios SET $sets WHERE id_gasto=?", [...array_values($data), $id]);
+                $db->execute("UPDATE sag_gastos_varios SET $sets WHERE id_gasto=? AND id_proyecto=?", [...array_values($data), $id, Database::proyectoId()]);
             } else {
-                $data['id_usuario'] = $this->userId();
-                $data['estado']     = 'registrado';
+                $data['id_usuario']  = $this->userId();
+                $data['estado']      = 'registrado';
+                $data['id_proyecto'] = Database::proyectoId();
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
                 $db->execute("INSERT INTO sag_gastos_varios ($keys) VALUES ($vals)", array_values($data));
@@ -689,8 +700,9 @@ class PresupuestoController extends Controller
         $rows = $db->fetchAll(
             "SELECT d.*, CONCAT(u.nombre,' ',u.apellido) AS subido_por
              FROM sag_documentos_programa d
-             LEFT JOIN sag_main.sag_usuarios u ON u.id_usuario=d.created_by
-             WHERE d.activo=1 ORDER BY d.created_at DESC"
+             LEFT JOIN sag_usuarios u ON u.id_usuario=d.created_by
+             WHERE d.activo=1 AND d.id_proyecto=? ORDER BY d.created_at DESC",
+            [Database::proyectoId()]
         );
         $this->json(['data' => $rows]);
     }
@@ -724,10 +736,11 @@ class PresupuestoController extends Controller
 
             if ($id) {
                 $sets = implode(',', array_map(fn($k) => "$k=?", array_keys($data)));
-                $db->execute("UPDATE sag_documentos_programa SET $sets WHERE id_documento=?", [...array_values($data), $id]);
+                $db->execute("UPDATE sag_documentos_programa SET $sets WHERE id_documento=? AND id_proyecto=?", [...array_values($data), $id, Database::proyectoId()]);
             } else {
-                $data['created_by'] = $this->userId();
-                $data['activo']     = 1;
+                $data['created_by']  = $this->userId();
+                $data['activo']      = 1;
+                $data['id_proyecto'] = Database::proyectoId();
                 $keys = implode(',', array_keys($data));
                 $vals = implode(',', array_fill(0, count($data), '?'));
                 $db->execute("INSERT INTO sag_documentos_programa ($keys) VALUES ($vals)", array_values($data));
@@ -784,7 +797,8 @@ class PresupuestoController extends Controller
             "SELECT l.id_linea, CONCAT(COALESCE(l.codigo,''),' - ',l.nombre) AS label, l.monto_aprobado
              FROM sag_lineas_presupuestarias l
              INNER JOIN sag_presupuestos p ON p.id_presupuesto=l.id_presupuesto
-             WHERE p.estado='activo' AND l.activo=1 ORDER BY l.orden, l.nombre"
+             WHERE p.estado='activo' AND l.activo=1 AND p.id_proyecto=? ORDER BY l.orden, l.nombre",
+            [Database::proyectoId()]
         );
         $this->json($rows);
     }

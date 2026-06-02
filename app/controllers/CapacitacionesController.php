@@ -12,18 +12,23 @@ class CapacitacionesController extends Controller
     public function index(): void
     {
         $db = Database::programa();
+        $pid = Database::proyectoId();
         $resumen = $this->model->getResumen();
         $departamentos = $db->fetchAll(
-            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 ORDER BY nombre"
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $temas = $db->fetchAll(
-            "SELECT id_tema, nombre FROM sag_temas WHERE activo=1 AND tipo IN ('capacitacion','ambos') ORDER BY nombre"
+            "SELECT id_tema, nombre FROM sag_temas WHERE activo=1 AND tipo IN ('capacitacion','ambos') AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $tecnicos = $db->fetchAll(
-            "SELECT id_tecnico, nombre_completo FROM sag_tecnicos WHERE activo=1 ORDER BY nombre_completo"
+            "SELECT id_tecnico, nombre_completo FROM sag_tecnicos WHERE activo=1 AND id_proyecto=? ORDER BY nombre_completo",
+            [$pid]
         );
         $organizaciones = $db->fetchAll(
-            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' ORDER BY nombre"
+            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $pageTitle = 'Capacitaciones — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
         $this->view('capacitaciones/index',
@@ -182,7 +187,7 @@ class CapacitacionesController extends Controller
         if (!$id) { $this->error('ID no válido.'); return; }
         try {
             $db = Database::programa();
-            $db->execute("DELETE FROM sag_capacitaciones WHERE id_capacitacion=?", [$id]);
+            $db->execute("DELETE FROM sag_capacitaciones WHERE id_capacitacion=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'capacitaciones', "ID:{$id}");
             $this->success('Capacitación eliminada correctamente.');
         } catch (Exception $e) {

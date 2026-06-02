@@ -18,8 +18,8 @@ class ApiController extends Controller
             $db = Database::programa();
             $rows = $db->fetchAll(
                 "SELECT id_municipio, nombre FROM sag_municipios
-                 WHERE id_departamento = ? ORDER BY nombre",
-                [$deptoId]
+                 WHERE id_departamento = ? AND id_proyecto = ? ORDER BY nombre",
+                [$deptoId, Database::proyectoId()]
             );
             $this->success('OK', $rows);
         } catch (Exception $e) {
@@ -40,8 +40,8 @@ class ApiController extends Controller
             $db = Database::programa();
             $rows = $db->fetchAll(
                 "SELECT id_subtema, nombre FROM sag_subtemas
-                 WHERE id_tema = ? ORDER BY nombre",
-                [$temaId]
+                 WHERE id_tema = ? AND id_proyecto = ? ORDER BY nombre",
+                [$temaId, Database::proyectoId()]
             );
             $this->success('OK', $rows);
         } catch (Exception $e) {
@@ -56,8 +56,9 @@ class ApiController extends Controller
         try {
             $db = Database::programa();
             $rows = $db->fetchAll(
-                "SELECT id_tecnico, CONCAT(nombre, ' ', apellido) AS nombre_completo, especialidad
-                 FROM sag_tecnicos WHERE activo = 1 ORDER BY nombre"
+                "SELECT id_tecnico, nombre_completo, especialidad
+                 FROM sag_tecnicos WHERE activo = 1 AND id_proyecto = ? ORDER BY nombre_completo",
+                [Database::proyectoId()]
             );
             $this->success('OK', $rows);
         } catch (Exception $e) {
@@ -73,8 +74,9 @@ class ApiController extends Controller
             $db = Database::programa();
             $rows = $db->fetchAll(
                 "SELECT id_organizacion, nombre, representante
-                 FROM sag_organizaciones WHERE estado = 'activa'
-                 ORDER BY nombre"
+                 FROM sag_organizaciones WHERE estado = 'activa' AND id_proyecto = ?
+                 ORDER BY nombre",
+                [Database::proyectoId()]
             );
             $this->success('OK', $rows);
         } catch (Exception $e) {
@@ -89,7 +91,8 @@ class ApiController extends Controller
         try {
             $db = Database::programa();
             $rows = $db->fetchAll(
-                "SELECT id_departamento, nombre FROM sag_departamentos ORDER BY nombre"
+                "SELECT id_departamento, nombre FROM sag_departamentos WHERE id_proyecto = ? ORDER BY nombre",
+                [Database::proyectoId()]
             );
             $this->success('OK', $rows);
         } catch (Exception $e) {

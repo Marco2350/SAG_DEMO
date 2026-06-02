@@ -12,12 +12,15 @@ class BeneficiariosController extends Controller
     public function index(): void
     {
         $db = Database::programa();
+        $pid = Database::proyectoId();
         $resumen = $this->model->getResumen();
         $departamentos = $db->fetchAll(
-            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 ORDER BY nombre"
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $organizaciones = $db->fetchAll(
-            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' ORDER BY nombre"
+            "SELECT id_organizacion, nombre FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=? ORDER BY nombre",
+            [$pid]
         );
         $pageTitle = 'Beneficiarios — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
         $this->view('beneficiarios/index', compact('resumen', 'departamentos', 'organizaciones', 'pageTitle'));

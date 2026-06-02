@@ -1,0 +1,28 @@
+# Variables de entorno con secretos
+.env
+
+# Subidas de usuarios
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# Dev / temporales
+_test_*.php
+*.local.php
+*.bak
+*.tmp
+/.vscode/
+/.idea/
+
+# SQL — dumps/backups locales. Se conserva solo el esquema canónico.
+*.sql
+!bd.sql
+!sql/bd_mddesarr_sag.sql
+!sql/seed_catalogos.sql
+
+# Misceláneos
+*.log
+.DS_Store
+Thumbs.db
+
+
+/sql

@@ -6,7 +6,7 @@ class CapacitacionModel extends Model
 
     public function getListado(array $filtros = []): array
     {
-        $where = ['1=1']; $params = [];
+        $where = ['c.id_proyecto = ?']; $params = [Database::proyectoId()];
 
         if (!empty($filtros['id_departamento'])) { $where[] = 'c.id_departamento=?'; $params[] = $filtros['id_departamento']; }
         if (!empty($filtros['id_tecnico']))       { $where[] = 'c.id_tecnico=?';      $params[] = $filtros['id_tecnico']; }
@@ -46,8 +46,8 @@ class CapacitacionModel extends Model
              INNER JOIN sag_temas         t  ON t.id_tema         = c.id_tema
              LEFT  JOIN sag_subtemas      s  ON s.id_subtema      = c.id_subtema
              INNER JOIN sag_tecnicos      tc ON tc.id_tecnico     = c.id_tecnico
-             WHERE c.id_capacitacion = ?",
-            [$id]
+             WHERE c.id_capacitacion = ? AND c.id_proyecto = ?",
+            [$id, Database::proyectoId()]
         ) ?: false;
     }
 
@@ -73,9 +73,10 @@ class CapacitacionModel extends Model
     {
         $this->db->execute(
             "INSERT INTO sag_cap_participantes
-             (id_capacitacion,nombre,apellido,dni,edad,sexo,id_organizacion,telefono)
-             VALUES (?,?,?,?,?,?,?,?)",
+             (id_proyecto,id_capacitacion,nombre,apellido,dni,edad,sexo,id_organizacion,telefono)
+             VALUES (?,?,?,?,?,?,?,?,?)",
             [
+                Database::proyectoId(),
                 $data['id_capacitacion'], $data['nombre'],
                 $data['apellido'] ?? null, $data['dni'] ?? null,
                 $data['edad'] ?? null, $data['sexo'] ?? null,
@@ -118,7 +119,8 @@ class CapacitacionModel extends Model
                     SUM(estado='finalizado') AS finalizadas,
                     SUM(estado='borrador')   AS borrador,
                     COALESCE(SUM(num_participantes),0) AS participantes
-             FROM sag_capacitaciones"
+             FROM sag_capacitaciones WHERE id_proyecto=?",
+            [Database::proyectoId()]
         );
         return [
             'total'         => (int) ($r['total']         ?? 0),
