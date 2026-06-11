@@ -104,7 +104,8 @@ class EvidenciaService
             );
         } catch (\Throwable $e) {
             @unlink($destPath);
-            return ['ok' => false, 'msg' => 'Error al persistir: ' . $e->getMessage()];
+            error_log('EvidenciaService::guardarEvidencia — ' . $e->getMessage());
+            return ['ok' => false, 'msg' => 'Error al guardar la evidencia en la base de datos. Revise el log del servidor.'];
         }
 
         return [
@@ -135,7 +136,8 @@ class EvidenciaService
             );
             return ['ok' => true, 'msg' => "Evidencia marcada como {$nuevoEstado}."];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'msg' => 'Error: ' . $e->getMessage()];
+            error_log('EvidenciaService::cambiarEstado — ' . $e->getMessage());
+            return ['ok' => false, 'msg' => 'Error al cambiar el estado de la evidencia.'];
         }
     }
 

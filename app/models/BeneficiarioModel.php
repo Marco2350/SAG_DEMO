@@ -4,6 +4,8 @@ class BeneficiarioModel extends Model
     protected string $table      = 'sag_beneficiarios';
     protected string $primaryKey = 'id_beneficiario';
 
+    public const SEXOS = ['M', 'F'];
+
     public function getListado(array $filtros = []): array
     {
         $where  = ['b.id_proyecto = ?', 'b.estado = "activo"'];
@@ -57,8 +59,10 @@ class BeneficiarioModel extends Model
 
     public function existeDNI(string $dni, int $excludeId = 0): bool
     {
-        $sql    = "SELECT COUNT(*) AS t FROM sag_beneficiarios WHERE dni=? AND estado='activo' AND id_proyecto=?";
-        $params = [$dni, Database::proyectoId()];
+        // Comparar sin guiones: la BD puede tener DNI legados con formato 0000-0000-00000
+        $sql    = "SELECT COUNT(*) AS t FROM sag_beneficiarios
+                   WHERE REPLACE(dni,'-','') = ? AND estado='activo' AND id_proyecto=?";
+        $params = [preg_replace('/\D/', '', $dni), Database::proyectoId()];
         if ($excludeId > 0) { $sql .= " AND id_beneficiario != ?"; $params[] = $excludeId; }
         return ((int) ($this->db->fetchOne($sql, $params)['t'] ?? 0)) > 0;
     }
@@ -79,18 +83,31 @@ class BeneficiarioModel extends Model
                 if (empty($r['nombre']) || empty($r['apellido'])) {
                     $errores[] = "Fila {$fila}: nombre y apellido son obligatorios."; continue;
                 }
-                if (!empty($r['dni']) && $this->existeDNI($r['dni'])) {
-                    $errores[] = "Fila {$fila}: DNI {$r['dni']} ya está registrado."; continue;
+                $sexo = strtoupper(trim($r['sexo'] ?? ''));
+                if (!in_array($sexo, self::SEXOS, true)) {
+                    $errores[] = "Fila {$fila}: sexo debe ser M o F."; continue;
+                }
+                $idDep = (int) ($r['id_departamento'] ?? 0);
+                $idMun = (int) ($r['id_municipio']    ?? 0);
+                if (!$idDep || !$idMun || !$this->municipioValido($idMun, $idDep)) {
+                    $errores[] = "Fila {$fila}: departamento/municipio no válidos."; continue;
+                }
+                $dni = preg_replace('/\D/', '', (string) ($r['dni'] ?? ''));
+                if ($dni !== '' && strlen($dni) !== 13) {
+                    $errores[] = "Fila {$fila}: el DNI debe tener 13 dígitos."; continue;
+                }
+                if ($dni !== '' && $this->existeDNI($dni)) {
+                    $errores[] = "Fila {$fila}: DNI {$dni} ya está registrado."; continue;
                 }
                 $this->insert([
-                    'id_departamento' => (int) ($r['id_departamento'] ?? 0),
-                    'id_municipio'    => (int) ($r['id_municipio']    ?? 0),
-                    'id_organizacion' => ($r['id_organizacion'] ?: null),
+                    'id_departamento' => $idDep,
+                    'id_municipio'    => $idMun,
+                    'id_organizacion' => ((int) ($r['id_organizacion'] ?? 0)) ?: null,
                     'nombre'          => trim($r['nombre']),
                     'apellido'        => trim($r['apellido']),
-                    'dni'             => $r['dni']              ?? null,
-                    'fecha_nacimiento'=> $r['fecha_nacimiento'] ?? null,
-                    'sexo'            => $r['sexo']             ?? 'M',
+                    'dni'             => $dni ?: null,
+                    'fecha_nacimiento'=> ($r['fecha_nacimiento'] ?? '') ?: null,
+                    'sexo'            => $sexo,
                     'telefono'        => $r['telefono']         ?? null,
                     'aldea'           => $r['aldea']            ?? null,
                     'estado'          => 'activo',

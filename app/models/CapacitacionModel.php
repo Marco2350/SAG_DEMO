@@ -57,6 +57,26 @@ class CapacitacionModel extends Model
         return $this->insert($data);
     }
 
+    /** Valida que el tema exista, esté activo y pertenezca al programa activo. */
+    public function temaValido(int $idTema): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_tema FROM sag_temas WHERE id_tema = ? AND id_proyecto = ? AND activo = 1",
+            [$idTema, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
+    /** Valida que el técnico exista, esté activo y pertenezca al programa activo. */
+    public function tecnicoValido(int $idTecnico): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_tecnico FROM sag_tecnicos WHERE id_tecnico = ? AND id_proyecto = ? AND activo = 1",
+            [$idTecnico, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
     public function getParticipantes(int $idCap): array
     {
         return $this->db->fetchAll(
@@ -88,13 +108,19 @@ class CapacitacionModel extends Model
         return $newId;
     }
 
-    public function eliminarParticipante(int $idPart): void
+    public function eliminarParticipante(int $idPart): bool
     {
         $p = $this->db->fetchOne(
-            "SELECT id_capacitacion FROM sag_cap_participantes WHERE id_participante=?", [$idPart]
+            "SELECT id_capacitacion FROM sag_cap_participantes WHERE id_participante=? AND id_proyecto=?",
+            [$idPart, Database::proyectoId()]
         );
-        $this->db->execute("DELETE FROM sag_cap_participantes WHERE id_participante=?", [$idPart]);
-        if ($p) $this->actualizarContador((int) $p['id_capacitacion']);
+        if (!$p) return false;
+        $this->db->execute(
+            "DELETE FROM sag_cap_participantes WHERE id_participante=? AND id_proyecto=?",
+            [$idPart, Database::proyectoId()]
+        );
+        $this->actualizarContador((int) $p['id_capacitacion']);
+        return true;
     }
 
     private function actualizarContador(int $idCap): void

@@ -206,7 +206,7 @@ class PresupuestoController extends Controller
             $this->success($id ? 'Presupuesto actualizado.' : 'Presupuesto creado.', ['id' => $id, 'estado' => $data['estado']]);
         } catch (Exception $e) {
             error_log('PresupuestoController::savePresupuesto — ' . $e->getMessage());
-            $this->error('Error al guardar: ' . $e->getMessage());
+            $this->error('Error al guardar el presupuesto. Revise los datos e intente de nuevo.');
         }
     }
 
@@ -234,7 +234,8 @@ class PresupuestoController extends Controller
             $this->logAction('AUTORIZAR', 'presupuesto', "ID:$id");
             $this->success('Presupuesto autorizado y activado.');
         } catch (Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('PresupuestoController::autorizarPresupuesto — ' . $e->getMessage());
+            $this->error('Error al autorizar el presupuesto.');
         }
     }
 
@@ -302,7 +303,8 @@ class PresupuestoController extends Controller
             );
             $this->success($id ? 'Línea guardada.' : 'Línea creada.', ['id' => $id]);
         } catch (Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('PresupuestoController::saveLinea — ' . $e->getMessage());
+            $this->error('Error al guardar la línea presupuestaria.');
         }
     }
 
@@ -429,7 +431,7 @@ class PresupuestoController extends Controller
             $this->success('Solicitud guardada.', ['id' => $id, 'numero' => $data['numero_solicitud'] ?? '']);
         } catch (Exception $e) {
             error_log('PresupuestoController::saveCompra — ' . $e->getMessage());
-            $this->error('Error: ' . $e->getMessage());
+            $this->error('Error al guardar la solicitud de compra.');
         }
     }
 
@@ -560,7 +562,7 @@ class PresupuestoController extends Controller
             $this->success('Solicitud guardada.', ['id' => $id]);
         } catch (Exception $e) {
             error_log('PresupuestoController::saveViatico — ' . $e->getMessage());
-            $this->error('Error: ' . $e->getMessage());
+            $this->error('Error al guardar la solicitud de viáticos.');
         }
     }
 
@@ -620,7 +622,8 @@ class PresupuestoController extends Controller
             );
             $this->success('Viático liquidado correctamente.');
         } catch (Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('PresupuestoController::liquidarViatico — ' . $e->getMessage());
+            $this->error('Error al liquidar el viático.');
         }
     }
 
@@ -677,7 +680,8 @@ class PresupuestoController extends Controller
             }
             $this->success('Gasto guardado.', ['id' => $id]);
         } catch (Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('PresupuestoController::saveGasto — ' . $e->getMessage());
+            $this->error('Error al guardar el gasto.');
         }
     }
 
@@ -749,7 +753,8 @@ class PresupuestoController extends Controller
             $this->logAction('DOC_SAVE', 'documentos', "ID:$id — $nombre");
             $this->success('Documento guardado.', ['id' => $id]);
         } catch (Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('PresupuestoController::saveDocumento — ' . $e->getMessage());
+            $this->error('Error al guardar el documento.');
         }
     }
 

@@ -1,9 +1,15 @@
 <?php
 class MantenimientoController extends Controller
 {
+    // Roles con acceso a catálogos del programa (técnicos, temas, cultivos, tipos AT)
+    private const ROLES_CATALOGOS = ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'];
+    // Roles que pueden administrar usuarios y roles del sistema
+    private const ROLES_USUARIOS  = ['admin', 'super_admin'];
+
     public function __construct()
     {
         $this->requirePrograma();
+        $this->requireRole(self::ROLES_CATALOGOS);
     }
 
     public function index(): void
@@ -42,14 +48,22 @@ class MantenimientoController extends Controller
     {
         $id   = (int) $this->getPost('id_tecnico', 0);
         $nombre = trim($this->getPost('nombre_completo', ''));
+        $email  = trim($this->getPost('email', ''));
         if (!$nombre) { $this->error('El nombre es obligatorio.'); return; }
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->error('El correo electrónico no es válido.'); return;
+        }
+        $telefono = preg_replace('/\D/', '', (string) $this->getPost('telefono', ''));
+        if ($telefono !== '' && strlen($telefono) !== 8) {
+            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+        }
 
         $data = [
             'nombre_completo' => $nombre,
             'especialidad'    => $this->getPost('especialidad', ''),
-            'id_departamento' => ($this->getPost('id_departamento', '') ?: null),
-            'telefono'        => $this->getPost('telefono', ''),
-            'email'           => $this->getPost('email', ''),
+            'id_departamento' => ((int) $this->getPost('id_departamento', 0)) ?: null,
+            'telefono'        => $telefono !== '' ? substr($telefono, 0, 4) . '-' . substr($telefono, 4) : '',
+            'email'           => $email,
             'activo'          => (int) $this->getPost('activo', 1),
         ];
 
@@ -95,19 +109,24 @@ class MantenimientoController extends Controller
         $nombre = trim($this->getPost('nombre', ''));
         $tipo   = $this->getPost('tipo', 'ambos');
         if (!$nombre) { $this->error('El nombre es obligatorio.'); return; }
+        if (!in_array($tipo, ['capacitacion', 'at', 'ambos'], true)) {
+            $this->error('Tipo de tema no válido.'); return;
+        }
 
+        $activo = (int) $this->getPost('activo', 1) ? 1 : 0;
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
             if ($id) {
-                $db->execute("UPDATE sag_temas SET nombre=?, tipo=? WHERE id_tema=? AND id_proyecto=?", [$nombre, $tipo, $id, $pid]);
+                $db->execute("UPDATE sag_temas SET nombre=?, tipo=?, activo=? WHERE id_tema=? AND id_proyecto=?", [$nombre, $tipo, $activo, $id, $pid]);
                 $this->success('Tema actualizado.');
             } else {
-                $db->execute("INSERT INTO sag_temas (id_proyecto, nombre, tipo) VALUES (?, ?, ?)", [$pid, $nombre, $tipo]);
+                $db->execute("INSERT INTO sag_temas (id_proyecto, nombre, tipo, activo) VALUES (?, ?, ?, ?)", [$pid, $nombre, $tipo, $activo]);
                 $this->success('Tema creado.');
             }
             $this->logAction($id ? 'EDITAR' : 'CREAR', 'mantenimiento_temas', $nombre);
         } catch (Exception $e) {
+            error_log('MantenimientoController::saveTema — ' . $e->getMessage());
             $this->error('Error al guardar tema.');
         }
     }
@@ -116,11 +135,13 @@ class MantenimientoController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         try {
-            Database::programa()->execute("DELETE FROM sag_temas WHERE id_tema=? AND id_proyecto=?", [$id, Database::proyectoId()]);
+            // Desactivación (no borrado físico): capacitaciones y AT históricas referencian el tema
+            Database::programa()->execute("UPDATE sag_temas SET activo=0 WHERE id_tema=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'mantenimiento_temas', "ID:{$id}");
-            $this->success('Tema eliminado.');
+            $this->success('Tema desactivado.');
         } catch (Exception $e) {
-            $this->error('No se puede eliminar: el tema tiene subtemas asociados.');
+            error_log('MantenimientoController::deleteTema — ' . $e->getMessage());
+            $this->error('Error al desactivar el tema.');
         }
     }
 
@@ -131,20 +152,25 @@ class MantenimientoController extends Controller
         $id      = (int) $this->getPost('id_subtema', 0);
         $idTema  = (int) $this->getPost('id_tema', 0);
         $nombre  = trim($this->getPost('nombre', ''));
+        $activo  = (int) $this->getPost('activo', 1) ? 1 : 0;
         if (!$nombre || !$idTema) { $this->error('Nombre y tema son obligatorios.'); return; }
 
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
+            if (!$db->fetchOne("SELECT id_tema FROM sag_temas WHERE id_tema=? AND id_proyecto=?", [$idTema, $pid])) {
+                $this->error('El tema padre seleccionado no es válido.'); return;
+            }
             if ($id) {
-                $db->execute("UPDATE sag_subtemas SET nombre=?, id_tema=? WHERE id_subtema=? AND id_proyecto=?", [$nombre, $idTema, $id, $pid]);
+                $db->execute("UPDATE sag_subtemas SET nombre=?, id_tema=?, activo=? WHERE id_subtema=? AND id_proyecto=?", [$nombre, $idTema, $activo, $id, $pid]);
                 $this->success('Subtema actualizado.');
             } else {
-                $db->execute("INSERT INTO sag_subtemas (id_proyecto, id_tema, nombre) VALUES (?, ?, ?)", [$pid, $idTema, $nombre]);
+                $db->execute("INSERT INTO sag_subtemas (id_proyecto, id_tema, nombre, activo) VALUES (?, ?, ?, ?)", [$pid, $idTema, $nombre, $activo]);
                 $this->success('Subtema creado.');
             }
             $this->logAction($id ? 'EDITAR' : 'CREAR', 'mantenimiento_subtemas', $nombre);
         } catch (Exception $e) {
+            error_log('MantenimientoController::saveSubtema — ' . $e->getMessage());
             $this->error('Error al guardar subtema.');
         }
     }
@@ -153,11 +179,12 @@ class MantenimientoController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         try {
-            Database::programa()->execute("DELETE FROM sag_subtemas WHERE id_subtema=? AND id_proyecto=?", [$id, Database::proyectoId()]);
+            Database::programa()->execute("UPDATE sag_subtemas SET activo=0 WHERE id_subtema=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'mantenimiento_subtemas', "ID:{$id}");
-            $this->success('Subtema eliminado.');
+            $this->success('Subtema desactivado.');
         } catch (Exception $e) {
-            $this->error('Error al eliminar subtema.');
+            error_log('MantenimientoController::deleteSubtema — ' . $e->getMessage());
+            $this->error('Error al desactivar el subtema.');
         }
     }
 
@@ -169,19 +196,24 @@ class MantenimientoController extends Controller
         $nombre = trim($this->getPost('nombre', ''));
         $tipo   = $this->getPost('tipo', 'cultivo');
         if (!$nombre) { $this->error('El nombre es obligatorio.'); return; }
+        if (!in_array($tipo, ['cultivo', 'ganaderia', 'otro'], true)) {
+            $this->error('Tipo de cultivo no válido.'); return;
+        }
 
+        $activo = (int) $this->getPost('activo', 1) ? 1 : 0;
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
             if ($id) {
-                $db->execute("UPDATE sag_cultivos SET nombre=?, tipo=? WHERE id_cultivo=? AND id_proyecto=?", [$nombre, $tipo, $id, $pid]);
+                $db->execute("UPDATE sag_cultivos SET nombre=?, tipo=?, activo=? WHERE id_cultivo=? AND id_proyecto=?", [$nombre, $tipo, $activo, $id, $pid]);
                 $this->success('Cultivo actualizado.');
             } else {
-                $db->execute("INSERT INTO sag_cultivos (id_proyecto, nombre, tipo) VALUES (?, ?, ?)", [$pid, $nombre, $tipo]);
+                $db->execute("INSERT INTO sag_cultivos (id_proyecto, nombre, tipo, activo) VALUES (?, ?, ?, ?)", [$pid, $nombre, $tipo, $activo]);
                 $this->success('Cultivo creado.');
             }
             $this->logAction($id ? 'EDITAR' : 'CREAR', 'mantenimiento_cultivos', $nombre);
         } catch (Exception $e) {
+            error_log('MantenimientoController::saveCultivo — ' . $e->getMessage());
             $this->error('Error al guardar cultivo.');
         }
     }
@@ -190,11 +222,12 @@ class MantenimientoController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         try {
-            Database::programa()->execute("DELETE FROM sag_cultivos WHERE id_cultivo=? AND id_proyecto=?", [$id, Database::proyectoId()]);
+            Database::programa()->execute("UPDATE sag_cultivos SET activo=0 WHERE id_cultivo=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'mantenimiento_cultivos', "ID:{$id}");
-            $this->success('Cultivo eliminado.');
+            $this->success('Cultivo desactivado.');
         } catch (Exception $e) {
-            $this->error('Error al eliminar cultivo.');
+            error_log('MantenimientoController::deleteCultivo — ' . $e->getMessage());
+            $this->error('Error al desactivar el cultivo.');
         }
     }
 
@@ -207,18 +240,20 @@ class MantenimientoController extends Controller
         $icono  = $this->getPost('icono', 'fa-circle');
         if (!$nombre) { $this->error('El nombre es obligatorio.'); return; }
 
+        $activo = (int) $this->getPost('activo', 1) ? 1 : 0;
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
             if ($id) {
-                $db->execute("UPDATE sag_tipo_at SET nombre=?, icono=? WHERE id_tipo_at=? AND id_proyecto=?", [$nombre, $icono, $id, $pid]);
+                $db->execute("UPDATE sag_tipo_at SET nombre=?, icono=?, activo=? WHERE id_tipo_at=? AND id_proyecto=?", [$nombre, $icono, $activo, $id, $pid]);
                 $this->success('Tipo AT actualizado.');
             } else {
-                $db->execute("INSERT INTO sag_tipo_at (id_proyecto, nombre, icono) VALUES (?, ?, ?)", [$pid, $nombre, $icono]);
+                $db->execute("INSERT INTO sag_tipo_at (id_proyecto, nombre, icono, activo) VALUES (?, ?, ?, ?)", [$pid, $nombre, $icono, $activo]);
                 $this->success('Tipo AT creado.');
             }
             $this->logAction($id ? 'EDITAR' : 'CREAR', 'mantenimiento_tipoat', $nombre);
         } catch (Exception $e) {
+            error_log('MantenimientoController::saveTipoAT — ' . $e->getMessage());
             $this->error('Error al guardar tipo AT.');
         }
     }
@@ -227,11 +262,12 @@ class MantenimientoController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         try {
-            Database::programa()->execute("DELETE FROM sag_tipo_at WHERE id_tipo_at=? AND id_proyecto=?", [$id, Database::proyectoId()]);
+            Database::programa()->execute("UPDATE sag_tipo_at SET activo=0 WHERE id_tipo_at=? AND id_proyecto=?", [$id, Database::proyectoId()]);
             $this->logAction('ELIMINAR', 'mantenimiento_tipoat', "ID:{$id}");
-            $this->success('Tipo AT eliminado.');
+            $this->success('Tipo AT desactivado.');
         } catch (Exception $e) {
-            $this->error('Error al eliminar tipo AT.');
+            error_log('MantenimientoController::deleteTipoAT — ' . $e->getMessage());
+            $this->error('Error al desactivar el tipo AT.');
         }
     }
 
@@ -239,6 +275,8 @@ class MantenimientoController extends Controller
 
     public function saveUsuario(): void
     {
+        $this->requireRole(self::ROLES_USUARIOS);
+
         $id       = (int) $this->getPost('id_usuario', 0);
         $nombre   = trim($this->getPost('nombre', ''));
         $apellido = trim($this->getPost('apellido', ''));
@@ -250,8 +288,17 @@ class MantenimientoController extends Controller
         if (!$nombre || !$apellido || !$email || !$username || !$idRol) {
             $this->error('Todos los campos son obligatorios.'); return;
         }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->error('El correo electrónico no es válido.'); return;
+        }
         if (!$id && !$password) {
             $this->error('La contraseña es obligatoria para usuarios nuevos.'); return;
+        }
+        if ($password && strlen($password) < 8) {
+            $this->error('La contraseña debe tener al menos 8 caracteres.'); return;
+        }
+        if (!Database::main()->fetchOne("SELECT id_rol FROM sag_roles WHERE id_rol=?", [$idRol])) {
+            $this->error('El rol seleccionado no es válido.'); return;
         }
 
         try {
@@ -284,6 +331,8 @@ class MantenimientoController extends Controller
 
     public function deleteUsuario(): void
     {
+        $this->requireRole(self::ROLES_USUARIOS);
+
         $id = (int) $this->getPost('id', 0);
         if ($id === ($_SESSION['user']['id_usuario'] ?? 0)) {
             $this->error('No puede eliminar su propio usuario.'); return;

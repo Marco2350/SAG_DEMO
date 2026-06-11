@@ -5,21 +5,33 @@
 
 <div class="content">
 
+  <!-- Breadcrumb del módulo activo -->
+  <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:#888;margin-bottom:8px;">
+    <i class="fas fa-house"></i>
+    <span>Inicio</span>
+    <i class="fas fa-chevron-right" style="font-size:.65rem;color:#bbb;"></i>
+    <span style="background:var(--primario);color:#fff;padding:3px 12px;border-radius:14px;font-weight:700;font-size:.74rem;letter-spacing:.3px;">
+      <i class="fas fa-graduation-cap"></i> Capacitaciones
+    </span>
+  </div>
+
   <!-- Page Header -->
   <div class="page-header">
     <div class="page-title">
       <i class="fas fa-graduation-cap" style="color:var(--primario);margin-right:8px;"></i>Capacitaciones
       <small>Registro de capacitaciones técnicas — <?= htmlspecialchars($_SESSION['programa']['sigla'] ?? '') ?></small>
     </div>
-    <div class="mode-tabs">
-      <button class="mode-tab active" onclick="switchTab('nueva')">
-        <i class="fas fa-plus-circle" style="font-size:.75rem;margin-right:5px;"></i>Nueva
-      </button>
-      <button class="mode-tab" onclick="switchTab('participantes')">
-        <i class="fas fa-users" style="font-size:.75rem;margin-right:5px;"></i>Participantes
-      </button>
-      <button class="mode-tab" onclick="switchTab('listado')">
-        <i class="fas fa-list" style="font-size:.75rem;margin-right:5px;"></i>Listado
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div class="mode-tabs">
+        <button class="mode-tab active" onclick="switchTab('listado')">
+          <i class="fas fa-list" style="font-size:.75rem;margin-right:5px;"></i>Listado
+        </button>
+        <button class="mode-tab" onclick="switchTab('participantes')">
+          <i class="fas fa-users" style="font-size:.75rem;margin-right:5px;"></i>Participantes
+        </button>
+      </div>
+      <button class="btn-primario" id="btnNuevaCap">
+        <i class="fas fa-plus"></i> Nueva Capacitación
       </button>
     </div>
   </div>
@@ -52,92 +64,49 @@
     </div>
   </div>
 
-  <!-- TAB NUEVA -->
-  <div id="tab-nueva">
+  <!-- TAB LISTADO (vista principal) -->
+  <div id="tab-listado">
     <div class="card-box">
-      <div class="card-box-header"><h6><i class="fas fa-plus-circle"></i> Datos de la Capacitación</h6></div>
-      <div class="card-box-body">
-        <form id="formCapacitacion" novalidate>
-          <input type="hidden" id="capId" name="id_capacitacion" value="0"/>
-
-          <div class="form-section-title"><i class="fas fa-location-dot me-1"></i>Lugar</div>
-          <div class="row g-3 mb-4">
-            <div class="col-md-4">
-              <label class="form-label-b">Departamento <span class="req">*</span></label>
-              <select class="fs" id="cDep" name="id_departamento" required>
-                <option value="">— Seleccione —</option>
-                <?php foreach ($departamentos as $dep): ?>
-                <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Municipio <span class="req">*</span></label>
-              <select class="fs" id="cMun" name="id_municipio" required>
-                <option value="">— Seleccione departamento —</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Aldea</label>
-              <input type="text" class="fc" id="cAldea" name="aldea" placeholder="Ej. El Porvenir"/>
-            </div>
-            <div class="col-md-8">
-              <label class="form-label-b">Lugar Específico</label>
-              <input type="text" class="fc" id="cLugar" name="lugar_especifico"
-                     placeholder="Ej. Finca El Progreso, Casa Comunal..."/>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Fecha <span class="req">*</span></label>
-              <input type="date" class="fc" id="cFecha" name="fecha_capacitacion" required/>
-            </div>
-          </div>
-
-          <div class="form-section-title"><i class="fas fa-book-open me-1"></i>Contenido Técnico</div>
-          <div class="row g-3 mb-4">
-            <div class="col-md-4">
-              <label class="form-label-b">Tema <span class="req">*</span></label>
-              <select class="fs" id="cTema" name="id_tema" required>
-                <option value="">— Seleccione —</option>
-                <?php foreach ($temas as $tema): ?>
-                <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Subtema</label>
-              <select class="fs" id="cSubtema" name="id_subtema">
-                <option value="">— Seleccione tema primero —</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Duración (horas)</label>
-              <input type="number" class="fc" id="cDuracion" name="duracion_horas"
-                     placeholder="Ej. 2.5" step="0.5" min="0.5" max="24"/>
-            </div>
-            <div class="col-12">
-              <label class="form-label-b">Descripción / Observaciones</label>
-              <textarea class="fc" id="cDescripcion" name="descripcion" rows="3"
-                        placeholder="Temas abordados, metodología, observaciones..."></textarea>
-            </div>
-          </div>
-
-          <div class="form-section-title"><i class="fas fa-user-tie me-1"></i>Técnico Responsable</div>
-          <div class="row g-3">
-            <div class="col-md-5">
-              <label class="form-label-b">Técnico <span class="req">*</span></label>
-              <select class="fs" id="cTecnico" name="id_tecnico" required>
-                <option value="">— Seleccione —</option>
-                <?php foreach ($tecnicos as $tec): ?>
-                <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-          </div>
-        </form>
+      <div class="card-box-header">
+        <h6><i class="fas fa-list-ul"></i> Listado de Capacitaciones</h6>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select class="fs" id="filtroDepCap" style="width:165px;padding:6px 10px;">
+            <option value="">Todos los deptos.</option>
+            <?php foreach ($departamentos as $dep): ?>
+            <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroTemaCap" style="width:170px;padding:6px 10px;">
+            <option value="">Todos los temas</option>
+            <?php foreach ($temas as $tema): ?>
+            <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroTecCap" style="width:170px;padding:6px 10px;">
+            <option value="">Todos los técnicos</option>
+            <?php foreach ($tecnicos as $tec): ?>
+            <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select class="fs" id="filtroEstadoCap" style="width:120px;padding:6px 10px;">
+            <option value="">Todos</option>
+            <option value="borrador">Borrador</option>
+            <option value="finalizado">Finalizado</option>
+          </select>
+          <button class="btn-outline" id="btnFiltrarCap" style="padding:6px 14px;"><i class="fas fa-filter"></i> Filtrar</button>
+        </div>
       </div>
-      <div style="padding:14px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0f0f0;">
-        <button type="button" class="btn-gris" id="btnLimpiarCap"><i class="fas fa-rotate-left"></i> Limpiar</button>
-        <button type="button" class="btn-primario" id="btnGuardarCap"><i class="fas fa-floppy-disk"></i> Guardar y Continuar</button>
+      <div style="padding:16px;overflow-x:auto;">
+        <table id="tablaCapacitaciones" class="sag-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>#</th><th>Fecha</th><th>Tema</th><th>Subtema</th>
+              <th>Técnico</th><th>Ubicación</th><th>Lugar</th>
+              <th>Partic.</th><th>Horas</th><th>Estado</th><th style="width:100px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -158,7 +127,7 @@
     <div id="sinCapActiva" style="text-align:center;padding:40px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
       <i class="fas fa-arrow-pointer" style="font-size:2rem;color:#b0b0b0;margin-bottom:12px;display:block;"></i>
       <p style="color:#888;font-size:.9rem;">Primero guarde una capacitación o seleccione una del listado.</p>
-      <button type="button" class="btn-outline" onclick="switchTab('nueva')" style="margin-top:10px;">
+      <button type="button" class="btn-outline" id="btnCrearDesdeParticipantes" style="margin-top:10px;">
         <i class="fas fa-plus"></i> Crear nueva
       </button>
     </div>
@@ -173,15 +142,15 @@
                 <div class="row g-3">
                   <div class="col-6">
                     <label class="form-label-b">Nombre <span class="req">*</span></label>
-                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Primer nombre"/>
+                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Primer nombre" maxlength="100"/>
                   </div>
                   <div class="col-6">
                     <label class="form-label-b">Apellido</label>
-                    <input type="text" class="fc" id="pApellido" name="apellido"/>
+                    <input type="text" class="fc" id="pApellido" name="apellido" maxlength="100"/>
                   </div>
                   <div class="col-6">
                     <label class="form-label-b">DNI</label>
-                    <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="0000-0000-00000"/>
+                    <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="0000-0000-00000" inputmode="numeric"/>
                   </div>
                   <div class="col-3">
                     <label class="form-label-b">Edad</label>
@@ -306,54 +275,112 @@
     </div>
   </div>
 
-  <!-- TAB LISTADO -->
-  <div id="tab-listado" style="display:none;">
-    <div class="card-box">
-      <div class="card-box-header">
-        <h6><i class="fas fa-list-ul"></i> Listado de Capacitaciones</h6>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select class="fs" id="filtroDepCap" style="width:165px;padding:6px 10px;">
-            <option value="">Todos los deptos.</option>
-            <?php foreach ($departamentos as $dep): ?>
-            <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <select class="fs" id="filtroTemaCap" style="width:170px;padding:6px 10px;">
-            <option value="">Todos los temas</option>
-            <?php foreach ($temas as $tema): ?>
-            <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <select class="fs" id="filtroTecCap" style="width:170px;padding:6px 10px;">
-            <option value="">Todos los técnicos</option>
-            <?php foreach ($tecnicos as $tec): ?>
-            <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <select class="fs" id="filtroEstadoCap" style="width:120px;padding:6px 10px;">
-            <option value="">Todos</option>
-            <option value="borrador">Borrador</option>
-            <option value="finalizado">Finalizado</option>
-          </select>
-          <button class="btn-outline" id="btnFiltrarCap" style="padding:6px 14px;"><i class="fas fa-filter"></i> Filtrar</button>
-        </div>
+</div><!-- /content -->
+
+<!-- MODAL Crear / Editar Capacitación -->
+<div class="modal fade" id="modalCapacitacion" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header modal-header-sag">
+        <h5 class="modal-title" id="modalCapTitulo">
+          <i class="fas fa-plus-circle me-2"></i>Nueva Capacitación
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div style="padding:16px;overflow-x:auto;">
-        <table id="tablaCapacitaciones" class="sag-table" style="width:100%;">
-          <thead>
-            <tr>
-              <th>#</th><th>Fecha</th><th>Tema</th><th>Subtema</th>
-              <th>Técnico</th><th>Ubicación</th><th>Lugar</th>
-              <th>Partic.</th><th>Horas</th><th>Estado</th><th style="width:100px;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="modal-body">
+        <form id="formCapacitacion" novalidate>
+          <input type="hidden" id="capId" name="id_capacitacion" value="0"/>
+
+          <div class="form-section-title" style="background:#eff6ff;padding:8px 12px;border-left:4px solid #1e40af;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-location-dot me-1" style="color:#1e40af;"></i>Lugar
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label-b">Departamento <span class="req">*</span></label>
+              <select class="fs" id="cDep" name="id_departamento" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($departamentos as $dep): ?>
+                <option value="<?= $dep['id_departamento'] ?>"><?= htmlspecialchars($dep['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Municipio <span class="req">*</span></label>
+              <select class="fs" id="cMun" name="id_municipio" required>
+                <option value="">— Seleccione departamento —</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Aldea</label>
+              <input type="text" class="fc" id="cAldea" name="aldea" placeholder="Ej. El Porvenir" maxlength="200"/>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label-b">Lugar Específico</label>
+              <input type="text" class="fc" id="cLugar" name="lugar_especifico" maxlength="300"
+                     placeholder="Ej. Finca El Progreso, Casa Comunal..."/>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Fecha <span class="req">*</span></label>
+              <input type="date" class="fc" id="cFecha" name="fecha_capacitacion" required/>
+            </div>
+          </div>
+
+          <div class="form-section-title" style="background:#f0fdf4;padding:8px 12px;border-left:4px solid #16a34a;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-book-open me-1" style="color:#16a34a;"></i>Contenido Técnico
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label-b">Tema <span class="req">*</span></label>
+              <select class="fs" id="cTema" name="id_tema" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($temas as $tema): ?>
+                <option value="<?= $tema['id_tema'] ?>"><?= htmlspecialchars($tema['nombre']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Subtema</label>
+              <select class="fs" id="cSubtema" name="id_subtema">
+                <option value="">— Seleccione tema primero —</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Duración (horas)</label>
+              <input type="number" class="fc" id="cDuracion" name="duracion_horas"
+                     placeholder="Ej. 2.5" step="0.5" min="0.5" max="24"/>
+            </div>
+            <div class="col-12">
+              <label class="form-label-b">Descripción / Observaciones</label>
+              <textarea class="fc" id="cDescripcion" name="descripcion" rows="3"
+                        placeholder="Temas abordados, metodología, observaciones..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-section-title" style="background:#fef3c7;padding:8px 12px;border-left:4px solid #d97706;border-radius:4px;margin-bottom:14px;">
+            <i class="fas fa-user-tie me-1" style="color:#d97706;"></i>Técnico Responsable
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label-b">Técnico <span class="req">*</span></label>
+              <select class="fs" id="cTecnico" name="id_tecnico" required>
+                <option value="">— Seleccione —</option>
+                <?php foreach ($tecnicos as $tec): ?>
+                <option value="<?= $tec['id_tecnico'] ?>"><?= htmlspecialchars($tec['nombre_completo']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-gris" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn-primario" id="btnGuardarCap">
+          <i class="fas fa-floppy-disk me-1"></i> Guardar y Continuar
+        </button>
       </div>
     </div>
   </div>
-
-</div><!-- /content -->
+</div>
 
 <!-- Modal Ver Cap -->
 <div class="modal fade" id="modalVerCap" tabindex="-1" aria-hidden="true">

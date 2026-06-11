@@ -89,6 +89,28 @@ abstract class Model
         return $this->db->execute($sql, $params);
     }
 
+    /** Valida que el municipio exista, esté activo y pertenezca al departamento (programa activo). */
+    public function municipioValido(int $idMunicipio, int $idDepartamento): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_municipio FROM sag_municipios
+             WHERE id_municipio = ? AND id_departamento = ? AND id_proyecto = ? AND activo = 1",
+            [$idMunicipio, $idDepartamento, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
+    /** Valida que la organización exista en el programa activo. */
+    public function organizacionValida(int $idOrganizacion): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_organizacion FROM sag_organizaciones
+             WHERE id_organizacion = ? AND id_proyecto = ?",
+            [$idOrganizacion, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
     public function count(string $where = '', array $params = []): int
     {
         $sql = "SELECT COUNT(*) AS total FROM {$this->table}";

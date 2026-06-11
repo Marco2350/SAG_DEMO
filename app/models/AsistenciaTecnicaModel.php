@@ -75,6 +75,36 @@ class AsistenciaTecnicaModel extends Model
         return $this->insert($data);
     }
 
+    /** Valida que el tipo de asistencia exista, esté activo y pertenezca al programa activo. */
+    public function tipoATValido(int $idTipoAT): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_tipo_at FROM sag_tipo_at WHERE id_tipo_at = ? AND id_proyecto = ? AND activo = 1",
+            [$idTipoAT, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
+    /** Valida que el tema exista, esté activo y pertenezca al programa activo. */
+    public function temaValido(int $idTema): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_tema FROM sag_temas WHERE id_tema = ? AND id_proyecto = ? AND activo = 1",
+            [$idTema, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
+    /** Valida que el técnico exista, esté activo y pertenezca al programa activo. */
+    public function tecnicoValido(int $idTecnico): bool
+    {
+        $r = $this->db->fetchOne(
+            "SELECT id_tecnico FROM sag_tecnicos WHERE id_tecnico = ? AND id_proyecto = ? AND activo = 1",
+            [$idTecnico, Database::proyectoId()]
+        );
+        return (bool) $r;
+    }
+
     public function guardarResultados(int $idAt, array $resultados): void
     {
         $this->db->execute("DELETE FROM sag_at_resultados WHERE id_at=?", [$idAt]);

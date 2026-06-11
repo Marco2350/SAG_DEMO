@@ -5,21 +5,8 @@
 $(function () {
 
     let tabla;
-    const modalVer = new bootstrap.Modal('#modalVerAT');
-
-    // ── TABS ──────────────────────────────────────────
-    window.switchTab = function (tab) {
-        ['nueva', 'listado'].forEach(t => {
-            document.getElementById('tab-' + t).style.display = (t === tab) ? 'block' : 'none';
-        });
-        document.querySelectorAll('.mode-tab').forEach((btn, i) => {
-            btn.classList.toggle('active',
-                (tab === 'nueva'   && i === 0) ||
-                (tab === 'listado' && i === 1)
-            );
-        });
-        if (tab === 'listado' && !tabla) initTabla();
-    };
+    const modalVer  = new bootstrap.Modal('#modalVerAT');
+    const modalForm = new bootstrap.Modal('#modalAT');
 
     // ── DATATABLES ────────────────────────────────────
     function initTabla() {
@@ -56,12 +43,31 @@ $(function () {
         });
     }
 
+    initTabla();
+
     $('#btnFiltrarAT').on('click', function () {
-        if (tabla) tabla.ajax.reload();
-        else { initTabla(); switchTab('listado'); }
+        tabla.ajax.reload();
+    });
+    $('#filtroDepAT, #filtroTipoAT, #filtroTemaAT, #filtroTecAT, #filtroEstadoAT').on('change', function () {
+        tabla.ajax.reload();
     });
 
-    // ── GUARDAR VISITA ────────────────────────────────
+    // ── ABRIR MODAL NUEVA ─────────────────────────────
+    $('#btnNuevaAT').on('click', function () {
+        limpiarFormAT();
+        $('#modalATTitulo').html('<i class="fas fa-file-medical me-2"></i>Nueva Visita Técnica');
+        modalForm.show();
+    });
+
+    // ── MÁSCARAS DE ENTRADA ───────────────────────────
+    $('#atPDni').on('input', function () {
+        this.value = SAG.formatDNI(this.value);
+    });
+    $('#atPTel').on('input', function () {
+        this.value = SAG.formatTel(this.value);
+    });
+
+    // ── GUARDAR VISITA (crear / editar) ───────────────
     $('#btnGuardarAT').on('click', function () {
         const tipo   = $('#atTipo').val();
         const dep    = $('#atDep').val();
@@ -87,21 +93,27 @@ $(function () {
                 SAG.btnLoading('#btnGuardarAT', false);
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 SAG.toast(res.message);
-                limpiarFormAT();
-                if (tabla) tabla.ajax.reload();
+                modalForm.hide();
+                tabla.ajax.reload(null, false); // mantener la página actual
             },
             error: function () { SAG.btnLoading('#btnGuardarAT', false); },
         });
     });
 
     // ── LIMPIAR FORMULARIO ────────────────────────────
-    $('#btnLimpiarAT').on('click', limpiarFormAT);
-
     function limpiarFormAT() {
         document.getElementById('formAT').reset();
         $('#atId').val(0);
         $('#atMun').html('<option value="">— Seleccione departamento primero —</option>');
         $('#atSubtema').html('<option value="">— Seleccione tema primero —</option>');
+        // Resetear bloque de evidencia al estado "visita nueva"
+        $('#evATIdAt').val(0);
+        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', true);
+        $('#evATArchivo').val('');
+        $('#evATAviso').show();
+        $('#evATSinArchivo').show();
+        $('#evATConArchivo').hide();
+        $('#evATEstadoBadge').text('PENDIENTE').css({ background: '#f1f5f9', color: '#6b7280' });
     }
 
     // ── CHANGE DEPTO ──────────────────────────────────
@@ -241,38 +253,35 @@ $(function () {
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 const a = res.data;
                 limpiarFormAT();
-                switchTab('nueva');
-                setTimeout(function () {
-                    $('#atId').val(a.id_at);
-                    $('#atTipo').val(a.id_tipo_at);
-                    $('#atFecha').val(a.fecha_visita);
-                    $('#atHora').val(a.hora_visita);
-                    $('#atDuracion').val(a.duracion);
-                    $('#atDep').val(a.id_departamento);
-                    SAG.loadMunicipios(a.id_departamento, '#atMun', a.id_municipio);
-                    $('#atAldea').val(a.aldea);
-                    $('#atPNombre').val(a.productor_nombre);
-                    $('#atPApellido').val(a.productor_apellido);
-                    $('#atPDni').val(a.productor_dni);
-                    $('#atPEdad').val(a.productor_edad);
-                    $('#atPSexo').val(a.productor_sexo);
-                    $('#atPTel').val(a.productor_telefono);
-                    $('#atOrg').val(a.id_organizacion);
-                    $('#atArea').val(a.area_productiva);
-                    $('#atTema').val(a.id_tema);
-                    SAG.loadSubtemas(a.id_tema, '#atSubtema', a.id_subtema);
-                    $('#atCultivo').val(a.id_cultivo);
-                    $('#atDescripcion').val(a.descripcion);
-                    if (a.resultados && a.resultados.length > 0) {
-                        $('#atResultados').val(a.resultados.map(r => r.resultado).join('\n'));
-                    }
-                    $('#atTecnico').val(a.id_tecnico);
-                    $('#atProxVisita').val(a.prox_visita);
-                    $('#atObservaciones').val(a.observaciones);
-                    renderEvidenciaAT(a);
-                    window.scrollTo(0, 0);
-                    SAG.toast('Visita cargada para edición.', 'warning');
-                }, 100);
+                $('#modalATTitulo').html('<i class="fas fa-pen me-2"></i>Editar Visita Técnica');
+                $('#atId').val(a.id_at);
+                $('#atTipo').val(a.id_tipo_at);
+                $('#atFecha').val(a.fecha_visita);
+                $('#atHora').val(a.hora_visita);
+                $('#atDuracion').val(a.duracion);
+                $('#atDep').val(a.id_departamento);
+                SAG.loadMunicipios(a.id_departamento, '#atMun', a.id_municipio);
+                $('#atAldea').val(a.aldea);
+                $('#atPNombre').val(a.productor_nombre);
+                $('#atPApellido').val(a.productor_apellido);
+                $('#atPDni').val(SAG.formatDNI(a.productor_dni || ''));
+                $('#atPEdad').val(a.productor_edad);
+                $('#atPSexo').val(a.productor_sexo);
+                $('#atPTel').val(SAG.formatTel(a.productor_telefono || ''));
+                $('#atOrg').val(a.id_organizacion);
+                $('#atArea').val(a.area_productiva);
+                $('#atTema').val(a.id_tema);
+                SAG.loadSubtemas(a.id_tema, '#atSubtema', a.id_subtema);
+                $('#atCultivo').val(a.id_cultivo);
+                $('#atDescripcion').val(a.descripcion);
+                if (a.resultados && a.resultados.length > 0) {
+                    $('#atResultados').val(a.resultados.map(r => r.resultado).join('\n'));
+                }
+                $('#atTecnico').val(a.id_tecnico);
+                $('#atProxVisita').val(a.prox_visita);
+                $('#atObservaciones').val(a.observaciones);
+                renderEvidenciaAT(a);
+                modalForm.show();
             },
         });
     }

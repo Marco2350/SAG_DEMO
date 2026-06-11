@@ -73,7 +73,7 @@ class ExportarController extends Controller
 
         } catch (Exception $e) {
             error_log('ExportarController::generar — ' . $e->getMessage());
-            $this->error('Error al generar el archivo: ' . $e->getMessage());
+            $this->error('Error al generar el archivo. Intente de nuevo.');
         }
     }
 

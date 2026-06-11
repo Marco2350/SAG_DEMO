@@ -1,29 +1,19 @@
 /**
- * beneficiarios.js — Módulo de Beneficiarios
- * SAG Programas — sag_programas
+ * beneficiarios.js — Módulo de Beneficiarios (Productores)
+ * SAG Programas — tabla principal + modales crear/editar y carga masiva
  */
 $(function () {
 
     let tabla;
-    let archivoCSV = null;
-    const modalVer = new bootstrap.Modal('#modalVerBene');
+    let archivoCSV   = null;
+    const modalBene  = new bootstrap.Modal('#modalBeneficiario');
+    const modalCarga = new bootstrap.Modal('#modalCargaMasiva');
+    const modalVer   = new bootstrap.Modal('#modalVerBene');
 
-    // ── TABS ──────────────────────────────────────────
-    window.switchTab = function (tab) {
-        ['individual', 'masivo', 'listado'].forEach(t => {
-            document.getElementById('tab-' + t).style.display = (t === tab) ? 'block' : 'none';
-        });
-        document.querySelectorAll('.mode-tab').forEach((btn, i) => {
-            btn.classList.toggle('active',
-                (tab === 'individual' && i === 0) ||
-                (tab === 'masivo'     && i === 1) ||
-                (tab === 'listado'    && i === 2)
-            );
-        });
-        if (tab === 'listado' && !tabla) initTabla();
-    };
+    const HOY = new Date().toISOString().split('T')[0];
+    $('#bFechaNac').attr('max', HOY); // la fecha de nacimiento no puede ser futura
 
-    // ── DATATABLES ────────────────────────────────────
+    // ── DATATABLE (vista principal) ───────────────────
     function initTabla() {
         tabla = $('#tablaBeneficiarios').DataTable({
             processing: true,
@@ -54,24 +44,48 @@ $(function () {
         });
     }
 
+    initTabla();
+
+    // ── FILTRAR (botón + recarga automática al cambiar) ──
     $('#btnFiltrarBene').on('click', function () {
-        if (tabla) tabla.ajax.reload();
-        else { initTabla(); switchTab('listado'); }
+        tabla.ajax.reload();
+    });
+    $('#filtroOrg, #filtroDepBene, #filtroSexo').on('change', function () {
+        tabla.ajax.reload();
     });
 
-    // ── GUARDAR BENEFICIARIO ──────────────────────────
+    // ── ABRIR MODAL NUEVO ─────────────────────────────
+    $('#btnNuevoBene').on('click', function () {
+        limpiarForm();
+        $('#modalBeneTitulo').html('<i class="fas fa-user-plus me-2"></i>Nuevo Productor');
+        modalBene.show();
+    });
+
+    // ── GUARDAR (crear / editar) ──────────────────────
     $('#btnGuardarBene').on('click', function () {
         const nombre   = $('#bNombre').val().trim();
         const apellido = $('#bApellido').val().trim();
         const sexo     = $('#bSexo').val();
         const dep      = $('#bDep').val();
         const mun      = $('#bMun').val();
+        const dni      = ($('#bDni').val() || '').replace(/\D/g, '');
+        const tel      = ($('#bTelefono').val() || '').replace(/\D/g, '');
+        const fechaNac = $('#bFechaNac').val();
 
         if (!nombre)   { SAG.toast('El nombre es obligatorio.',   'warning'); return; }
         if (!apellido) { SAG.toast('El apellido es obligatorio.', 'warning'); return; }
         if (!sexo)     { SAG.toast('Seleccione el sexo.',         'warning'); return; }
         if (!dep)      { SAG.toast('Seleccione un departamento.', 'warning'); return; }
         if (!mun)      { SAG.toast('Seleccione un municipio.',    'warning'); return; }
+        if (dni && dni.length !== 13) {
+            SAG.toast('El DNI debe tener 13 dígitos.', 'warning'); return;
+        }
+        if (tel && tel.length !== 8) {
+            SAG.toast('El teléfono debe tener 8 dígitos (formato Honduras).', 'warning'); return;
+        }
+        if (fechaNac && fechaNac > HOY) {
+            SAG.toast('La fecha de nacimiento no puede ser futura.', 'warning'); return;
+        }
 
         SAG.btnLoading('#btnGuardarBene', true);
         SAG.ajax({
@@ -81,14 +95,12 @@ $(function () {
                 SAG.btnLoading('#btnGuardarBene', false);
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 SAG.toast(res.message);
-                limpiarForm();
+                modalBene.hide();
+                tabla.ajax.reload(null, false); // mantener la página actual
             },
             error: function () { SAG.btnLoading('#btnGuardarBene', false); },
         });
     });
-
-    // ── LIMPIAR FORMULARIO ────────────────────────────
-    $('#btnLimpiarBene').on('click', limpiarForm);
 
     function limpiarForm() {
         document.getElementById('formBeneficiario').reset();
@@ -96,25 +108,22 @@ $(function () {
         $('#bMun').html('<option value="">— Seleccione departamento primero —</option>');
     }
 
-    // ── CHANGE DEPTO ──────────────────────────────────
+    // ── CHANGE DEPTO (modal) ──────────────────────────
     $('#bDep').on('change', function () {
         SAG.loadMunicipios($(this).val(), '#bMun');
     });
 
-    // ── FORMATEO DNI (0801-AAAA-NNNNN) ───────────────
+    // ── MÁSCARAS DE ENTRADA ───────────────────────────
     $('#bDni').on('input', function () {
-        const pos = this.selectionStart;
+        const pos  = this.selectionStart;
         const prev = this.value;
         const fmt  = SAG.formatDNI(this.value);
         this.value = fmt;
-        // Ajustar cursor si se insertó un guión
         if (fmt.length > prev.length) this.setSelectionRange(pos + 1, pos + 1);
         else this.setSelectionRange(pos, pos);
     });
-
-    // ── FORMATEO TELÉFONO ─────────────────────────────
     $('#bTelefono').on('input', function () {
-        const pos = this.selectionStart;
+        const pos  = this.selectionStart;
         const prev = this.value;
         const fmt  = SAG.formatTel(this.value);
         this.value = fmt;
@@ -147,7 +156,7 @@ $(function () {
                       </div>
                       <div class="col-md-6">
                         <label class="form-label-b">DNI</label>
-                        <p>${b.dni || '—'}</p>
+                        <p>${escHtml(SAG.formatDNI(b.dni || '')) || '—'}</p>
                       </div>
                       <div class="col-md-4">
                         <label class="form-label-b">Fecha de Nacimiento</label>
@@ -163,7 +172,7 @@ $(function () {
                       </div>
                       <div class="col-md-6">
                         <label class="form-label-b">Teléfono</label>
-                        <p>${b.telefono || '—'}</p>
+                        <p>${escHtml(b.telefono || '—')}</p>
                       </div>
                       <div class="col-md-6">
                         <label class="form-label-b">Organización</label>
@@ -200,43 +209,53 @@ $(function () {
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 const b = res.data;
                 limpiarForm();
-                switchTab('individual');
-                setTimeout(function () {
-                    $('#beneId').val(b.id_beneficiario);
-                    $('#bNombre').val(b.nombre);
-                    $('#bApellido').val(b.apellido);
-                    $('#bDni').val(b.dni);
-                    $('#bFechaNac').val(b.fecha_nacimiento);
-                    $('#bSexo').val(b.sexo);
-                    $('#bTelefono').val(b.telefono);
-                    $('#bAldea').val(b.aldea);
-                    $('#bOrg').val(b.id_organizacion);
-                    $('#bDep').val(b.id_departamento);
-                    SAG.loadMunicipios(b.id_departamento, '#bMun', b.id_municipio);
-                    window.scrollTo(0, 0);
-                    SAG.toast('Beneficiario cargado para edición.', 'warning');
-                }, 100);
+                $('#modalBeneTitulo').html('<i class="fas fa-pen me-2"></i>Editar Productor');
+                $('#beneId').val(b.id_beneficiario);
+                $('#bNombre').val(b.nombre);
+                $('#bApellido').val(b.apellido);
+                $('#bDni').val(SAG.formatDNI(b.dni || ''));
+                $('#bFechaNac').val(b.fecha_nacimiento);
+                $('#bSexo').val(b.sexo);
+                $('#bTelefono').val(SAG.formatTel(b.telefono || ''));
+                $('#bAldea').val(b.aldea);
+                $('#bOrg').val(b.id_organizacion);
+                $('#bDep').val(b.id_departamento);
+                SAG.loadMunicipios(b.id_departamento, '#bMun', b.id_municipio);
+                modalBene.show();
             },
         });
     }
 
     // ── ELIMINAR ──────────────────────────────────────
     $(document).on('click', '.btn-eliminar', function () {
-        const id = $(this).data('id');
-        SAG.confirm('¿Desea eliminar este beneficiario del sistema?', function () {
+        const id     = $(this).data('id');
+        const nombre = $(this).data('nombre') || 'este beneficiario';
+        SAG.confirm('¿Desea eliminar a "' + nombre + '" del sistema?', function () {
             SAG.ajax({
                 url:  '/beneficiarios/delete',
                 data: { id },
                 success: function (res) {
                     if (!res.success) { SAG.toast(res.message, 'error'); return; }
                     SAG.toast(res.message);
-                    tabla.ajax.reload();
+                    tabla.ajax.reload(null, false);
                 },
             });
         });
     });
 
-    // ── CARGA MASIVA ──────────────────────────────────
+    // ── CARGA MASIVA (modal) ──────────────────────────
+    $('#btnCargaMasiva').on('click', function () {
+        resetCargaMasiva();
+        modalCarga.show();
+    });
+
+    function resetCargaMasiva() {
+        archivoCSV = null;
+        document.getElementById('inputCSV').value = '';
+        $('#previewCSV').hide();
+        $('#resultadoCarga').hide().empty();
+    }
+
     const uploadZone = document.getElementById('uploadZone');
 
     uploadZone.addEventListener('click', function () {
@@ -274,6 +293,7 @@ $(function () {
         if (!archivoCSV) { SAG.toast('Seleccione un archivo CSV.', 'warning'); return; }
         const fd = new FormData();
         fd.append('archivo', archivoCSV);
+        if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
 
         SAG.btnLoading('#btnProcesarCSV', true);
         $.ajax({
@@ -297,11 +317,12 @@ $(function () {
                     html += `<div style="margin-top:10px;font-size:.8rem;">
                         <strong>Advertencias (${res.data.errores.length}):</strong>
                         <ul style="margin-top:6px;">
-                            ${res.data.errores.map(e => `<li>${e}</li>`).join('')}
+                            ${res.data.errores.map(e => `<li>${escHtml(e)}</li>`).join('')}
                         </ul></div>`;
                 }
                 $('#resultadoCarga').html(html).show();
                 $('#btnCancelarCSV').click();
+                if (res.success) tabla.ajax.reload(null, false);
             },
             error: function () {
                 SAG.btnLoading('#btnProcesarCSV', false);

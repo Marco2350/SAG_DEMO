@@ -37,6 +37,7 @@ class CapacitacionesController extends Controller
 
     public function listar(): void
     {
+        try {
         $filtros = [
             'id_departamento' => (int)    $this->getPost('id_departamento', 0),
             'id_tecnico'      => (int)    $this->getPost('id_tecnico', 0),
@@ -74,6 +75,10 @@ class CapacitacionesController extends Controller
         }, $rows);
 
         $this->json(['data' => $data]);
+        } catch (Exception $e) {
+            error_log('CapacitacionesController::listar — ' . $e->getMessage());
+            $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);
+        }
     }
 
     public function get(): void
@@ -92,22 +97,42 @@ class CapacitacionesController extends Controller
         $idMun  = (int) $this->getPost('id_municipio', 0);
         $idTema = (int) $this->getPost('id_tema', 0);
         $idTec  = (int) $this->getPost('id_tecnico', 0);
-        $fecha  = $this->getPost('fecha_capacitacion', '');
+        $fecha  = (string) $this->getPost('fecha_capacitacion', '');
+        $aldea  = trim((string) $this->getPost('aldea', ''));
+        $lugar  = trim((string) $this->getPost('lugar_especifico', ''));
 
         if (!$idDep)  { $this->error('Seleccione un departamento.');      return; }
         if (!$idMun)  { $this->error('Seleccione un municipio.');         return; }
+        if (!$this->model->municipioValido($idMun, $idDep)) {
+            $this->error('El municipio seleccionado no pertenece al departamento.'); return;
+        }
         if (!$idTema) { $this->error('Seleccione el tema.');              return; }
+        if (!$this->model->temaValido($idTema)) {
+            $this->error('El tema seleccionado no es válido.'); return;
+        }
         if (!$idTec)  { $this->error('Seleccione el técnico.');           return; }
+        if (!$this->model->tecnicoValido($idTec)) {
+            $this->error('El técnico seleccionado no es válido.'); return;
+        }
         if (!$fecha)  { $this->error('Ingrese la fecha de capacitación.'); return; }
+        $dt = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$dt || $dt->format('Y-m-d') !== $fecha) {
+            $this->error('La fecha de capacitación no es válida.'); return;
+        }
+        if (mb_strlen($aldea) > 200) { $this->error('La aldea no puede exceder 200 caracteres.');  return; }
+        if (mb_strlen($lugar) > 300) { $this->error('El lugar no puede exceder 300 caracteres.');  return; }
 
         $duracion = $this->getPost('duracion_horas', '');
+        if ($duracion !== '' && (!is_numeric($duracion) || (float) $duracion <= 0 || (float) $duracion > 99)) {
+            $this->error('La duración debe ser un número de horas entre 0 y 99.'); return;
+        }
         $data = [
             'id_departamento'    => $idDep,
             'id_municipio'       => $idMun,
-            'aldea'              => $this->getPost('aldea', ''),
-            'lugar_especifico'   => $this->getPost('lugar_especifico', ''),
+            'aldea'              => $aldea,
+            'lugar_especifico'   => $lugar,
             'id_tema'            => $idTema,
-            'id_subtema'         => ($this->getPost('id_subtema') ?: null),
+            'id_subtema'         => ((int) $this->getPost('id_subtema', 0)) ?: null,
             'descripcion'        => $this->getPost('descripcion', ''),
             'fecha_capacitacion' => $fecha,
             'duracion_horas'     => ($duracion !== '' ? (float) $duracion : null),
@@ -136,6 +161,7 @@ class CapacitacionesController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
+        if (!$this->model->getDetalle($id)) { $this->error('Capacitación no encontrada.', 404); return; }
         $this->model->finalizar($id);
         $this->logAction('FINALIZAR', 'capacitaciones', "ID:{$id}");
         $this->success('Capacitación finalizada correctamente.');
@@ -144,19 +170,44 @@ class CapacitacionesController extends Controller
     public function addParticipante(): void
     {
         $idCap  = (int) $this->getPost('id_capacitacion', 0);
-        $nombre = $this->getPost('nombre', '');
+        $nombre = trim((string) $this->getPost('nombre', ''));
+        $sexo   = (string) $this->getPost('sexo', '');
+        $edad   = (string) $this->getPost('edad', '');
+        $idOrg  = (int) $this->getPost('id_organizacion', 0);
+
         if (!$idCap)  { $this->error('ID de capacitación no válido.'); return; }
-        if (!$nombre) { $this->error('El nombre del participante es obligatorio.'); return; }
+        if (!$this->model->getDetalle($idCap)) {
+            $this->error('Capacitación no encontrada.', 404); return;
+        }
+        if ($nombre === '') { $this->error('El nombre del participante es obligatorio.'); return; }
+        if (mb_strlen($nombre) > 100) { $this->error('El nombre no puede exceder 100 caracteres.'); return; }
+        if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
+            $this->error('Sexo no válido.'); return;
+        }
+        if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
+            $this->error('La edad debe ser un número entre 1 y 120.'); return;
+        }
+        $dni = preg_replace('/\D/', '', (string) $this->getPost('dni', ''));
+        if ($dni !== '' && strlen($dni) !== 13) {
+            $this->error('El DNI debe tener 13 dígitos.'); return;
+        }
+        $telefono = preg_replace('/\D/', '', (string) $this->getPost('telefono', ''));
+        if ($telefono !== '' && strlen($telefono) !== 8) {
+            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+        }
+        if ($idOrg && !$this->model->organizacionValida($idOrg)) {
+            $this->error('La organización seleccionada no es válida.'); return;
+        }
 
         $data = [
             'id_capacitacion' => $idCap,
             'nombre'          => $nombre,
-            'apellido'        => $this->getPost('apellido', ''),
-            'dni'             => $this->getPost('dni', '') ?: null,
-            'edad'            => ($this->getPost('edad') ?: null),
-            'sexo'            => $this->getPost('sexo', '') ?: null,
-            'id_organizacion' => ($this->getPost('id_organizacion') ?: null),
-            'telefono'        => $this->getPost('telefono', ''),
+            'apellido'        => trim((string) $this->getPost('apellido', '')),
+            'dni'             => $dni ?: null,
+            'edad'            => ($edad !== '' ? (int) $edad : null),
+            'sexo'            => $sexo ?: null,
+            'id_organizacion' => $idOrg ?: null,
+            'telefono'        => $telefono !== '' ? substr($telefono, 0, 4) . '-' . substr($telefono, 4) : '',
         ];
         try {
             $newId = $this->model->agregarParticipante($data);
@@ -173,10 +224,13 @@ class CapacitacionesController extends Controller
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
         try {
-            $this->model->eliminarParticipante($id);
+            if (!$this->model->eliminarParticipante($id)) {
+                $this->error('Participante no encontrado.', 404); return;
+            }
             $this->logAction('DEL_PARTICIPANTE', 'capacitaciones', "PID:{$id}");
             $this->success('Participante eliminado.');
         } catch (Exception $e) {
+            error_log('CapacitacionesController::deleteParticipante — ' . $e->getMessage());
             $this->error('Error al eliminar participante.');
         }
     }
@@ -185,13 +239,17 @@ class CapacitacionesController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
+        $cap = $this->model->getDetalle($id);
+        if (!$cap) { $this->error('Capacitación no encontrada.', 404); return; }
         try {
+            // El FK de participantes es ON DELETE CASCADE: se eliminan junto con la capacitación
             $db = Database::programa();
             $db->execute("DELETE FROM sag_capacitaciones WHERE id_capacitacion=? AND id_proyecto=?", [$id, Database::proyectoId()]);
-            $this->logAction('ELIMINAR', 'capacitaciones', "ID:{$id}");
+            $this->logAction('ELIMINAR', 'capacitaciones', "ID:{$id} — {$cap['tema']} {$cap['fecha_capacitacion']} ({$cap['num_participantes']} participantes)");
             $this->success('Capacitación eliminada correctamente.');
         } catch (Exception $e) {
-            $this->error('Error al eliminar.');
+            error_log('CapacitacionesController::delete — ' . $e->getMessage());
+            $this->error('Error al eliminar la capacitación.');
         }
     }
 

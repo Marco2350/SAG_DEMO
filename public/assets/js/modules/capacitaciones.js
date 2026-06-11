@@ -7,21 +7,20 @@ $(function () {
     let tabla;
     let capActivaId   = 0;
     let capActivaData = null;
-    const modalVer    = new bootstrap.Modal('#modalVerCap');
+    const modalVer = new bootstrap.Modal('#modalVerCap');
+    const modalCap = new bootstrap.Modal('#modalCapacitacion');
 
-    // ── TABS ──────────────────────────────────────────
+    // ── TABS (listado | participantes) ────────────────
     window.switchTab = function (tab) {
-        ['nueva', 'participantes', 'listado'].forEach(t => {
+        ['listado', 'participantes'].forEach(t => {
             document.getElementById('tab-' + t).style.display = (t === tab) ? 'block' : 'none';
         });
         document.querySelectorAll('.mode-tab').forEach((btn, i) => {
             btn.classList.toggle('active',
-                (tab === 'nueva'         && i === 0) ||
-                (tab === 'participantes' && i === 1) ||
-                (tab === 'listado'       && i === 2)
+                (tab === 'listado'       && i === 0) ||
+                (tab === 'participantes' && i === 1)
             );
         });
-        if (tab === 'listado'       && !tabla) initTabla();
         if (tab === 'participantes') actualizarBanner();
     };
 
@@ -59,13 +58,25 @@ $(function () {
         });
     }
 
+    initTabla();
+
     $('#btnFiltrarCap').on('click', function () {
-        if (tabla) tabla.ajax.reload();
-        else { initTabla(); switchTab('listado'); }
+        tabla.ajax.reload();
+    });
+    $('#filtroDepCap, #filtroTemaCap, #filtroTecCap, #filtroEstadoCap').on('change', function () {
+        tabla.ajax.reload();
     });
 
-    // ── GUARDAR CAPACITACIÓN ──────────────────────────
+    // ── ABRIR MODAL NUEVA ─────────────────────────────
+    $('#btnNuevaCap, #btnCrearDesdeParticipantes').on('click', function () {
+        limpiarFormCap();
+        $('#modalCapTitulo').html('<i class="fas fa-plus-circle me-2"></i>Nueva Capacitación');
+        modalCap.show();
+    });
+
+    // ── GUARDAR CAPACITACIÓN (crear / editar) ─────────
     $('#btnGuardarCap').on('click', function () {
+        const esNueva = parseInt($('#capId').val() || '0') === 0;
         const dep   = $('#cDep').val();
         const mun   = $('#cMun').val();
         const tema  = $('#cTema').val();
@@ -86,17 +97,17 @@ $(function () {
                 SAG.btnLoading('#btnGuardarCap', false);
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 SAG.toast(res.message);
+                modalCap.hide();
+                tabla.ajax.reload(null, false);
                 activarCapacitacion(res.data.id);
-                switchTab('participantes');
-                if (tabla) tabla.ajax.reload();
+                // Tras crear, ir directo a agregar participantes
+                if (esNueva) switchTab('participantes');
             },
             error: function () { SAG.btnLoading('#btnGuardarCap', false); },
         });
     });
 
     // ── LIMPIAR FORMULARIO ────────────────────────────
-    $('#btnLimpiarCap').on('click', limpiarFormCap);
-
     function limpiarFormCap() {
         document.getElementById('formCapacitacion').reset();
         $('#capId').val(0);
@@ -112,6 +123,11 @@ $(function () {
     // ── CHANGE TEMA ───────────────────────────────────
     $('#cTema').on('change', function () {
         SAG.loadSubtemas($(this).val(), '#cSubtema');
+    });
+
+    // ── MÁSCARA DNI participante ──────────────────────
+    $('#pDni').on('input', function () {
+        this.value = SAG.formatDNI(this.value);
     });
 
     // ── ACTIVAR CAPACITACIÓN (para tab participantes) ─
@@ -446,22 +462,19 @@ $(function () {
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 const c = res.data.capacitacion;
                 limpiarFormCap();
-                switchTab('nueva');
-                setTimeout(function () {
-                    $('#capId').val(c.id_capacitacion);
-                    $('#cDep').val(c.id_departamento);
-                    SAG.loadMunicipios(c.id_departamento, '#cMun', c.id_municipio);
-                    $('#cAldea').val(c.aldea);
-                    $('#cLugar').val(c.lugar_especifico);
-                    $('#cFecha').val(c.fecha_capacitacion);
-                    $('#cTema').val(c.id_tema);
-                    SAG.loadSubtemas(c.id_tema, '#cSubtema', c.id_subtema);
-                    $('#cDuracion').val(c.duracion_horas);
-                    $('#cDescripcion').val(c.descripcion);
-                    $('#cTecnico').val(c.id_tecnico);
-                    window.scrollTo(0, 0);
-                    SAG.toast('Capacitación cargada para edición.', 'warning');
-                }, 100);
+                $('#modalCapTitulo').html('<i class="fas fa-pen me-2"></i>Editar Capacitación');
+                $('#capId').val(c.id_capacitacion);
+                $('#cDep').val(c.id_departamento);
+                SAG.loadMunicipios(c.id_departamento, '#cMun', c.id_municipio);
+                $('#cAldea').val(c.aldea);
+                $('#cLugar').val(c.lugar_especifico);
+                $('#cFecha').val(c.fecha_capacitacion);
+                $('#cTema').val(c.id_tema);
+                SAG.loadSubtemas(c.id_tema, '#cSubtema', c.id_subtema);
+                $('#cDuracion').val(c.duracion_horas);
+                $('#cDescripcion').val(c.descripcion);
+                $('#cTecnico').val(c.id_tecnico);
+                modalCap.show();
             },
         });
     }

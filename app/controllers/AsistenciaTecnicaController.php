@@ -41,6 +41,7 @@ class AsistenciaTecnicaController extends Controller
 
     public function listar(): void
     {
+        try {
         $filtros = [
             'id_departamento' => (int)    $this->getPost('id_departamento', 0),
             'id_tecnico'      => (int)    $this->getPost('id_tecnico', 0),
@@ -85,6 +86,10 @@ class AsistenciaTecnicaController extends Controller
         }, $rows);
 
         $this->json(['data' => $data]);
+        } catch (Exception $e) {
+            error_log('AsistenciaTecnicaController::listar — ' . $e->getMessage());
+            $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);
+        }
     }
 
     public function get(): void
@@ -103,39 +108,92 @@ class AsistenciaTecnicaController extends Controller
         $idMun    = (int) $this->getPost('id_municipio', 0);
         $idTema   = (int) $this->getPost('id_tema', 0);
         $idTec    = (int) $this->getPost('id_tecnico', 0);
-        $fecha    = $this->getPost('fecha_visita', '');
-        $productor= $this->getPost('productor_nombre', '');
+        $idOrg    = (int) $this->getPost('id_organizacion', 0);
+        $fecha    = (string) $this->getPost('fecha_visita', '');
+        $productor= trim((string) $this->getPost('productor_nombre', ''));
+        $sexo     = (string) $this->getPost('productor_sexo', '');
+        $edad     = (string) $this->getPost('productor_edad', '');
+        $area     = (string) $this->getPost('area_productiva', '');
+        $proxVis  = (string) $this->getPost('prox_visita', '');
 
         if (!$idTipoAT)  { $this->error('Seleccione el tipo de asistencia.');     return; }
+        if (!$this->model->tipoATValido($idTipoAT)) {
+            $this->error('El tipo de asistencia seleccionado no es válido.'); return;
+        }
         if (!$idDep)     { $this->error('Seleccione un departamento.');            return; }
         if (!$idMun)     { $this->error('Seleccione un municipio.');              return; }
+        if (!$this->model->municipioValido($idMun, $idDep)) {
+            $this->error('El municipio seleccionado no pertenece al departamento.'); return;
+        }
         if (!$idTema)    { $this->error('Seleccione el tema técnico.');           return; }
+        if (!$this->model->temaValido($idTema)) {
+            $this->error('El tema seleccionado no es válido.'); return;
+        }
         if (!$idTec)     { $this->error('Seleccione el técnico responsable.');    return; }
+        if (!$this->model->tecnicoValido($idTec)) {
+            $this->error('El técnico seleccionado no es válido.'); return;
+        }
         if (!$fecha)     { $this->error('Ingrese la fecha de la visita.');        return; }
-        if (!$productor) { $this->error('El nombre del productor es obligatorio.'); return; }
+        $dt = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$dt || $dt->format('Y-m-d') !== $fecha) {
+            $this->error('La fecha de la visita no es válida.'); return;
+        }
+        if ($proxVis !== '') {
+            $dtProx = DateTime::createFromFormat('Y-m-d', $proxVis);
+            if (!$dtProx || $dtProx->format('Y-m-d') !== $proxVis) {
+                $this->error('La fecha de próxima visita no es válida.'); return;
+            }
+            if ($proxVis < $fecha) {
+                $this->error('La próxima visita no puede ser anterior a la fecha de la visita.'); return;
+            }
+        }
+
+        // ── Productor ──
+        if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
+        if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
+        if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
+            $this->error('Sexo no válido.'); return;
+        }
+        if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
+            $this->error('La edad debe ser un número entre 1 y 120.'); return;
+        }
+        $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
+        if ($dni !== '' && strlen($dni) !== 13) {
+            $this->error('El DNI del productor debe tener 13 dígitos.'); return;
+        }
+        $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
+        if ($telefono !== '' && strlen($telefono) !== 8) {
+            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+        }
+        if ($area !== '' && (!is_numeric($area) || (float) $area < 0)) {
+            $this->error('El área productiva debe ser un número positivo.'); return;
+        }
+        if ($idOrg && !$this->model->organizacionValida($idOrg)) {
+            $this->error('La organización seleccionada no es válida.'); return;
+        }
 
         $data = [
             'id_tipo_at'         => $idTipoAT,
             'id_departamento'    => $idDep,
             'id_municipio'       => $idMun,
-            'aldea'              => $this->getPost('aldea', ''),
+            'aldea'              => trim((string) $this->getPost('aldea', '')),
             'id_tema'            => $idTema,
-            'id_subtema'         => ($this->getPost('id_subtema') ?: null),
-            'id_cultivo'         => ($this->getPost('id_cultivo') ?: null),
+            'id_subtema'         => ((int) $this->getPost('id_subtema', 0)) ?: null,
+            'id_cultivo'         => ((int) $this->getPost('id_cultivo', 0)) ?: null,
             'descripcion'        => $this->getPost('descripcion', ''),
             'fecha_visita'       => $fecha,
             'hora_visita'        => ($this->getPost('hora_visita') ?: null),
             'duracion'           => $this->getPost('duracion', ''),
             'id_tecnico'         => $idTec,
             'productor_nombre'   => $productor,
-            'productor_apellido' => $this->getPost('productor_apellido', ''),
-            'productor_dni'      => ($this->getPost('productor_dni') ?: null),
-            'productor_edad'     => ($this->getPost('productor_edad') ?: null),
-            'productor_sexo'     => ($this->getPost('productor_sexo') ?: null),
-            'id_organizacion'    => ($this->getPost('id_organizacion') ?: null),
-            'productor_telefono' => $this->getPost('productor_telefono', ''),
-            'area_productiva'    => ($this->getPost('area_productiva') ?: null),
-            'prox_visita'        => ($this->getPost('prox_visita') ?: null),
+            'productor_apellido' => trim((string) $this->getPost('productor_apellido', '')),
+            'productor_dni'      => $dni ?: null,
+            'productor_edad'     => ($edad !== '' ? (int) $edad : null),
+            'productor_sexo'     => $sexo ?: null,
+            'id_organizacion'    => $idOrg ?: null,
+            'productor_telefono' => $telefono !== '' ? substr($telefono, 0, 4) . '-' . substr($telefono, 4) : '',
+            'area_productiva'    => ($area !== '' ? (float) $area : null),
+            'prox_visita'        => $proxVis ?: null,
             'observaciones'      => $this->getPost('observaciones', ''),
             'updated_at'         => date('Y-m-d H:i:s'),
         ];
@@ -166,6 +224,7 @@ class AsistenciaTecnicaController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
+        if (!$this->model->getDetalle($id)) { $this->error('Asistencia técnica no encontrada.', 404); return; }
         $this->model->finalizar($id);
         $this->logAction('FINALIZAR', 'asistencias_tecnicas', "ID:{$id}");
         $this->success('Asistencia técnica finalizada correctamente.');
@@ -175,13 +234,16 @@ class AsistenciaTecnicaController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
+        $at = $this->model->getDetalle($id);
+        if (!$at) { $this->error('Asistencia técnica no encontrada.', 404); return; }
         try {
             $db = Database::programa();
             $db->execute("DELETE FROM sag_asistencias_tecnicas WHERE id_at=? AND id_proyecto=?", [$id, Database::proyectoId()]);
-            $this->logAction('ELIMINAR', 'asistencias_tecnicas', "ID:{$id}");
+            $this->logAction('ELIMINAR', 'asistencias_tecnicas', "ID:{$id} — {$at['productor_nombre']} {$at['fecha_visita']}");
             $this->success('Asistencia técnica eliminada correctamente.');
         } catch (Exception $e) {
-            $this->error('Error al eliminar.');
+            error_log('AsistenciaTecnicaController::delete — ' . $e->getMessage());
+            $this->error('Error al eliminar la asistencia técnica.');
         }
     }
 

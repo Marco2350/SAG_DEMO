@@ -28,40 +28,47 @@ class BeneficiariosController extends Controller
 
     public function listar(): void
     {
-        $filtros = [
-            'id_organizacion' => (int) $this->getPost('id_organizacion', 0),
-            'id_departamento' => (int) $this->getPost('id_departamento', 0),
-            'sexo'            => $this->getPost('sexo', ''),
-        ];
-        $rows = $this->model->getListado($filtros);
-
-        $data = array_map(function ($b) {
-            $sexoIcon = $b['sexo'] === 'M'
-                ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>'
-                : '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>';
-
-            $acciones = '
-                <button class="btn-outline btn-sm-icon btn-ver" data-id="' . $b['id_beneficiario'] . '" title="Ver">
-                    <i class="fas fa-eye"></i></button>
-                <button class="btn-outline btn-sm-icon btn-editar ms-1" data-id="' . $b['id_beneficiario'] . '" title="Editar">
-                    <i class="fas fa-pen"></i></button>
-                <button class="btn-danger-sm ms-1 btn-eliminar" data-id="' . $b['id_beneficiario'] . '" title="Eliminar">
-                    <i class="fas fa-trash"></i></button>';
-
-            return [
-                'id_beneficiario' => $b['id_beneficiario'],
-                'nombre_completo' => htmlspecialchars($b['nombre_completo']),
-                'dni'             => $b['dni']  ?? '—',
-                'edad'            => $b['edad'] ?? '—',
-                'sexo'            => $sexoIcon,
-                'organizacion'    => htmlspecialchars($b['organizacion'] ?? '—'),
-                'ubicacion'       => htmlspecialchars($b['departamento'] . ' / ' . $b['municipio']),
-                'telefono'        => $b['telefono'] ?? '—',
-                'acciones'        => $acciones,
+        try {
+            $filtros = [
+                'id_organizacion' => (int) $this->getPost('id_organizacion', 0),
+                'id_departamento' => (int) $this->getPost('id_departamento', 0),
+                'sexo'            => $this->getPost('sexo', ''),
             ];
-        }, $rows);
+            $rows = $this->model->getListado($filtros);
 
-        $this->json(['data' => $data]);
+            $data = array_map(function ($b) {
+                $sexoIcon = match ($b['sexo']) {
+                    'M'     => '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>',
+                    'F'     => '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>',
+                    default => '—',
+                };
+
+                $acciones = '
+                    <button class="btn-outline btn-sm-icon btn-ver" data-id="' . $b['id_beneficiario'] . '" title="Ver">
+                        <i class="fas fa-eye"></i></button>
+                    <button class="btn-outline btn-sm-icon btn-editar ms-1" data-id="' . $b['id_beneficiario'] . '" title="Editar">
+                        <i class="fas fa-pen"></i></button>
+                    <button class="btn-danger-sm ms-1 btn-eliminar" data-id="' . $b['id_beneficiario'] . '" data-nombre="' . htmlspecialchars($b['nombre_completo'], ENT_QUOTES) . '" title="Eliminar">
+                        <i class="fas fa-trash"></i></button>';
+
+                return [
+                    'id_beneficiario' => $b['id_beneficiario'],
+                    'nombre_completo' => htmlspecialchars($b['nombre_completo']),
+                    'dni'             => htmlspecialchars($b['dni'] ?: '—'),
+                    'edad'            => $b['edad'] ?? '—',
+                    'sexo'            => $sexoIcon,
+                    'organizacion'    => htmlspecialchars($b['organizacion'] ?: '—'),
+                    'ubicacion'       => htmlspecialchars($b['departamento'] . ' / ' . $b['municipio']),
+                    'telefono'        => htmlspecialchars($b['telefono'] ?: '—'),
+                    'acciones'        => $acciones,
+                ];
+            }, $rows);
+
+            $this->json(['data' => $data]);
+        } catch (Exception $e) {
+            error_log('BeneficiariosController::listar — ' . $e->getMessage());
+            $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);
+        }
     }
 
     public function get(): void
@@ -75,34 +82,75 @@ class BeneficiariosController extends Controller
     public function save(): void
     {
         $id       = (int) $this->getPost('id_beneficiario', 0);
-        $nombre   = $this->getPost('nombre', '');
-        $apellido = $this->getPost('apellido', '');
-        $sexo     = $this->getPost('sexo', '');
+        $nombre   = trim((string) $this->getPost('nombre', ''));
+        $apellido = trim((string) $this->getPost('apellido', ''));
+        $sexo     = (string) $this->getPost('sexo', '');
         $idDep    = (int) $this->getPost('id_departamento', 0);
         $idMun    = (int) $this->getPost('id_municipio', 0);
-        $dni      = $this->getPost('dni', '');
+        $idOrg    = (int) $this->getPost('id_organizacion', 0);
+        $aldea    = trim((string) $this->getPost('aldea', ''));
 
-        if (empty($nombre))   { $this->error('El nombre es obligatorio.');   return; }
-        if (empty($apellido)) { $this->error('El apellido es obligatorio.'); return; }
-        if (empty($sexo))     { $this->error('Seleccione el sexo.');         return; }
-        if (!$idDep)          { $this->error('Seleccione un departamento.'); return; }
-        if (!$idMun)          { $this->error('Seleccione un municipio.');    return; }
+        // ── Datos personales ──
+        if ($nombre === '')             { $this->error('El nombre es obligatorio.'); return; }
+        if (mb_strlen($nombre) > 100)   { $this->error('El nombre no puede exceder 100 caracteres.'); return; }
+        if ($apellido === '')           { $this->error('El apellido es obligatorio.'); return; }
+        if (mb_strlen($apellido) > 100) { $this->error('El apellido no puede exceder 100 caracteres.'); return; }
+        if (!in_array($sexo, BeneficiarioModel::SEXOS, true)) {
+            $this->error('Seleccione el sexo.'); return;
+        }
 
-        if (!empty($dni) && $this->model->existeDNI($dni, $id)) {
+        // DNI opcional, pero si viene debe tener 13 dígitos (formato HN) y ser único
+        $dni = preg_replace('/\D/', '', (string) $this->getPost('dni', ''));
+        if ($dni !== '' && strlen($dni) !== 13) {
+            $this->error('El DNI debe tener 13 dígitos.'); return;
+        }
+        if ($dni !== '' && $this->model->existeDNI($dni, $id)) {
             $this->error("El DNI {$dni} ya está registrado."); return;
+        }
+
+        // Fecha de nacimiento opcional: válida, no futura, año razonable
+        $fechaNac = (string) $this->getPost('fecha_nacimiento', '');
+        if ($fechaNac !== '') {
+            $dt = DateTime::createFromFormat('Y-m-d', $fechaNac);
+            if (!$dt || $dt->format('Y-m-d') !== $fechaNac) {
+                $this->error('La fecha de nacimiento no es válida.'); return;
+            }
+            if ($fechaNac > date('Y-m-d')) {
+                $this->error('La fecha de nacimiento no puede ser futura.'); return;
+            }
+            if ((int) $dt->format('Y') < 1900) {
+                $this->error('La fecha de nacimiento no es válida.'); return;
+            }
+        }
+
+        // Teléfono opcional: 8 dígitos (formato HN)
+        $telefono = preg_replace('/\D/', '', (string) $this->getPost('telefono', ''));
+        if ($telefono !== '' && strlen($telefono) !== 8) {
+            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+        }
+
+        // ── Ubicación y organización ──
+        if (!$idDep) { $this->error('Seleccione un departamento.'); return; }
+        if (!$idMun) { $this->error('Seleccione un municipio.');    return; }
+        if (!$this->model->municipioValido($idMun, $idDep)) {
+            $this->error('El municipio seleccionado no pertenece al departamento.'); return;
+        }
+        if (mb_strlen($aldea) > 200) { $this->error('La aldea no puede exceder 200 caracteres.'); return; }
+        if ($idOrg && !$this->model->organizacionValida($idOrg)) {
+            $this->error('La organización seleccionada no es válida.'); return;
         }
 
         $data = [
             'nombre'           => $nombre,
             'apellido'         => $apellido,
             'dni'              => $dni ?: null,
-            'fecha_nacimiento' => $this->getPost('fecha_nacimiento') ?: null,
+            'fecha_nacimiento' => $fechaNac ?: null,
             'sexo'             => $sexo,
             'id_departamento'  => $idDep,
             'id_municipio'     => $idMun,
-            'aldea'            => $this->getPost('aldea', ''),
-            'id_organizacion'  => ($this->getPost('id_organizacion') ?: null),
-            'telefono'         => $this->getPost('telefono', ''),
+            'aldea'            => $aldea,
+            'id_organizacion'  => $idOrg ?: null,
+            'telefono'         => $telefono !== '' ? substr($telefono, 0, 4) . '-' . substr($telefono, 4) : '',
             'updated_at'       => date('Y-m-d H:i:s'),
         ];
         if ($id === 0) {
@@ -131,10 +179,15 @@ class BeneficiariosController extends Controller
         $handle = fopen($_FILES['archivo']['tmp_name'], 'r');
         if (!$handle) { $this->error('No se pudo leer el archivo.'); return; }
 
-        $header    = array_map('trim', fgetcsv($handle, 1000, ','));
+        $header = fgetcsv($handle, 1000, ',');
+        if (!$header) { fclose($handle); $this->error('El archivo no tiene encabezado.'); return; }
+        $header = array_map('trim', $header);
+
         $registros = [];
         while (($row = fgetcsv($handle, 1000, ',')) !== false) {
             if (count($row) < 2) continue;
+            // Normalizar filas con menos/más columnas que el encabezado
+            $row = array_pad(array_slice($row, 0, count($header)), count($header), '');
             $registros[] = array_combine($header, array_map('trim', $row));
         }
         fclose($handle);
@@ -159,8 +212,10 @@ class BeneficiariosController extends Controller
     {
         $id = (int) $this->getPost('id', 0);
         if (!$id) { $this->error('ID no válido.'); return; }
+        $b = $this->model->getDetalle($id);
+        if (!$b) { $this->error('Beneficiario no encontrado.', 404); return; }
         $this->model->update($id, ['estado' => 'inactivo', 'updated_at' => date('Y-m-d H:i:s')]);
-        $this->logAction('ELIMINAR', 'beneficiarios', "ID:{$id}");
+        $this->logAction('ELIMINAR', 'beneficiarios', "ID:{$id} — {$b['nombre']} {$b['apellido']}");
         $this->success('Beneficiario eliminado correctamente.');
     }
 }

@@ -65,6 +65,12 @@
           <option value="pendiente">Pendiente</option>
           <option value="inactiva">Inactiva</option>
         </select>
+        <select class="fs" id="filtroTipo" style="width:160px;padding:6px 10px;">
+          <option value="">Todos los tipos</option>
+          <?php foreach ($tipos as $t): ?>
+          <option value="<?= htmlspecialchars($t['valor']) ?>"><?= htmlspecialchars($t['nombre']) ?></option>
+          <?php endforeach; ?>
+        </select>
         <select class="fs" id="filtroDep" style="width:180px;padding:6px 10px;">
           <option value="">Todos los departamentos</option>
           <?php foreach ($departamentos as $dep): ?>
@@ -122,17 +128,9 @@
               <label class="form-label-b">Tipo de Organización <span class="req">*</span></label>
               <select class="fs" id="orgTipo" name="tipo" required>
                 <option value="">— Seleccione tipo —</option>
-                <?php
-                // R-013: Asegurar que "Caja Rural" esté disponible
-                $tieneCajaRural = false;
-                foreach ($tipos as $t):
-                  if (stripos($t['nombre'], 'caja rural') !== false) $tieneCajaRural = true;
-                ?>
-                <option value="<?= $t['valor'] ?>"><?= $t['nombre'] ?></option>
+                <?php foreach ($tipos as $t): ?>
+                <option value="<?= htmlspecialchars($t['valor']) ?>"><?= htmlspecialchars($t['nombre']) ?></option>
                 <?php endforeach; ?>
-                <?php if (!$tieneCajaRural): ?>
-                  <option value="caja_rural">Caja Rural</option>
-                <?php endif; ?>
               </select>
             </div>
           </div>
@@ -195,7 +193,7 @@
             <!-- R-016: DNI del representante + indicador RNP -->
             <div class="col-md-4">
               <label class="form-label-b">DNI / Identidad <span class="req">*</span></label>
-              <input type="text" class="fc" id="orgRepDni" name="representante_dni" placeholder="0000-0000-00000" maxlength="15" required/>
+              <input type="text" class="fc" id="orgRepDni" name="representante_dni" placeholder="0000-0000-00000" maxlength="15" inputmode="numeric" required/>
               <small id="orgRepRnpStatus" style="color:#888;font-size:.7rem;">Validable contra RNP (cuando esté disponible)</small>
             </div>
             <div class="col-md-5">
@@ -215,7 +213,7 @@
           <div class="row g-3 mb-2">
             <div class="col-md-6">
               <label class="form-label-b">Teléfono</label>
-              <input type="text" class="fc" id="orgTelefono" name="telefono" placeholder="9999-9999"/>
+              <input type="text" class="fc" id="orgTelefono" name="telefono" placeholder="9999-9999" maxlength="9" inputmode="numeric"/>
             </div>
             <div class="col-md-6">
               <label class="form-label-b">Correo Electrónico</label>

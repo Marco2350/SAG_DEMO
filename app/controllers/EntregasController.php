@@ -522,7 +522,7 @@ class EntregasController extends Controller
             ]);
         } catch (\Throwable $e) {
             error_log('sincronizarTrazaragro EX: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-            $this->error('Error interno: ' . $e->getMessage() . ' (línea ' . $e->getLine() . ' de ' . basename($e->getFile()) . ')');
+            $this->error('Error interno al sincronizar con Trazaragro. Revise el log del servidor.');
         }
     }
 
@@ -703,8 +703,9 @@ class EntregasController extends Controller
         try {
             $db = Database::programa();
         } catch (\Throwable $e) {
+            error_log('EntregasController::exportar — ' . $e->getMessage());
             http_response_code(500);
-            echo 'Error: ' . $e->getMessage();
+            echo 'Error de conexión con la base de datos.';
             exit;
         }
 
@@ -792,8 +793,9 @@ class EntregasController extends Controller
         try {
             $db = Database::programa();
         } catch (\Throwable $e) {
+            error_log('EntregasController::acta — ' . $e->getMessage());
             http_response_code(500);
-            echo 'Error: ' . $e->getMessage();
+            echo 'Error de conexión con la base de datos.';
             exit;
         }
 
@@ -870,7 +872,8 @@ class EntregasController extends Controller
             }
             $this->success('OK', ['movimiento' => $row]);
         } catch (\Throwable $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('EntregasController::detalle — ' . $e->getMessage());
+            $this->error('Error al cargar el detalle del movimiento.');
         }
     }
 
@@ -956,7 +959,8 @@ class EntregasController extends Controller
             $this->logAction('APROBAR_MOV', 'entregas', "#{$id}");
             $this->success("Movimiento #{$id} marcado como entregado.", ['id' => $id]);
         } catch (\Throwable $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('EntregasController::aprobar — ' . $e->getMessage());
+            $this->error('Error al marcar el movimiento como entregado.');
         }
     }
 
@@ -976,7 +980,8 @@ class EntregasController extends Controller
             $this->logAction('OBSERVAR_MOV', 'entregas', "#{$id} obs={$obs}");
             $this->success("Movimiento #{$id} observado.", ['id' => $id]);
         } catch (\Throwable $e) {
-            $this->error('Error: ' . $e->getMessage());
+            error_log('EntregasController::rechazar — ' . $e->getMessage());
+            $this->error('Error al observar el movimiento.');
         }
     }
 }

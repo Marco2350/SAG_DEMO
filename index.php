@@ -272,6 +272,12 @@ $router->post('/mantenimiento/cultivos/delete','MantenimientoController','delete
 $router->post('/mantenimiento/tipoat/save',  'MantenimientoController', 'saveTipoAT');
 $router->post('/mantenimiento/tipoat/delete','MantenimientoController', 'deleteTipoAT');
 
+// ── Parametrización (catálogos del programa) ─────
+$router->get('/catalogos/tecnicos',          'CatalogosController', 'tecnicos');
+$router->get('/catalogos/temas',             'CatalogosController', 'temas');
+$router->get('/catalogos/cultivos',          'CatalogosController', 'cultivos');
+$router->get('/catalogos/tiposat',           'CatalogosController', 'tiposat');
+
 // ── Presupuesto / Ejecución Financiera ───────────
 $router->get('/presupuesto',                     'PresupuestoController', 'index');
 $router->post('/presupuesto/save',               'PresupuestoController', 'savePresupuesto');

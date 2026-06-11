@@ -90,12 +90,33 @@ function navActive(string $segment): string {
     <span class="nav-label">Ejecución Presupuestaria</span>
   </a>
 
-  <!-- Sistema -->
+  <!-- Parametrización y Sistema (solo roles con acceso a catálogos — ver MantenimientoController::ROLES_CATALOGOS) -->
+  <?php $rolSlug = $_SESSION['user']['rol_slug'] ?? '';
+        if (in_array($rolSlug, ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'], true)): ?>
+  <div class="nav-section-label">Parametrización</div>
+  <a class="nav-item-s <?= navActive('/catalogos/tecnicos') ?>" href="<?= BASE_URL ?>/catalogos/tecnicos">
+    <i class="fas fa-user-tie"></i>
+    <span class="nav-label">Técnicos</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/catalogos/temas') ?>" href="<?= BASE_URL ?>/catalogos/temas">
+    <i class="fas fa-tags"></i>
+    <span class="nav-label">Temas y Subtemas</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/catalogos/cultivos') ?>" href="<?= BASE_URL ?>/catalogos/cultivos">
+    <i class="fas fa-seedling"></i>
+    <span class="nav-label">Cultivos y Rubros</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/catalogos/tiposat') ?>" href="<?= BASE_URL ?>/catalogos/tiposat">
+    <i class="fas fa-list-check"></i>
+    <span class="nav-label">Tipos de Asistencia</span>
+  </a>
+
   <div class="nav-section-label">Sistema</div>
   <a class="nav-item-s <?= navActive('/mantenimiento') ?>" href="<?= BASE_URL ?>/mantenimiento">
     <i class="fas fa-gears"></i>
     <span class="nav-label">Mantenimiento</span>
   </a>
+  <?php endif; ?>
 
   <!-- Footer del sidebar -->
   <div class="sidebar-footer">

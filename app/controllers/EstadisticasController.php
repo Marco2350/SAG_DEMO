@@ -114,7 +114,7 @@ class EstadisticasController extends Controller
             ]);
         } catch (Exception $e) {
             error_log('EstadisticasController::datos — ' . $e->getMessage());
-            $this->json(['success' => false, 'message' => $e->getMessage()]);
+            $this->json(['success' => false, 'message' => 'Error al cargar las estadísticas.']);
         }
     }
 }
