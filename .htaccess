@@ -1,5 +1,6 @@
 Options -Indexes
 RewriteEngine On
+RewriteBase /SAG_DEMO/
 
 # Bloquear acceso directo a directorios sensibles
 RewriteRule ^(core|config|app/models|app/controllers|logs)/ - [F,L]
