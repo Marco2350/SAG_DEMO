@@ -51,7 +51,30 @@ const SAG = (function () {
 
   // ──────────────────────────────────────────────────
   //  AJAX helper (con CSRF automático en POST)
+  //  Los fallos se traducen a mensajes accionables según el estado HTTP.
   // ──────────────────────────────────────────────────
+  function ajaxErrorMsg(xhr) {
+    // Si el servidor envió un mensaje JSON (p.ej. 419 CSRF), usarlo
+    const srv = xhr && xhr.responseJSON && xhr.responseJSON.message;
+    switch (xhr && xhr.status) {
+      case 0:   return 'Sin conexión con el servidor. Verifique su red e intente de nuevo.';
+      case 401: return srv || 'Su sesión expiró. Vuelva a iniciar sesión.';
+      case 403: return srv || 'No tiene permisos para realizar esta acción.';
+      case 404: return 'No se encontró el recurso solicitado. Recargue la página.';
+      case 419: return srv || 'Su sesión de seguridad caducó. Recargue la página (F5) e intente de nuevo.';
+      case 500: return 'Ocurrió un error en el servidor. Si persiste, contacte al administrador.';
+      default:  return 'Error de conexión. Intente nuevamente.';
+    }
+  }
+
+  function handleAjaxError(xhr) {
+    toast(ajaxErrorMsg(xhr), 'error');
+    // Sesión vencida: llevar al login tras dar tiempo de leer el aviso
+    if (xhr && xhr.status === 401) {
+      setTimeout(function () { window.location.href = BASE + '/auth/login?timeout=1'; }, 1800);
+    }
+  }
+
   function ajax(url, data, callback, method) {
     // Soporta dos formas de llamada:
     // 1) SAG.ajax('/ruta', data, callback)
@@ -71,10 +94,10 @@ const SAG = (function () {
         data:    data,
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': CSRF },
         success: function (res) { if (typeof callback === 'function') callback(res); },
-        error:   function () {
-          toast('Error de conexión. Intente nuevamente.', 'error');
-          if (typeof errCb  === 'function') errCb();
-          if (typeof callback === 'function') callback({ success: false, message: 'Error de conexión.' });
+        error:   function (xhr) {
+          handleAjaxError(xhr);
+          if (typeof errCb  === 'function') errCb(xhr);
+          if (typeof callback === 'function') callback({ success: false, message: ajaxErrorMsg(xhr) });
         }
       });
     }
@@ -88,9 +111,9 @@ const SAG = (function () {
       success: function (res) {
         if (typeof callback === 'function') callback(res);
       },
-      error: function () {
-        toast('Error de conexión. Intente nuevamente.', 'error');
-        if (typeof callback === 'function') callback({ success: false, message: 'Error de conexión.' });
+      error: function (xhr) {
+        handleAjaxError(xhr);
+        if (typeof callback === 'function') callback({ success: false, message: ajaxErrorMsg(xhr) });
       }
     });
   }
@@ -103,23 +126,35 @@ const SAG = (function () {
 
   // ──────────────────────────────────────────────────
   //  TOAST
+  //  Éxitos se ocultan rápido; errores y advertencias dan
+  //  más tiempo de lectura y siempre pueden cerrarse a mano.
   // ──────────────────────────────────────────────────
   let _toastTimer;
+  const TOAST_MS = { success: 3500, warning: 5500, error: 7000 };
+
   function toast(msg, tipo) {
-    tipo = tipo || 'success';
+    tipo = TOAST_MS[tipo] ? tipo : 'success';
     let el = document.getElementById('sag-toast');
     if (!el) {
       el = document.createElement('div');
       el.id = 'sag-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
       document.body.appendChild(el);
     }
-    el.className = 'sag-toast sag-toast-' + tipo;
+    el.className = 'sag-toast ' + tipo;
     el.innerHTML =
       '<i class="fas ' + (tipo === 'success' ? 'fa-circle-check' : tipo === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-xmark') + '"></i>' +
-      '<span>' + msg + '</span>';
+      '<span></span>' +
+      '<button type="button" class="st-close" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>';
+    el.querySelector('span').textContent = msg;
+    el.querySelector('.st-close').onclick = function () {
+      clearTimeout(_toastTimer);
+      el.classList.remove('show');
+    };
     el.classList.add('show');
     clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(function () { el.classList.remove('show'); }, 3800);
+    _toastTimer = setTimeout(function () { el.classList.remove('show'); }, TOAST_MS[tipo]);
   }
 
   // ──────────────────────────────────────────────────
@@ -130,26 +165,48 @@ const SAG = (function () {
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'sag-confirm';
+      overlay.setAttribute('role', 'alertdialog');
+      overlay.setAttribute('aria-modal', 'true');
       overlay.innerHTML =
         '<div class="sc-box">' +
           '<div class="sc-icon"><i class="fas fa-triangle-exclamation"></i></div>' +
           '<p class="sc-msg"></p>' +
           '<div class="sc-btns">' +
-            '<button class="sc-no">Cancelar</button>' +
-            '<button class="sc-yes">Confirmar</button>' +
+            '<button type="button" class="sc-no">Cancelar</button>' +
+            '<button type="button" class="sc-yes">Confirmar</button>' +
           '</div>' +
         '</div>';
       document.body.appendChild(overlay);
     }
     overlay.querySelector('.sc-msg').textContent = msg;
-    overlay.style.display = 'flex';
+    overlay.classList.add('show');
 
     const yesBtn = overlay.querySelector('.sc-yes');
     const noBtn  = overlay.querySelector('.sc-no');
+    const prevFocus = document.activeElement;
 
-    function cleanup() { overlay.style.display = 'none'; yesBtn.onclick = null; noBtn.onclick = null; }
+    function cleanup() {
+      overlay.classList.remove('show');
+      yesBtn.onclick = null; noBtn.onclick = null; overlay.onclick = null;
+      document.removeEventListener('keydown', onKey);
+      if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { cleanup(); if (typeof onNo === 'function') onNo(); }
+      if (e.key === 'Enter' && document.activeElement !== noBtn) {
+        cleanup(); if (typeof onYes === 'function') onYes();
+      }
+    }
+
     yesBtn.onclick = function () { cleanup(); if (typeof onYes === 'function') onYes(); };
     noBtn.onclick  = function () { cleanup(); if (typeof onNo  === 'function') onNo();  };
+    // Clic en el fondo = cancelar (el clic dentro de la caja no cierra)
+    overlay.onclick = function (e) {
+      if (e.target === overlay) { cleanup(); if (typeof onNo === 'function') onNo(); }
+    };
+    document.addEventListener('keydown', onKey);
+    // Foco inicial en Cancelar: la acción destructiva exige intención
+    noBtn.focus();
   }
 
   // ──────────────────────────────────────────────────
@@ -229,6 +286,7 @@ const SAG = (function () {
         });
       }
       sel.disabled = false;
+      if (useJq && $(sel).data('select2')) $(sel).trigger('change');
     });
   }
 
@@ -268,13 +326,30 @@ const SAG = (function () {
 
   // ──────────────────────────────────────────────────
   //  Init Select2 helper
+  //  parent: selector del modal contenedor — obligatorio dentro de
+  //  modales Bootstrap para que el dropdown no quede atrapado/recortado.
   // ──────────────────────────────────────────────────
-  function initSelect2(selector, placeholder) {
-    $(selector).select2({
+  function initSelect2(selector, placeholder, parent) {
+    if (typeof $.fn.select2 === 'undefined') return; // CDN no disponible: el select nativo sigue funcionando
+    const opts = {
       theme: 'bootstrap-5',
       placeholder: placeholder || 'Seleccione...',
       allowClear: true,
-      width: '100%'
+      width: '100%',
+      language: {
+        noResults:  function () { return 'Sin resultados'; },
+        searching:  function () { return 'Buscando…'; },
+      },
+    };
+    if (parent) opts.dropdownParent = $(parent);
+    $(selector).select2(opts);
+  }
+
+  // Refresca la vista de los select2 de un contenedor tras setear
+  // valores por código (.val() no actualiza el control visualmente).
+  function refreshSelect2(container) {
+    $(container).find('select').each(function () {
+      if ($(this).data('select2')) $(this).trigger('change');
     });
   }
 
@@ -291,6 +366,7 @@ const SAG = (function () {
     formatTel: formatTel,
     dataTable: dataTable,
     initSelect2: initSelect2,
+    refreshSelect2: refreshSelect2,
     BASE: BASE,
     BASE_URL: BASE,
     CSRF: CSRF,

@@ -6,11 +6,11 @@
 <div class="content">
 
   <!-- Breadcrumb del módulo activo -->
-  <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:#888;margin-bottom:8px;">
+  <div class="crumb-bar">
     <i class="fas fa-house"></i>
     <span>Inicio</span>
-    <i class="fas fa-chevron-right" style="font-size:.65rem;color:#bbb;"></i>
-    <span style="background:var(--primario);color:#fff;padding:3px 12px;border-radius:14px;font-weight:700;font-size:.74rem;letter-spacing:.3px;">
+    <i class="fas fa-chevron-right crumb-sep"></i>
+    <span class="crumb-pill">
       <i class="fas fa-graduation-cap"></i> Capacitaciones
     </span>
   </div>
@@ -113,11 +113,11 @@
 
   <!-- TAB PARTICIPANTES -->
   <div id="tab-participantes" style="display:none;">
-    <div id="capActivaBanner" style="display:none;background:linear-gradient(135deg,#e8edf5,#d6dff0);border:1px solid #b0bce0;border-radius:10px;padding:12px 18px;margin-bottom:16px;align-items:center;gap:12px;">
+    <div id="capActivaBanner" style="display:none;background:var(--tema-light);border:1px solid var(--borde);border-radius:10px;padding:12px 18px;margin-bottom:16px;align-items:center;gap:12px;">
       <i class="fas fa-graduation-cap" style="color:var(--primario);font-size:1.3rem;"></i>
       <div style="flex:1;">
-        <div style="font-weight:700;font-size:.88rem;color:#1a2d4e;" id="bannerCapNombre">—</div>
-        <div style="font-size:.75rem;color:#4a5c7a;" id="bannerCapInfo">—</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--texto);" id="bannerCapNombre">—</div>
+        <div style="font-size:.75rem;color:var(--texto-sec);" id="bannerCapInfo">—</div>
       </div>
       <span id="bannerPartCount" class="badge-count">0 participantes</span>
       <button type="button" class="btn-outline btn-sm-icon" id="btnFinalizarCap" title="Finalizar">

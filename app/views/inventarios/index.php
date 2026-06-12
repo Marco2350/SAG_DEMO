@@ -14,7 +14,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
     margin-bottom:18px; width:fit-content; }
   .inv-tab { padding:10px 22px; font-size:.88rem; font-weight:600; color:var(--texto-sec);
     background:transparent; border:none; cursor:pointer; border-radius:8px;
-    transition:all .15s; display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; }
+    transition:all .15s; display:flex; align-items:center; gap:8px; font-family:var(--font-sans); }
   .inv-tab.active { background:#fff; color:var(--primario); box-shadow:var(--shadow-xs); }
   .inv-tab:not(.active):hover { color:var(--texto); }
   .inv-panel { display:none; }
@@ -30,10 +30,10 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
     color:var(--primario); display:flex; align-items:center; justify-content:center;
     font-size:.78rem; transition:transform .2s; }
   .cron-row.open .cron-toggle { transform:rotate(90deg); }
-  .cron-codigo { font-family:'Poppins','Inter',sans-serif; font-weight:700; font-size:1rem;
+  .cron-codigo { font-family:var(--font-sans); font-weight:700; font-size:1rem;
     color:var(--texto); letter-spacing:-.01em; }
   .cron-meta { font-size:.82rem; color:var(--texto-sec); margin-top:3px; }
-  .cron-monto { font-family:'Poppins','Inter',sans-serif; font-size:1.15rem; font-weight:700;
+  .cron-monto { font-family:var(--font-sans); font-size:1.15rem; font-weight:700;
     color:var(--primario); letter-spacing:-.01em; }
   .cron-progress-wrap { width:160px; }
   .cron-progress-lbl { display:flex; justify-content:space-between; font-size:.72rem;
@@ -53,7 +53,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
 
   /* Badges estado línea */
   .lin-badge { display:inline-block; padding:4px 12px; border-radius:999px;
-    font-size:.7rem; font-weight:700; font-family:'Inter',sans-serif; }
+    font-size:.7rem; font-weight:700; font-family:var(--font-sans); }
   .lb-pendiente { background:#fef3c7; color:#92400e; }
   .lb-parcial   { background:#fed7aa; color:#9a3412; }
   .lb-recibida  { background:#dcfce7; color:#166534; }
@@ -61,7 +61,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
   .lb-cancelada { background:#e5e7eb; color:#374151; }
 
   .cron-estado-pill { display:inline-block; padding:5px 14px; border-radius:999px;
-    font-size:.74rem; font-weight:700; font-family:'Inter',sans-serif; }
+    font-size:.74rem; font-weight:700; font-family:var(--font-sans); }
   .cep-vigente    { background:var(--tema-light); color:var(--primario); }
   .cep-borrador   { background:#fef3c7; color:#92400e; }
   .cep-finalizado { background:#e0e7ff; color:#3730a3; }
@@ -71,7 +71,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
   .btn-recibir { background:var(--primario); color:#fff; border:none; padding:6px 14px;
     border-radius:8px; font-size:.78rem; font-weight:600; cursor:pointer;
     display:inline-flex; align-items:center; gap:6px; transition:background .15s;
-    font-family:'Inter',sans-serif; }
+    font-family:var(--font-sans); }
   .btn-recibir:hover { background:var(--primario-oscuro); }
   .btn-recibir:disabled { background:var(--texto-mute); cursor:not-allowed; }
 
@@ -84,7 +84,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
     box-shadow:var(--shadow-lg); display:flex; flex-direction:column; overflow:hidden; }
   .inv-modal-head { padding:20px 28px; border-bottom:1px solid var(--borde-suave);
     display:flex; justify-content:space-between; align-items:center; }
-  .inv-modal-head h5 { font-family:'Poppins','Inter',sans-serif; font-size:1.15rem;
+  .inv-modal-head h5 { font-family:var(--font-sans); font-size:1.15rem;
     font-weight:700; margin:0; color:var(--texto); letter-spacing:-.015em; }
   .inv-modal-body { padding:24px 28px; max-height:70vh; overflow-y:auto; }
   .inv-modal-foot { padding:18px 28px; border-top:1px solid var(--borde-suave);
@@ -102,7 +102,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
   .lineas-table .btn-rm:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
   .btn-add-linea { background:var(--tema-light); color:var(--primario); border:1.5px dashed var(--primario);
     padding:10px 16px; border-radius:10px; font-size:.84rem; font-weight:600; cursor:pointer;
-    margin-top:10px; display:inline-flex; align-items:center; gap:8px; font-family:'Inter',sans-serif;
+    margin-top:10px; display:inline-flex; align-items:center; gap:8px; font-family:var(--font-sans);
     transition:background .15s; }
   .btn-add-linea:hover { background:var(--primario); color:#fff; }
 
@@ -494,7 +494,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
       <input type="hidden" id="recLineaId">
       <div style="background:var(--tema-light);padding:14px 18px;border-radius:12px;margin-bottom:18px;border-left:4px solid var(--primario);">
         <div style="font-size:.75rem;color:var(--texto-sec);font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Producto</div>
-        <div id="recProducto" style="font-family:'Poppins',sans-serif;font-weight:700;font-size:1.05rem;color:var(--primario);margin-top:3px;"></div>
+        <div id="recProducto" style="font-family:var(--font-sans);font-weight:700;font-size:1.05rem;color:var(--primario);margin-top:3px;"></div>
         <div style="font-size:.78rem;color:var(--texto-sec);margin-top:4px;">Pendiente por recibir: <strong id="recPendiente">0</strong> unidades</div>
       </div>
       <div class="row g-3">

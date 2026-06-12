@@ -33,6 +33,9 @@ function navActive(string $segment): string {
   </div>
   <?php endif; ?>
 
+  <!-- Navegación (zona scrolleable; marca, badge y footer quedan fijos) -->
+  <div class="sidebar-nav">
+
   <!-- Menú principal -->
   <div class="nav-section-label">Menú Principal</div>
 
@@ -116,7 +119,15 @@ function navActive(string $segment): string {
     <i class="fas fa-gears"></i>
     <span class="nav-label">Mantenimiento</span>
   </a>
+  <?php if (in_array($rolSlug, ['admin', 'super_admin'], true)): ?>
+  <a class="nav-item-s <?= navActive('/auditoria') ?>" href="<?= BASE_URL ?>/auditoria">
+    <i class="fas fa-clipboard-list"></i>
+    <span class="nav-label">Auditoría</span>
+  </a>
   <?php endif; ?>
+  <?php endif; ?>
+
+  </div><!-- /sidebar-nav -->
 
   <!-- Footer del sidebar -->
   <div class="sidebar-footer">

@@ -50,6 +50,9 @@ $(function () {
 
     initTabla();
 
+    // ── SELECT2 en selects largos del modal ───────────
+    SAG.initSelect2('#orgMun', 'Seleccione municipio', '#modalOrganizacion');
+
     // ── FILTRAR (botón + recarga automática al cambiar) ──
     $('#btnFiltrar').on('click', function () {
         tabla.ajax.reload();
@@ -309,6 +312,7 @@ $(function () {
         $('#orgEstado').val('pendiente');
         $('#orgNombre').removeClass('is-invalid').css('border-color', '');
         $('#orgNombreErr').hide();
+        SAG.refreshSelect2('#modalOrganizacion');
     }
 
     // ── CHANGE DEPTO (modal) ──────────────────────────

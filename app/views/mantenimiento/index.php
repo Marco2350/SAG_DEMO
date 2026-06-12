@@ -34,7 +34,7 @@ $cssExtra = '<style>
 
 /* ── FORM CONTROLS ── */
 .fc{width:100%;padding:8px 11px;border:1.5px solid var(--borde);border-radius:8px;font-size:.84rem;color:var(--texto);background:#fff;outline:none;transition:border .15s;}
-.fc:focus{border-color:var(--primario);box-shadow:0 0 0 3px rgba(84,102,142,.08);}
+.fc:focus{border-color:var(--primario);box-shadow:0 0 0 3px color-mix(in srgb, var(--primario) 12%, transparent);}
 .fl{font-size:.78rem;font-weight:700;color:#444;margin-bottom:4px;display:block;}
 .req{color:#ef4444;}
 

@@ -13,10 +13,11 @@ $(function () {
     const HOY = new Date().toISOString().split('T')[0];
     $('#bFechaNac').attr('max', HOY); // la fecha de nacimiento no puede ser futura
 
-    // ── DATATABLE (vista principal) ───────────────────
+    // ── DATATABLE (vista principal, paginación en servidor) ──
     function initTabla() {
         tabla = $('#tablaBeneficiarios').DataTable({
             processing: true,
+            serverSide: true,
             ajax: {
                 url:    SAG.BASE_URL + '/beneficiarios/listar',
                 type:   'POST',
@@ -24,19 +25,19 @@ $(function () {
                     d.id_organizacion = $('#filtroOrg').val();
                     d.id_departamento = $('#filtroDepBene').val();
                     d.sexo            = $('#filtroSexo').val();
+                    d._csrf           = SAG.CSRF;
                 },
-                dataSrc: 'data',
             },
             columns: [
-                { data: 'id_beneficiario', width: '40px' },
+                { data: 'id_beneficiario', width: '40px', orderable: false },
                 { data: 'nombre_completo' },
                 { data: 'dni' },
                 { data: 'edad',       className: 'text-center' },
-                { data: 'sexo',       orderable: false },
-                { data: 'organizacion' },
-                { data: 'ubicacion' },
-                { data: 'telefono' },
-                { data: 'acciones',   orderable: false, className: 'text-center' },
+                { data: 'sexo',         orderable: false },
+                { data: 'organizacion', orderable: false },
+                { data: 'ubicacion',    orderable: false },
+                { data: 'telefono',     orderable: false },
+                { data: 'acciones',     orderable: false, className: 'text-center' },
             ],
             language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
             order:      [[1, 'asc']],
@@ -45,6 +46,10 @@ $(function () {
     }
 
     initTabla();
+
+    // ── SELECT2 en selects largos del modal ───────────
+    SAG.initSelect2('#bMun', 'Seleccione municipio', '#modalBeneficiario');
+    SAG.initSelect2('#bOrg', 'Sin organización',     '#modalBeneficiario');
 
     // ── FILTRAR (botón + recarga automática al cambiar) ──
     $('#btnFiltrarBene').on('click', function () {
@@ -106,6 +111,7 @@ $(function () {
         document.getElementById('formBeneficiario').reset();
         $('#beneId').val(0);
         $('#bMun').html('<option value="">— Seleccione departamento primero —</option>');
+        SAG.refreshSelect2('#modalBeneficiario');
     }
 
     // ── CHANGE DEPTO (modal) ──────────────────────────
@@ -221,6 +227,7 @@ $(function () {
                 $('#bOrg').val(b.id_organizacion);
                 $('#bDep').val(b.id_departamento);
                 SAG.loadMunicipios(b.id_departamento, '#bMun', b.id_municipio);
+                SAG.refreshSelect2('#modalBeneficiario');
                 modalBene.show();
             },
         });

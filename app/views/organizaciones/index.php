@@ -6,11 +6,11 @@
 <div class="content">
 
   <!-- R-009: Breadcrumb visual del módulo activo -->
-  <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:#888;margin-bottom:8px;">
+  <div class="crumb-bar">
     <i class="fas fa-house"></i>
     <span>Inicio</span>
-    <i class="fas fa-chevron-right" style="font-size:.65rem;color:#bbb;"></i>
-    <span style="background:var(--primario);color:#fff;padding:3px 12px;border-radius:14px;font-weight:700;font-size:.74rem;letter-spacing:.3px;">
+    <i class="fas fa-chevron-right crumb-sep"></i>
+    <span class="crumb-pill">
       <i class="fas fa-building-wheat"></i> Organizaciones
     </span>
   </div>

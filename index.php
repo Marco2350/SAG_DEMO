@@ -272,6 +272,10 @@ $router->post('/mantenimiento/cultivos/delete','MantenimientoController','delete
 $router->post('/mantenimiento/tipoat/save',  'MantenimientoController', 'saveTipoAT');
 $router->post('/mantenimiento/tipoat/delete','MantenimientoController', 'deleteTipoAT');
 
+// ── Auditoría (bitácora del sistema) ─────────────
+$router->get('/auditoria',                   'AuditoriaController', 'index');
+$router->post('/auditoria/listar',           'AuditoriaController', 'listar');
+
 // ── Parametrización (catálogos del programa) ─────
 $router->get('/catalogos/tecnicos',          'CatalogosController', 'tecnicos');
 $router->get('/catalogos/temas',             'CatalogosController', 'temas');

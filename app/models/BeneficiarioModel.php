@@ -6,9 +6,10 @@ class BeneficiarioModel extends Model
 
     public const SEXOS = ['M', 'F'];
 
-    public function getListado(array $filtros = []): array
+    /** FROM + JOINs + WHERE compartidos por el listado y sus conteos. */
+    private function buildListado(array $filtros): array
     {
-        $where  = ['b.id_proyecto = ?', 'b.estado = "activo"'];
+        $where  = ['b.id_proyecto = ?', "b.estado = 'activo'"];
         $params = [Database::proyectoId()];
 
         if (!empty($filtros['id_organizacion'])) {
@@ -23,6 +24,28 @@ class BeneficiarioModel extends Model
             $where[]  = 'b.sexo = ?';
             $params[] = $filtros['sexo'];
         }
+        if (!empty($filtros['buscar'])) {
+            $where[] = "(CONCAT(b.nombre,' ',b.apellido) LIKE ? OR b.dni LIKE ? OR b.aldea LIKE ? OR o.nombre LIKE ?)";
+            $like = '%' . $filtros['buscar'] . '%';
+            array_push($params, $like, $like, $like, $like);
+        }
+
+        $sql = "FROM sag_beneficiarios b
+                INNER JOIN sag_departamentos  d ON d.id_departamento = b.id_departamento
+                INNER JOIN sag_municipios     m ON m.id_municipio    = b.id_municipio
+                LEFT  JOIN sag_organizaciones o ON o.id_organizacion = b.id_organizacion
+                WHERE " . implode(' AND ', $where);
+        return [$sql, $params];
+    }
+
+    /**
+     * Listado paginado (protocolo DataTables server-side).
+     * $orden: cláusula ORDER BY ya saneada por el controlador.
+     */
+    public function getListado(array $filtros = [], int $start = 0, int $length = 0, string $orden = 'b.nombre, b.apellido'): array
+    {
+        [$fromWhere, $params] = $this->buildListado($filtros);
+        $limit = $length > 0 ? "LIMIT {$length} OFFSET " . max(0, $start) : '';
 
         return $this->db->fetchAll(
             "SELECT b.*,
@@ -31,14 +54,18 @@ class BeneficiarioModel extends Model
                     o.nombre AS organizacion,
                     CONCAT(b.nombre,' ',b.apellido) AS nombre_completo,
                     TIMESTAMPDIFF(YEAR, b.fecha_nacimiento, CURDATE()) AS edad
-             FROM sag_beneficiarios b
-             INNER JOIN sag_departamentos  d ON d.id_departamento = b.id_departamento
-             INNER JOIN sag_municipios     m ON m.id_municipio    = b.id_municipio
-             LEFT  JOIN sag_organizaciones o ON o.id_organizacion = b.id_organizacion
-             WHERE " . implode(' AND ', $where) . "
-             ORDER BY b.nombre, b.apellido",
+             {$fromWhere}
+             ORDER BY {$orden}
+             {$limit}",
             $params
         );
+    }
+
+    /** Total de registros que cumplen los filtros (para recordsFiltered). */
+    public function contarListado(array $filtros = []): int
+    {
+        [$fromWhere, $params] = $this->buildListado($filtros);
+        return (int) ($this->db->fetchOne("SELECT COUNT(*) AS t {$fromWhere}", $params)['t'] ?? 0);
     }
 
     public function getDetalle(int $id): array|false

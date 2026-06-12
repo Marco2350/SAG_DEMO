@@ -60,6 +60,13 @@ $(function () {
 
     initTabla();
 
+    // ── SELECT2 en selects largos ─────────────────────
+    SAG.initSelect2('#cMun',     'Seleccione municipio', '#modalCapacitacion');
+    SAG.initSelect2('#cTema',    'Seleccione tema',      '#modalCapacitacion');
+    SAG.initSelect2('#cSubtema', 'Seleccione subtema',   '#modalCapacitacion');
+    SAG.initSelect2('#cTecnico', 'Seleccione técnico',   '#modalCapacitacion');
+    SAG.initSelect2('#pOrg',     'Sin organización'); // panel de participantes (fuera de modal)
+
     $('#btnFiltrarCap').on('click', function () {
         tabla.ajax.reload();
     });
@@ -113,6 +120,7 @@ $(function () {
         $('#capId').val(0);
         $('#cMun').html('<option value="">— Seleccione departamento primero —</option>');
         $('#cSubtema').html('<option value="">— Seleccione tema primero —</option>');
+        SAG.refreshSelect2('#modalCapacitacion');
     }
 
     // ── CHANGE DEPTO ──────────────────────────────────
@@ -474,6 +482,7 @@ $(function () {
                 $('#cDuracion').val(c.duracion_horas);
                 $('#cDescripcion').val(c.descripcion);
                 $('#cTecnico').val(c.id_tecnico);
+                SAG.refreshSelect2('#modalCapacitacion');
                 modalCap.show();
             },
         });

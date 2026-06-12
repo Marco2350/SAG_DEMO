@@ -45,6 +45,14 @@ $(function () {
 
     initTabla();
 
+    // ── SELECT2 en selects largos del modal ───────────
+    SAG.initSelect2('#atMun',     'Seleccione municipio', '#modalAT');
+    SAG.initSelect2('#atTema',    'Seleccione tema',      '#modalAT');
+    SAG.initSelect2('#atSubtema', 'Seleccione subtema',   '#modalAT');
+    SAG.initSelect2('#atTecnico', 'Seleccione técnico',   '#modalAT');
+    SAG.initSelect2('#atCultivo', 'Sin especificar',      '#modalAT');
+    SAG.initSelect2('#atOrg',     'Sin organización',     '#modalAT');
+
     $('#btnFiltrarAT').on('click', function () {
         tabla.ajax.reload();
     });
@@ -114,6 +122,7 @@ $(function () {
         $('#evATSinArchivo').show();
         $('#evATConArchivo').hide();
         $('#evATEstadoBadge').text('PENDIENTE').css({ background: '#f1f5f9', color: '#6b7280' });
+        SAG.refreshSelect2('#modalAT');
     }
 
     // ── CHANGE DEPTO ──────────────────────────────────
@@ -281,6 +290,7 @@ $(function () {
                 $('#atProxVisita').val(a.prox_visita);
                 $('#atObservaciones').val(a.observaciones);
                 renderEvidenciaAT(a);
+                SAG.refreshSelect2('#modalAT');
                 modalForm.show();
             },
         });

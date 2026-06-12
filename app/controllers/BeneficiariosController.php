@@ -29,12 +29,32 @@ class BeneficiariosController extends Controller
     public function listar(): void
     {
         try {
+            // Protocolo DataTables server-side
+            $draw   = (int) $this->getPost('draw', 1);
+            $start  = max(0, (int) $this->getPost('start', 0));
+            $length = (int) $this->getPost('length', 15);
+            if ($length < 1 || $length > 200) $length = 15;
+
             $filtros = [
                 'id_organizacion' => (int) $this->getPost('id_organizacion', 0),
                 'id_departamento' => (int) $this->getPost('id_departamento', 0),
                 'sexo'            => $this->getPost('sexo', ''),
+                'buscar'          => trim((string) ($_POST['search']['value'] ?? '')),
             ];
-            $rows = $this->model->getListado($filtros);
+
+            // Orden: solo columnas en lista blanca (índice DataTables → SQL)
+            $ordenables = [
+                1 => 'b.nombre, b.apellido',
+                2 => 'b.dni',
+                3 => 'b.fecha_nacimiento',
+            ];
+            $colIdx = (int) ($_POST['order'][0]['column'] ?? 1);
+            $dir    = strtolower((string) ($_POST['order'][0]['dir'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC';
+            $orden  = ($ordenables[$colIdx] ?? $ordenables[1]) . ' ' . $dir;
+
+            $total     = $this->model->contarListado(array_intersect_key($filtros, array_flip(['id_organizacion', 'id_departamento', 'sexo'])));
+            $filtrados = $filtros['buscar'] !== '' ? $this->model->contarListado($filtros) : $total;
+            $rows      = $this->model->getListado($filtros, $start, $length, $orden);
 
             $data = array_map(function ($b) {
                 $sexoIcon = match ($b['sexo']) {
@@ -64,10 +84,21 @@ class BeneficiariosController extends Controller
                 ];
             }, $rows);
 
-            $this->json(['data' => $data]);
+            $this->json([
+                'draw'            => $draw,
+                'recordsTotal'    => $total,
+                'recordsFiltered' => $filtrados,
+                'data'            => $data,
+            ]);
         } catch (Exception $e) {
             error_log('BeneficiariosController::listar — ' . $e->getMessage());
-            $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);
+            $this->json([
+                'draw'            => (int) $this->getPost('draw', 1),
+                'recordsTotal'    => 0,
+                'recordsFiltered' => 0,
+                'data'            => [],
+                'error'           => 'Error al cargar el listado.',
+            ]);
         }
     }
 

@@ -1,6 +1,29 @@
 <?php
 class AuthController extends Controller
 {
+    /** Resumen legible del User-Agent (navegador / SO) para la bitácora. */
+    private function navegador(): string
+    {
+        $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+        if ($ua === '') return 'desconocido';
+
+        $nav = 'Otro';
+        if (str_contains($ua, 'Edg/'))          $nav = 'Edge';
+        elseif (str_contains($ua, 'OPR/'))      $nav = 'Opera';
+        elseif (str_contains($ua, 'Firefox/'))  $nav = 'Firefox';
+        elseif (str_contains($ua, 'Chrome/'))   $nav = 'Chrome';
+        elseif (str_contains($ua, 'Safari/'))   $nav = 'Safari';
+
+        $so = 'Otro';
+        if (str_contains($ua, 'Windows'))                              $so = 'Windows';
+        elseif (str_contains($ua, 'Android'))                          $so = 'Android';
+        elseif (str_contains($ua, 'iPhone') || str_contains($ua, 'iPad')) $so = 'iOS';
+        elseif (str_contains($ua, 'Mac OS'))                           $so = 'macOS';
+        elseif (str_contains($ua, 'Linux'))                            $so = 'Linux';
+
+        return "{$nav}/{$so}";
+    }
+
     public function login(): void
     {
         if (!empty($_SESSION['user'])) {
@@ -33,6 +56,9 @@ class AuthController extends Controller
             );
 
             if (!$user || !password_verify($password, $user['password_hash'])) {
+                // Bitácora de intentos fallidos (usuario intentado + navegador; la IP la agrega logAction)
+                $this->logAction('LOGIN_FALLIDO', 'auth',
+                    'Usuario intentado: ' . mb_substr($credential, 0, 80) . ' · ' . $this->navegador());
                 $this->error('Credenciales incorrectas. Verifique usuario y contraseña.');
                 return;
             }
@@ -62,7 +88,7 @@ class AuthController extends Controller
                 [$user['id_usuario']]
             );
 
-            $this->logAction('LOGIN', 'auth', "Usuario: {$user['username']}");
+            $this->logAction('LOGIN', 'auth', "Usuario: {$user['username']} · " . $this->navegador());
             $this->success('Acceso correcto.', ['redirect' => BASE_URL . '/programas']);
 
         } catch (Exception $e) {
