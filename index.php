@@ -331,6 +331,16 @@ $router->post('/inventarios/recibirLinea',           'InventariosController', 'r
 $router->post('/inventarios/kardex',                 'InventariosController', 'kardex');
 $router->post('/inventarios/stockPorBodega',         'InventariosController', 'stockPorBodega');
 
+// ── Fortalecimiento de Programas (FPROG) ─────────
+$router->get( '/fortalecimiento',                        'FortalecimientoController', 'index');
+$router->post('/fortalecimiento/listar',                 'FortalecimientoController', 'listar');
+$router->post('/fortalecimiento/get',                    'FortalecimientoController', 'get');
+$router->post('/fortalecimiento/save',                   'FortalecimientoController', 'save');
+$router->post('/fortalecimiento/delete',                 'FortalecimientoController', 'delete');
+$router->post('/fortalecimiento/estado',                 'FortalecimientoController', 'estado');
+$router->post('/fortalecimiento/participante/add',       'FortalecimientoController', 'addParticipante');
+$router->post('/fortalecimiento/participante/delete',    'FortalecimientoController', 'deleteParticipante');
+
 // ── API catálogos AJAX ────────────────────────────
 $router->get('/api/municipios',              'ApiController', 'municipios');
 $router->get('/api/subtemas',                'ApiController', 'subtemas');

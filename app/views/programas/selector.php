@@ -119,11 +119,11 @@
 
     /* ── Grid de programas ── */
     .programas-grid {
-      display:grid; grid-template-columns: repeat(3, 1fr);
-      gap:26px; max-width:1080px; width:100%;
+      display:grid; grid-template-columns: repeat(4, 1fr);
+      gap:22px; max-width:1440px; width:100%;
     }
-    @media(max-width:900px) { .programas-grid { grid-template-columns:1fr 1fr; max-width:680px; } }
-    @media(max-width:620px) { .programas-grid { grid-template-columns:1fr; max-width:420px; } }
+    @media(max-width:1200px) { .programas-grid { grid-template-columns:1fr 1fr; max-width:720px; } }
+    @media(max-width:620px)  { .programas-grid { grid-template-columns:1fr; max-width:420px; } }
 
     .prog-card {
       background:#fff;
@@ -192,7 +192,7 @@
 
     /* ── Footer totales ── */
     .sel-footer {
-      max-width:1080px; width:100%; margin-top:32px;
+      max-width:1440px; width:100%; margin-top:32px;
       background:#fff; border-radius:16px;
       padding:22px 30px;
       display:grid; grid-template-columns:repeat(4,1fr);
@@ -281,6 +281,24 @@
       </div>
 
       <div class="prog-stats">
+        <?php if (($s['tipo'] ?? 'pip') === 'fprog'): ?>
+        <div class="prog-stat">
+          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['total']) ?></div>
+          <div class="lbl"><i class="fas fa-list-check"></i>Acciones</div>
+        </div>
+        <div class="prog-stat">
+          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['planificado']) ?></div>
+          <div class="lbl"><i class="fas fa-clock"></i>Planificadas</div>
+        </div>
+        <div class="prog-stat">
+          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['ejecucion']) ?></div>
+          <div class="lbl"><i class="fas fa-spinner"></i>En Ejecución</div>
+        </div>
+        <div class="prog-stat">
+          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['completado']) ?></div>
+          <div class="lbl"><i class="fas fa-circle-check"></i>Completadas</div>
+        </div>
+        <?php else: ?>
         <div class="prog-stat">
           <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['orgs']) ?></div>
           <div class="lbl"><i class="fas fa-building-wheat"></i>Organizaciones</div>
@@ -297,6 +315,7 @@
           <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['at']) ?></div>
           <div class="lbl"><i class="fas fa-handshake"></i>Asistencias</div>
         </div>
+        <?php endif; ?>
       </div>
 
       <button class="prog-btn" style="background:<?= $prog['color'] ?>;">
@@ -309,10 +328,10 @@
 
   <!-- Totales globales -->
   <?php
-  $totOrgs  = array_sum(array_column($stats, 'orgs'));
-  $totBenes = array_sum(array_column($stats, 'benes'));
-  $totCaps  = array_sum(array_column($stats, 'caps'));
-  $totAT    = array_sum(array_column($stats, 'at'));
+  $totOrgs  = array_sum(array_map(fn($s) => $s['orgs']  ?? 0, $stats));
+  $totBenes = array_sum(array_map(fn($s) => $s['benes'] ?? 0, $stats));
+  $totCaps  = array_sum(array_map(fn($s) => $s['caps']  ?? 0, $stats));
+  $totAT    = array_sum(array_map(fn($s) => $s['at']    ?? 0, $stats));
   ?>
   <div class="sel-footer">
     <div class="sf-item">

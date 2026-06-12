@@ -34,6 +34,6 @@
 </head>
 <?php
   $_themeId = strtolower($_SESSION['programa']['id'] ?? '');
-  $_themeClass = in_array($_themeId, ['pipc','pipg','pipa'], true) ? "theme-{$_themeId}" : '';
+  $_themeClass = in_array($_themeId, ['pipc','pipg','pipa','fprog'], true) ? "theme-{$_themeId}" : '';
 ?>
 <body class="<?= htmlspecialchars($_themeClass) ?>">

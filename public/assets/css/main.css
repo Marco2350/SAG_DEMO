@@ -1210,6 +1210,45 @@ body.theme-pipa {
   --tema-light:        #EDF3EC;
 }
 
+/* FPROG : Fortalecimiento (violeta) */
+body.theme-fprog {
+  --primario:          #7c3aed;
+  --primario-oscuro:   #5b21b6;
+  --primario-claro:    #a78bfa;
+  --acento:            #8b5cf6;
+  --acento-claro:      #c4b5fd;
+  --tema-light:        #f5f3ff;
+}
+
+/* Badge "en ejecución" — azul */
+.badge-proceso {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+/* Barra de progreso mini para tablas */
+.progress-micro {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.progress-micro div {
+  height: 6px;
+  background: var(--primario);
+  border-radius: 4px;
+}
+
 /* ══════════════════════════════════════════════════
    KPI CARDS (Government SaaS modernas)
    ══════════════════════════════════════════════════ */

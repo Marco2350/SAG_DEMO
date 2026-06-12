@@ -19,14 +19,46 @@ class ProgramasController extends Controller
         foreach ($programas as $key => $prog) {
             $pid = (int) ($prog['id_proyecto'] ?? 0);
             try {
-                $stats[$key] = [
-                    'orgs'  => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_organizaciones WHERE estado='activa' AND id_proyecto=?", [$pid])['c'],
-                    'benes' => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_beneficiarios WHERE estado='activo' AND id_proyecto=?", [$pid])['c'],
-                    'caps'  => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_capacitaciones WHERE id_proyecto=?", [$pid])['c'],
-                    'at'    => (int) $db->fetchOne("SELECT COUNT(*) AS c FROM sag_asistencias_tecnicas WHERE id_proyecto=?", [$pid])['c'],
-                ];
+                if ($prog['id'] === 'fprog') {
+                    $r = $db->fetchOne(
+                        "SELECT
+                            COUNT(*) AS total,
+                            SUM(estado='planificado')   AS planificado,
+                            SUM(estado='en_ejecucion')  AS en_ejecucion,
+                            SUM(estado='completado')    AS completado
+                         FROM sag_acciones_fortalecimiento
+                         WHERE id_proyecto = ? AND activo = 1",
+                        [$pid]
+                    );
+                    $stats[$key] = [
+                        'tipo'        => 'fprog',
+                        'total'       => (int) ($r['total']        ?? 0),
+                        'planificado' => (int) ($r['planificado']  ?? 0),
+                        'ejecucion'   => (int) ($r['en_ejecucion'] ?? 0),
+                        'completado'  => (int) ($r['completado']   ?? 0),
+                    ];
+                } else {
+                    // 4 queries individuales → 1 round-trip con subqueries escalares
+                    $r = $db->fetchOne(
+                        "SELECT
+                            (SELECT COUNT(*) FROM sag_organizaciones       WHERE estado='activa' AND id_proyecto=?) AS orgs,
+                            (SELECT COUNT(*) FROM sag_beneficiarios        WHERE estado='activo' AND id_proyecto=?) AS benes,
+                            (SELECT COUNT(*) FROM sag_capacitaciones       WHERE id_proyecto=?)                     AS caps,
+                            (SELECT COUNT(*) FROM sag_asistencias_tecnicas WHERE id_proyecto=?)                     AS at",
+                        [$pid, $pid, $pid, $pid]
+                    );
+                    $stats[$key] = [
+                        'tipo'  => 'pip',
+                        'orgs'  => (int)($r['orgs']  ?? 0),
+                        'benes' => (int)($r['benes'] ?? 0),
+                        'caps'  => (int)($r['caps']  ?? 0),
+                        'at'    => (int)($r['at']    ?? 0),
+                    ];
+                }
             } catch (Exception $e) {
-                $stats[$key] = ['orgs' => 0, 'benes' => 0, 'caps' => 0, 'at' => 0];
+                $stats[$key] = ($prog['id'] === 'fprog')
+                    ? ['tipo' => 'fprog', 'total' => 0, 'planificado' => 0, 'ejecucion' => 0, 'completado' => 0]
+                    : ['tipo' => 'pip',   'orgs'  => 0, 'benes'       => 0, 'caps'       => 0, 'at'         => 0];
             }
         }
 

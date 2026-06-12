@@ -61,6 +61,18 @@ define('PROGRAMAS', [
         'descripcion' => 'Apoyo integral a la producción agrícola nacional',
         'trazaragro_rubro' => 'Insumo/Incentivo agrícola',
     ],
+    'fprog' => [
+        'id'          => 'fprog',
+        'id_proyecto' => 4,
+        'nombre'      => 'Fortalecimiento de Programas SAG',
+        'sigla'       => 'FPROG',
+        'icono'       => 'fa-chart-line',
+        'color'       => '#7c3aed',
+        'gradient'    => 'linear-gradient(180deg, #a78bfa 0%, #5b21b6 100%)',
+        'color_light' => '#f5f3ff',
+        'descripcion' => 'Fortalecimiento institucional y seguimiento de programas SAG',
+        'trazaragro_rubro' => '',
+    ],
 ]);
 
 // ── Base de datos única (autenticación + todos los programas) ──

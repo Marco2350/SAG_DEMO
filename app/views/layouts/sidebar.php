@@ -36,13 +36,23 @@ function navActive(string $segment): string {
   <!-- Navegación (zona scrolleable; marca, badge y footer quedan fijos) -->
   <div class="sidebar-nav">
 
-  <!-- Menú principal -->
+  <!-- Menú principal — varía según programa activo -->
   <div class="nav-section-label">Menú Principal</div>
 
   <a class="nav-item-s <?= navActive('/dashboard') ?>" href="<?= BASE_URL ?>/dashboard">
     <i class="fas fa-house"></i>
     <span class="nav-label">Dashboard</span>
   </a>
+
+  <?php if ($progId === 'fprog'): ?>
+  <!-- ── FPROG: Fortalecimiento de Programas ── -->
+  <a class="nav-item-s <?= navActive('/fortalecimiento') ?>" href="<?= BASE_URL ?>/fortalecimiento">
+    <i class="fas fa-chart-line"></i>
+    <span class="nav-label">Acciones de Fortalecimiento</span>
+  </a>
+
+  <?php else: ?>
+  <!-- ── PIPs: Producción (PIPC / PIPG / PIPA) ── -->
   <a class="nav-item-s <?= navActive('/organizaciones') ?>" href="<?= BASE_URL ?>/organizaciones">
     <i class="fas fa-building-wheat"></i>
     <span class="nav-label">Organizaciones</span>
@@ -60,7 +70,7 @@ function navActive(string $segment): string {
     <span class="nav-label">Capacitaciones</span>
   </a>
 
-  <!-- Entregas e Inventarios -->
+  <!-- Entregas e Inventarios (solo PIPs) -->
   <div class="nav-section-label">Entregas e Inventarios</div>
   <a class="nav-item-s <?= navActive('/entregas') ?>" href="<?= BASE_URL ?>/entregas">
     <i class="fas fa-truck-ramp-box"></i>
@@ -74,6 +84,7 @@ function navActive(string $segment): string {
     <i class="fas fa-warehouse"></i>
     <span class="nav-label">Inventarios de Incentivos</span>
   </a>
+  <?php endif; ?>
 
   <!-- Reportes -->
   <div class="nav-section-label">Reportes</div>
