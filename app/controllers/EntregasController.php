@@ -483,9 +483,10 @@ class EntregasController extends Controller
             $this->requireCsrf();
             $this->requireRole(['super_admin', 'coord_nacional', 'coord_pip', 'admin', 'administrador', 'coordinador']);
 
-            // El sync con OIRSA puede tardar varios minutos (paginación de 500 en 500).
-            // Subimos el límite SOLO para esta petición; no afecta al resto del sitio.
-            @set_time_limit(300);   // 5 minutos máx
+            // El sync con OIRSA puede tardar varios minutos (paginación de 500.000).
+            // Subimos los límites SOLO para esta petición; no afectan al resto del sitio.
+            @set_time_limit(900);                  // 15 minutos máx
+            @ini_set('memory_limit', '1024M');     // 1 GB para 500K filas en memoria
             @ignore_user_abort(true);
 
             if (!class_exists('TrazaragroClient')) {
@@ -508,8 +509,9 @@ class EntregasController extends Controller
             $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
             $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : date('Y-m-d', strtotime('-365 days'));
             $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
-            // Limite duro para evitar peticiones masivas: máx 5000 por sync
-            $top      = max(1, min(5000, (int)$this->getPost('top', 500)));
+            // Tamaño del lote — se permite hasta 500.000 (límite Power Query oficial).
+            // Default 500.000 trae TODO el histórico OIRSA en una sola corrida.
+            $top      = max(1, min(500000, (int)$this->getPost('top', 500000)));
             // Solo Super Admin / Coord Nacional pueden limpiar la tabla antes del sync
             $limpiarSolicitado = (int)$this->getPost('limpiar', 0) === 1;
             $puedeLimpiar      = $this->hasRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);

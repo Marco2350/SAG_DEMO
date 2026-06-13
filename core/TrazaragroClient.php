@@ -324,14 +324,15 @@ class TrazaragroClient
             $parts[] = '(' . $filtros['extraFilter'] . ')';
         }
 
-        // ── Paginación robusta ──────────────────────────────────────
-        // OIRSA tarda mucho con $top grande (>500). Si el caller pide N>500,
-        // paginamos internamente: pedimos páginas de 500 hasta cubrir N (o
-        // hasta que OIRSA devuelva una página vacía). Esto evita timeouts y
-        // mantiene memoria controlada.
+        // ── Paginación ──────────────────────────────────────────────
+        // Tamaño de página = 500.000 (alineado con el Power Query oficial SAG).
+        // Cada página = una petición HTTP a OIRSA. Si el caller pide N > pageSize
+        // paginamos con $skip. Si pide N <= pageSize, una sola petición.
+        // OJO: una respuesta de 500K registros puede pesar varios MB y tardar
+        // 1-3 minutos. El controlador debe subir el timeout y memory_limit.
         $filtroOData = implode(' and ', $parts);
         $endpoint    = '/Services/odata/QueryMovementNationalPrograms?';
-        $pageSize    = 500;                       // tamaño seguro por petición
+        $pageSize    = 500000;                    // = Power Query M oficial
         $maxItems    = $top;                      // objetivo total
         $normalized  = [];
         $pages       = 0;
