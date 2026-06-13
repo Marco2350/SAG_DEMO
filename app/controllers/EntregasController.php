@@ -691,8 +691,12 @@ class EntregasController extends Controller
             return $stats;
         }
 
+        // Patrón SAG_DEMO: id_proyecto identifica al programa SAG (PIPC=1,
+        // PIPG=2, PIPA=3, FPROG=4). UNIQUE compuesta (id_proyecto, movement_id,
+        // codigo_trazabilidad) porque OIRSA repite MovementId por cada línea
+        // de item de un movimiento.
         $sql = "INSERT INTO sag_trazaragro_movimientos (
-            movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
+            id_proyecto, movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
             objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
             guiasa_no, codigo_autorizacion,
             fecha_registro, fecha_autorizacion, fecha_expiracion,
@@ -702,7 +706,7 @@ class EntregasController extends Controller
             autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
             estado_local, raw_json, synced_at
         ) VALUES (
-            :movement_id, :rubro, :rubro_id, :tipo_movimiento, :tipo_movimiento_id, :actividad_id,
+            :id_proyecto, :movement_id, :rubro, :rubro_id, :tipo_movimiento, :tipo_movimiento_id, :actividad_id,
             :objeto_trazable, :objeto_trazable_codigo, :codigo_trazabilidad,
             :guiasa_no, :codigo_autorizacion,
             :fecha_registro, :fecha_autorizacion, :fecha_expiracion,
@@ -765,6 +769,7 @@ class EntregasController extends Controller
                 }
 
                 $params = [
+                    ':id_proyecto'           => Database::proyectoId(),
                     ':movement_id'           => $movId,
                     ':rubro'                 => $m['rubro'] ?: null,
                     ':rubro_id'              => $m['rubro_id'] ?: null,
