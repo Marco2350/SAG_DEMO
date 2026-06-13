@@ -54,8 +54,18 @@ class EntregasController extends Controller
     {
         try {
             $db = Database::programa();
+            // raw_json excluido: es un blob grande sólo necesario en detalle()
             return $db->fetchAll("
-                SELECT *
+                SELECT movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
+                       objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
+                       guiasa_no, codigo_autorizacion,
+                       fecha_registro, fecha_autorizacion, fecha_expiracion,
+                       origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
+                       destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue,
+                       destino_departamento, destino_municipio,
+                       cantidad, unidad, transportista, vehiculo, condicion, proposito,
+                       autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
+                       estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
                 FROM sag_trazaragro_movimientos
                 ORDER BY fecha_autorizacion DESC, movement_id DESC
                 LIMIT 1000
@@ -175,11 +185,15 @@ class EntregasController extends Controller
     {
         if (empty($movs)) return [];
 
-        // 1) Cargar padrón del programa en memoria (DNI → fila)
+        // 1) Cargar padrón del programa activo en memoria (DNI → fila)
         $padron = [];
         try {
-            $db = Database::programa();
-            $rows = $db->fetchAll("SELECT dni, estado, nombre_completo FROM sag_beneficiarios");
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            $rows = $db->fetchAll(
+                "SELECT dni, estado, nombre_completo FROM sag_beneficiarios WHERE id_proyecto = ?",
+                [$pid]
+            );
             foreach ($rows as $r) {
                 if (!empty($r['dni'])) $padron[trim($r['dni'])] = $r;
             }
@@ -463,6 +477,17 @@ class EntregasController extends Controller
     public function sincronizarTrazaragro(): void
     {
         try {
+            // ── Seguridad: CSRF + autorización por rol ──
+            // Solo Super Admin, Coord Nacional y Coord PIP pueden disparar sync,
+            // porque la operación trae PII de productores (DNI, nombres) desde OIRSA.
+            $this->requireCsrf();
+            $this->requireRole(['super_admin', 'coord_nacional', 'coord_pip', 'admin', 'administrador', 'coordinador']);
+
+            // El sync con OIRSA puede tardar varios minutos (paginación de 500 en 500).
+            // Subimos el límite SOLO para esta petición; no afecta al resto del sitio.
+            @set_time_limit(300);   // 5 minutos máx
+            @ignore_user_abort(true);
+
             if (!class_exists('TrazaragroClient')) {
                 $this->error('core/TrazaragroClient.php no está desplegado.');
                 return;
@@ -475,26 +500,78 @@ class EntregasController extends Controller
                 return;
             }
 
-            $desde   = $this->getPost('desde', date('Y-m-d', strtotime('-30 days')));
-            $hasta   = $this->getPost('hasta', date('Y-m-d'));
-            $top     = (int) $this->getPost('top', 500);
-            $limpiar = (int) $this->getPost('limpiar', 0);
+            // ── Validación de inputs ──
+            // Default: últimos 365 días. Programas SAG operan en ciclos anuales,
+            // y muchas entregas en OIRSA pueden tener fechas históricas (la última
+            // entrega 2375 en producción es de mayo 2026, pero podría haber huecos).
+            $desdeRaw = (string)$this->getPost('desde', date('Y-m-d', strtotime('-365 days')));
+            $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
+            $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : date('Y-m-d', strtotime('-365 days'));
+            $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
+            // Limite duro para evitar peticiones masivas: máx 5000 por sync
+            $top      = max(1, min(5000, (int)$this->getPost('top', 500)));
+            // Solo Super Admin / Coord Nacional pueden limpiar la tabla antes del sync
+            $limpiarSolicitado = (int)$this->getPost('limpiar', 0) === 1;
+            $puedeLimpiar      = $this->hasRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
+            $limpiar           = $limpiarSolicitado && $puedeLimpiar;
 
-            // Rubro del programa activo (filtro OIRSA)
-            $progId = $_SESSION['programa']['id'] ?? '';
-            $rubro  = PROGRAMAS[$progId]['trazaragro_rubro'] ?? null;
+            // Filtro OIRSA: preferimos ID numérico si está validado para el programa,
+            // si no usamos texto (substringof) como fallback.
+            $progId   = $_SESSION['programa']['id'] ?? '';
+            $rubroId  = (int)(PROGRAMAS[$progId]['trazaragro_rubro_id'] ?? 0);
+            $rubroIds = PROGRAMAS[$progId]['trazaragro_rubro_ids'] ?? null;
+            $rubro    = PROGRAMAS[$progId]['trazaragro_rubro']    ?? null;
 
             if ($limpiar) {
                 $borradas = $this->limpiarMovimientos();
-                error_log("sincronizarTrazaragro: limpieza solicitada, {$borradas} filas borradas");
+                $this->logAction('SYNC_TRAZARAGRO_LIMPIEZA', 'entregas',
+                    "programa={$progId} · filas borradas={$borradas}");
             }
 
-            $movimientos = $cli->fetchEntregas([
+            $fetchArgs = [
                 'top'   => $top,
                 'desde' => $desde,
                 'hasta' => $hasta,
-                'rubro' => $rubro,
-            ]);
+            ];
+            // Orden de precedencia: lista de IDs > ID único > texto
+            if (is_array($rubroIds) && !empty($rubroIds)) {
+                $fetchArgs['rubroIds'] = $rubroIds;
+                $filtroAplicado = 'rubroIds=[' . implode(',', $rubroIds) . ']';
+            } elseif ($rubroId > 0) {
+                $fetchArgs['rubroId'] = $rubroId;
+                $filtroAplicado = "rubroId={$rubroId}";
+            } elseif (!empty($rubro)) {
+                $fetchArgs['rubro'] = $rubro;
+                $filtroAplicado = "rubro='{$rubro}' (texto)";
+            } else {
+                $filtroAplicado = 'sin filtro de rubro';
+            }
+            error_log("sincronizarTrazaragro: programa={$progId} · {$filtroAplicado} · rango={$desde}/{$hasta} · top={$top}");
+
+            $movimientos = $cli->fetchEntregas($fetchArgs);
+
+            // Si OIRSA no devuelve nada, dar un mensaje útil al usuario en vez
+            // de un genérico "0 sincronizados".
+            if (empty($movimientos)) {
+                $msg = "OIRSA no devolvió movimientos para {$progId} con {$filtroAplicado} "
+                     . "entre {$desde} y {$hasta}. Posibles causas: "
+                     . "(1) este programa aún no registra entregas en producción, "
+                     . "(2) el rango de fechas no cubre movimientos existentes, "
+                     . "(3) el filtro de rubro no corresponde al ambiente actual.";
+                $this->logAction('SYNC_TRAZARAGRO_VACIO', 'entregas', $msg);
+                $this->success($msg, [
+                    'rubro_filtrado'   => $rubro,
+                    'rubro_id'         => $rubroId,
+                    'filtro_aplicado'  => $filtroAplicado,
+                    'recibidos'        => 0,
+                    'insertados'       => 0,
+                    'actualizados'     => 0,
+                    'errores'          => 0,
+                    'modo'             => $ping['mode'],
+                    'rango'            => ['desde' => $desde, 'hasta' => $hasta],
+                ]);
+                return;
+            }
 
             $stats = $this->persistirMovimientos($movimientos);
 
@@ -508,21 +585,85 @@ class EntregasController extends Controller
             if ($stats['errores'])      $resumen .= " · {$stats['errores']} con error";
 
             $this->logAction('SYNC_TRAZARAGRO', 'entregas',
-                "rubro=" . ($rubro ?: 'todos') . " · {$resumen}");
+                "filtro=({$filtroAplicado}) · {$resumen}");
 
             $this->success($resumen, [
-                'rubro_filtrado' => $rubro,
-                'recibidos'      => $stats['recibidos'],
-                'insertados'     => $stats['insertados'],
-                'actualizados'   => $stats['actualizados'],
-                'errores'        => $stats['errores'],
-                'errores_det'    => $stats['errores_det'] ?? [],
-                'modo'           => $ping['mode'],
-                'rango'          => ['desde' => $desde, 'hasta' => $hasta],
+                'rubro_filtrado'   => $rubro,
+                'rubro_id'         => $rubroId,
+                'filtro_aplicado'  => $filtroAplicado,
+                'recibidos'        => $stats['recibidos'],
+                'insertados'       => $stats['insertados'],
+                'actualizados'     => $stats['actualizados'],
+                'errores'          => $stats['errores'],
+                'errores_det'      => $stats['errores_det'] ?? [],
+                'modo'             => $ping['mode'],
+                'rango'            => ['desde' => $desde, 'hasta' => $hasta],
             ]);
         } catch (\Throwable $e) {
             error_log('sincronizarTrazaragro EX: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             $this->error('Error interno al sincronizar con Trazaragro. Revise el log del servidor.');
+        }
+    }
+
+    /**
+     * Auto-descubre los ProductActivityId reales del ambiente OIRSA activo.
+     *
+     * Los IDs cambian entre pruebas y producción. En lugar de hardcodearlos,
+     * esta acción consulta los últimos N movimientos y agrupa por
+     * ProductActivityId+Name. La salida deja al admin mapear visualmente
+     * qué ID corresponde a cada programa SAG.
+     *
+     * Solo para administradores. No expone PII (solo IDs y nombres de rubros).
+     */
+    public function descubrirRubrosOirsa(): void
+    {
+        try {
+            $this->requireRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
+
+            if (!class_exists('TrazaragroClient')) {
+                $this->error('core/TrazaragroClient.php no está desplegado.');
+                return;
+            }
+            $cli  = new TrazaragroClient();
+            $ping = $cli->ping();
+            if (!$ping['ok']) {
+                $this->error('No se pudo contactar a Trazaragro: ' . ($ping['msg'] ?? 'sin respuesta'));
+                return;
+            }
+
+            $muestra = max(100, min(5000, (int)$this->getQuery('muestra', 1000)));
+
+            // Pedimos solo los campos clasificatorios — sin PII, sin nombres,
+            // sin DNI. Esto evita cargar datos sensibles al hacer descubrimiento.
+            $movs = $cli->fetchEntregas([
+                'top'         => $muestra,
+                'extraFilter' => '', // sin filtro de rubro
+            ]);
+
+            $rubros = [];
+            foreach ($movs as $m) {
+                $id = (int)($m['rubro_id'] ?? 0);
+                $nm = (string)($m['rubro']    ?? '');
+                $k  = $id . '|' . $nm;
+                if (!isset($rubros[$k])) {
+                    $rubros[$k] = ['id' => $id, 'nombre' => $nm, 'conteo' => 0];
+                }
+                $rubros[$k]['conteo']++;
+            }
+            uasort($rubros, fn($a, $b) => $b['conteo'] <=> $a['conteo']);
+
+            $this->logAction('DESCUBRIR_RUBROS_OIRSA', 'entregas',
+                'muestra=' . $muestra . ' · distintos=' . count($rubros));
+
+            $this->success('Rubros OIRSA detectados en la muestra.', [
+                'ambiente'        => stripos(TRAZARAGRO['base_url'], 'pruebas') === false ? 'producción' : 'pruebas',
+                'tipo_movimiento' => 111, // Bodega → Productor
+                'muestra'         => $muestra,
+                'rubros'          => array_values($rubros),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('descubrirRubrosOirsa EX: ' . $e->getMessage());
+            $this->error('Error interno descubriendo rubros OIRSA.');
         }
     }
 
@@ -623,12 +764,6 @@ class EntregasController extends Controller
                     continue;
                 }
 
-                // Verificar si existía (para contar insert vs update)
-                $existe = $db->fetchOne(
-                    "SELECT movement_id FROM sag_trazaragro_movimientos WHERE movement_id = ?",
-                    [$movId]
-                );
-
                 $params = [
                     ':movement_id'           => $movId,
                     ':rubro'                 => $m['rubro'] ?: null,
@@ -672,9 +807,10 @@ class EntregasController extends Controller
                     ':raw_json'              => json_encode($m['raw'] ?? [], JSON_UNESCAPED_UNICODE),
                 ];
 
-                $db->execute($sql, $params);
-                if ($existe) $stats['actualizados']++;
-                else         $stats['insertados']++;
+                // MySQL ON DUPLICATE KEY UPDATE: rowCount()=1 → INSERT, >=2 → UPDATE, 0 → sin cambio
+                $affected = $db->execute($sql, $params);
+                if ($affected === 1) $stats['insertados']++;
+                else                 $stats['actualizados']++;
             } catch (\Throwable $e) {
                 $stats['errores']++;
                 $stats['errores_det'][] = 'MovementId ' . ($m['trazaragro_id'] ?? '?') . ': ' . $e->getMessage();

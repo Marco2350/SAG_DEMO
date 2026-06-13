@@ -47,6 +47,10 @@ class TrazaragroClient
     /** Última info de diagnóstico tras una llamada HTTP (status, cuerpo, error cURL) */
     private array $lastDiag = [];
 
+    /** Cache del CA bundle — se resuelve una sola vez por instancia */
+    private ?string $caBundleCache = null;
+    private bool    $caBundleChecked = false;
+
     public function __construct()
     {
         $this->tokenCacheFile = sys_get_temp_dir() . '/sag_trazaragro_token.json';
@@ -169,28 +173,24 @@ class TrazaragroClient
 
     /**
      * Busca cacert.pem en ubicaciones típicas de XAMPP/PHP.
-     * Devuelve la ruta absoluta si existe, o null.
+     * El resultado se cachea en la instancia para evitar I/O repetido.
      */
     private function findCaBundle(): ?string
     {
-        // 1) Si php.ini ya tiene curl.cainfo o openssl.cafile, usar esos
-        $iniPaths = [
-            ini_get('curl.cainfo'),
-            ini_get('openssl.cafile'),
-        ];
-        foreach ($iniPaths as $p) {
-            if ($p && is_file($p)) return $p;
+        if ($this->caBundleChecked) return $this->caBundleCache;
+        $this->caBundleChecked = true;
+
+        foreach ([ini_get('curl.cainfo'), ini_get('openssl.cafile')] as $p) {
+            if ($p && is_file($p)) { $this->caBundleCache = $p; return $p; }
         }
-        // 2) Ubicaciones comunes en XAMPP / PHP
-        $candidates = [
+        foreach ([
             'C:/xampp/apache/bin/curl-ca-bundle.crt',
             'C:/xampp/php/extras/ssl/cacert.pem',
             'C:/xampp/php/cacert.pem',
             '/etc/ssl/certs/ca-certificates.crt',
             '/etc/pki/tls/certs/ca-bundle.crt',
-        ];
-        foreach ($candidates as $p) {
-            if (is_file($p)) return $p;
+        ] as $p) {
+            if (is_file($p)) { $this->caBundleCache = $p; return $p; }
         }
         return null;
     }
@@ -262,18 +262,27 @@ class TrazaragroClient
      *   - desde       Y-m-d filtra AuthorizationDate >= desde
      *   - hasta       Y-m-d filtra AuthorizationDate <= hasta
      *   - actividadId int   default 329 (Insumos agropecuarios)
-     *   - tipoMovId   int   default 141 (Movimiento de entrega de insumos)
+     *   - tipoMovId   int   default 111 PROD / 141 PRUEBAS (Entrega de insumos Bodega-Productor)
      *   - extraFilter string filtro OData adicional (AND)
+     *
+     * NOTA IMPORTANTE: MovementTypeId varía por ambiente OIRSA.
+     *   - Pruebas (pruebas-trazaragro.oirsa.org)  → 141
+     *   - Producción (trazaragro.oirsa.org)       → 111
+     * El default se autodetecta en base a la base_url configurada.
      */
     public function fetchEntregas(array $filtros = []): array
     {
         if ($this->isMock) return $this->mockEntregas();
 
+        // Autodetectar default por ambiente OIRSA
+        $isProd = (stripos((string)$this->baseUrl, 'pruebas') === false);
+        $defaultTipoMov = $isProd ? 111 : 141;
+
         $top         = max(1, (int)($filtros['top']   ?? 100));
         $skip        = max(0, (int)($filtros['skip']  ?? 0));
         $orderby     = $filtros['orderby'] ?? 'MovementId desc';
         $actividadId = (int)($filtros['actividadId'] ?? 329);
-        $tipoMovId   = (int)($filtros['tipoMovId']   ?? 141);
+        $tipoMovId   = (int)($filtros['tipoMovId']   ?? $defaultTipoMov);
 
         // Construir filtro OData
         $parts = [];
@@ -284,12 +293,21 @@ class TrazaragroClient
             $code = strtolower(addslashes($filtros['authCode']));
             $parts[] = "substringof('{$code}',tolower(AuthorizationCode))";
         }
-        // Filtro por rubro (ProductActivityName) — clave para mostrar solo el rubro
-        // del programa activo: agrícola para PIPA, café para PIPC, pecuario/pesquero para PIPG.
-        // Usamos substringof para tolerar pequeñas variaciones de capitalización/acento.
-        if (!empty($filtros['rubro'])) {
+        // Filtro por rubro — preferimos ID numérico (fuente de verdad OIRSA):
+        //   2371=Café · 2373=Pecuario · 2374=Pesquero · 2375=Agrícola
+        // Si llega 'rubroIds' (array), genera OR. Si solo 'rubroId', filtro exacto.
+        // Como fallback se mantiene 'rubro' por texto (substringof) para compatibilidad.
+        if (!empty($filtros['rubroIds']) && is_array($filtros['rubroIds'])) {
+            $ids = array_map('intval', $filtros['rubroIds']);
+            $ids = array_filter($ids, fn($v) => $v > 0);
+            if (!empty($ids)) {
+                $or = array_map(fn($id) => "ProductActivityId eq {$id}", $ids);
+                $parts[] = '(' . implode(' or ', $or) . ')';
+            }
+        } elseif (!empty($filtros['rubroId'])) {
+            $parts[] = 'ProductActivityId eq ' . (int)$filtros['rubroId'];
+        } elseif (!empty($filtros['rubro'])) {
             $r = strtolower(addslashes($filtros['rubro']));
-            // Extraer la palabra clave después del último espacio (agrícola/café/pecuario)
             $kw = trim((string)preg_replace('/.*\s/', '', $r));
             if ($kw === '') $kw = $r;
             $parts[] = "substringof('{$kw}',tolower(ProductActivityName))";
@@ -306,31 +324,64 @@ class TrazaragroClient
             $parts[] = '(' . $filtros['extraFilter'] . ')';
         }
 
-        $query = http_build_query([
-            '$top'          => $top,
-            '$skip'         => $skip,
-            '$orderby'      => $orderby,
-            '$inlinecount'  => 'allpages',
-            '$filter'       => implode(' and ', $parts),
-        ]);
+        // ── Paginación robusta ──────────────────────────────────────
+        // OIRSA tarda mucho con $top grande (>500). Si el caller pide N>500,
+        // paginamos internamente: pedimos páginas de 500 hasta cubrir N (o
+        // hasta que OIRSA devuelva una página vacía). Esto evita timeouts y
+        // mantiene memoria controlada.
+        $filtroOData = implode(' and ', $parts);
+        $endpoint    = '/Services/odata/QueryMovementNationalPrograms?';
+        $pageSize    = 500;                       // tamaño seguro por petición
+        $maxItems    = $top;                      // objetivo total
+        $normalized  = [];
+        $pages       = 0;
+        $maxPages    = (int)ceil($maxItems / $pageSize) + 1;
 
-        // Endpoint CORRECTO: QueryMovementNationalPrograms es el que usa la pestaña
-        // "Programas nacionales" de OIRSA web. Trae el objeto trazable, código de
-        // trazabilidad, cantidad real y nombre del autorizador.
-        // (El antiguo QueryMovementProducts devuelve esos campos en NULL.)
-        $endpoint = '/Services/odata/QueryMovementNationalPrograms?';
+        for ($offset = $skip; $offset < ($skip + $maxItems); $offset += $pageSize) {
+            // Por seguridad: cota dura de páginas para evitar bucles infinitos
+            if (++$pages > $maxPages) break;
 
-        $res = $this->http('GET', $endpoint . $query);
-        if ($res['status'] === 401) {
-            $this->clearToken();
-            $res = $this->http('GET', $endpoint . $query);
+            $thisTop = min($pageSize, ($skip + $maxItems) - $offset);
+            if ($thisTop <= 0) break;
+
+            // OData v3 exige %20 para espacios (rawurlencode), NO '+' como
+            // produce http_build_query. Si enviamos '+', OIRSA acepta el
+            // request pero el filtro se interpreta mal y devuelve [] silenciosamente.
+            $params = [
+                '$top'         => $thisTop,
+                '$skip'        => $offset,
+                '$orderby'     => $orderby,
+                '$inlinecount' => 'allpages',
+                '$filter'      => $filtroOData,
+            ];
+            $queryParts = [];
+            foreach ($params as $k => $v) {
+                $queryParts[] = rawurlencode($k) . '=' . rawurlencode((string)$v);
+            }
+            $url = $endpoint . implode('&', $queryParts);
+
+            $res = $this->http('GET', $url);
+            if ($res['status'] === 401) {
+                $this->clearToken();
+                $res = $this->http('GET', $url);
+            }
+            if ($res['status'] !== 200) {
+                // Log y aborta este sync (deja lo que llevemos hasta aquí)
+                error_log("TrazaragroClient::fetchEntregas página {$pages} status={$res['status']} url={$url}");
+                break;
+            }
+
+            $values = $res['body']['value'] ?? [];
+            if (empty($values)) break;            // OIRSA agotó resultados
+
+            foreach ($values as $row) {
+                $normalized[] = $this->parseMovement($row);
+            }
+
+            // Si OIRSA devolvió menos que pedimos, no hay más páginas
+            if (count($values) < $thisTop) break;
         }
 
-        $values = $res['body']['value'] ?? [];
-        $normalized = [];
-        foreach ($values as $row) {
-            $normalized[] = $this->parseMovement($row);
-        }
         return $normalized;
     }
 
@@ -352,12 +403,17 @@ class TrazaragroClient
         if (!empty($filtros['hasta'])) {
             $parts[] = "AuthorizationDate le datetime'" . date('Y-m-d', strtotime($filtros['hasta'])) . "T23:59:59'";
         }
-        $query = http_build_query([
+        // OData v3 exige %20 para espacios (rawurlencode), no + (http_build_query)
+        $params = [
             '$top'         => 1,
             '$inlinecount' => 'allpages',
             '$filter'      => implode(' and ', $parts),
-        ]);
-        $res = $this->http('GET', '/Services/odata/QueryMovementNationalPrograms?' . $query);
+        ];
+        $queryParts = [];
+        foreach ($params as $k => $v) {
+            $queryParts[] = rawurlencode($k) . '=' . rawurlencode((string)$v);
+        }
+        $res = $this->http('GET', '/Services/odata/QueryMovementNationalPrograms?' . implode('&', $queryParts));
         return (int)($res['body']['odata.count'] ?? 0);
     }
 
@@ -443,7 +499,7 @@ class TrazaragroClient
         $srcLoc1      = (string)$this->pick($r, ['SourceLocation1', 'FuenteUbicación1', 'Ubicación de origen1', 'Ubicación de origen 1']);
         $srcLoc2      = (string)$this->pick($r, ['SourceLocation2', 'FuenteUbicación2', 'Ubicación de origen 2']);
 
-        return [
+        $entry = [
             // Identidad y clasificación
             'trazaragro_id'           => (string)($r['MovementId']        ?? ''),
             'registration_code'       => $regCode,
@@ -502,9 +558,81 @@ class TrazaragroClient
             'usuario_autoriza'        => $authUser,
             'usuario_crea'            => $createUser,
 
+            // ── Derivados (alineados con Power Query SAG) ──
+            'naturaleza_inventario'   => $this->deriveNaturaleza((int)($r['MovementTypeId'] ?? 0)),
+            'tipo_movimiento_pip'     => $this->deriveTipoMovimientoPIP((int)($r['MovementTypeId'] ?? 0)),
+            'rubro_pip'               => $this->deriveRubroPIP($rubroId, $rubro),
+            'estado_finalizacion'     => $isCompleted ? 'Completado' : 'No completado',
+            'estado_vigencia'         => $this->deriveVigencia($fechaExpRaw),
+            'es_movimiento_efectivo'  => (strtoupper(trim($status)) === 'AUTORIZADO') && $isCompleted,
+            'requiere_revision'       => null,  // se llena debajo
+            'motivo_revision'         => null,
+            // Claves para deduplicación/sincronización
+            'clave_movimiento_item'   => ((string)($r['MovementId'] ?? '')) . '|' . ($codigoTraza !== '' ? $codigoTraza : 'SIN-ITEM'),
+            'clave_recorrido_item'    => ($codigoTraza !== '' ? $codigoTraza : 'SIN-ITEM') . '|'
+                                       . ((string)($r['MovementTypeId'] ?? '')) . '|'
+                                       . ($srcCode !== '' ? $srcCode : 'SIN-ORIGEN') . '|'
+                                       . ($destCode !== '' ? $destCode : 'SIN-DESTINO'),
+
             // Backup
             'raw'                     => $r,
         ];
+
+        // Calcular motivos de revisión (idéntico a Power Query)
+        $motivos = array_filter([
+            ((int)($r['MovementTypeId'] ?? 0)) === 0   ? 'Sin tipo de movimiento'      : null,
+            $codigoTraza === ''                         ? 'Sin código de trazabilidad'  : null,
+            $srcCode === ''                             ? 'Sin CUE de origen'           : null,
+            $destCode === ''                            ? 'Sin CUE de destino'          : null,
+            $this->pick($r, ['HasIncidents'], false)    ? 'Con incidentes'              : null,
+            $this->pick($r, ['HasExemption'], false)    ? 'Con restricción/exención'    : null,
+            !$isCompleted                               ? 'No completado'               : null,
+            strtoupper(trim($status)) !== 'AUTORIZADO'  ? 'Estado distinto de autorizado' : null,
+        ]);
+        $entry['requiere_revision'] = !empty($motivos);
+        $entry['motivo_revision']   = !empty($motivos) ? implode(' | ', $motivos) : null;
+
+        return $entry;
+    }
+
+    // ── Derivados alineados con el script Power Query de BI SAG ──
+    private function deriveTipoMovimientoPIP(int $typeId): string
+    {
+        return match ($typeId) {
+            111 => 'Bodega a Productor',
+            112 => 'Bodega a Bodega',
+            113 => 'Proveedor a Bodega',
+            default => 'Otro / Revisar',
+        };
+    }
+
+    private function deriveNaturaleza(int $typeId): string
+    {
+        return match ($typeId) {
+            111 => 'Salida',
+            112 => 'Traslado',
+            113 => 'Entrada',
+            default => 'Otro / Revisar',
+        };
+    }
+
+    private function deriveRubroPIP(int $rubroId, string $rubroNombre): string
+    {
+        return match ($rubroId) {
+            2371 => 'Café',
+            2373 => 'Pecuario',
+            2374 => 'Pesquero',
+            2375 => 'Agrícola',
+            default => $rubroNombre,
+        };
+    }
+
+    private function deriveVigencia(?string $expIso): string
+    {
+        if (!$expIso) return 'Sin fecha de vencimiento';
+        $ts = strtotime($expIso);
+        if (!$ts) return 'Sin fecha de vencimiento';
+        return $ts < time() ? 'Vencido' : 'Vigente';
     }
 
     private function isoToDateTime(?string $iso): ?string

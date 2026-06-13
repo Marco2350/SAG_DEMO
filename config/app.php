@@ -35,8 +35,11 @@ define('PROGRAMAS', [
         'gradient'    => 'linear-gradient(180deg, #ab9a8a 0%, #4f2a09 100%)',
         'color_light' => '#f5ede5',
         'descripcion' => 'Incentivos y asistencia para productores de café en Honduras',
-        // Rubro de Trazaragro (ProductActivityName) a filtrar para este programa
-        'trazaragro_rubro' => 'Insumo/Incentivo café',
+        // Filtro OIRSA por texto (substringof sobre ProductActivityName).
+        // Los IDs numéricos (ProductActivityId) deben descubrirse vía
+        // EntregasController::descubrirRubrosOirsa() y persistirse en la BD,
+        // NUNCA hardcodearse: cambian entre ambientes (pruebas vs producción).
+        'trazaragro_rubro' => 'café',
     ],
     'pipg' => [
         'id'          => 'pipg',
@@ -47,8 +50,7 @@ define('PROGRAMAS', [
         'color'       => '#2563eb',
         'color_light' => '#eff6ff',
         'descripcion' => 'Incentivos y asistencia técnica para el sector ganadero',
-        // Rubro Trazaragro: captura tanto pecuario como pesquero (substring "pecuario" o "pesquero")
-        'trazaragro_rubro' => 'Insumo/Incentivo pecuario',
+        'trazaragro_rubro' => 'pecuario',
     ],
     'pipa' => [
         'id'          => 'pipa',
@@ -59,7 +61,9 @@ define('PROGRAMAS', [
         'color'       => '#16a34a',
         'color_light' => '#f0fdf4',
         'descripcion' => 'Apoyo integral a la producción agrícola nacional',
-        'trazaragro_rubro' => 'Insumo/Incentivo agrícola',
+        // VALIDADO contra producción OIRSA 06/2026 vía _test_trazaragro_final.php
+        'trazaragro_rubro_id' => 2375,           // Insumo/Incentivo agrícola (738 entregas)
+        'trazaragro_rubro'    => 'agrícola',
     ],
     'fprog' => [
         'id'          => 'fprog',
@@ -73,6 +77,15 @@ define('PROGRAMAS', [
         'descripcion' => 'Fortalecimiento institucional y seguimiento de programas SAG',
         'trazaragro_rubro' => '',
     ],
+]);
+
+// ── Catálogo OIRSA: tipos de movimiento (confirmados en producción 06/2026) ──
+// IDs estables entre ambientes; los ProductActivityId NO lo son y se descubren
+// dinámicamente (ver EntregasController::descubrirRubrosOirsa).
+define('OIRSA_TIPOS_MOVIMIENTO', [
+    111 => ['nombre' => 'Bodega a Productor', 'naturaleza' => 'Salida'],
+    112 => ['nombre' => 'Bodega a Bodega',    'naturaleza' => 'Traslado'],
+    113 => ['nombre' => 'Proveedor a Bodega', 'naturaleza' => 'Entrada'],
 ]);
 
 // ── Base de datos única (autenticación + todos los programas) ──

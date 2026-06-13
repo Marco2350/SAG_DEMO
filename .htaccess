@@ -2,8 +2,27 @@ Options -Indexes
 RewriteEngine On
 RewriteBase /SAG_DEMO/
 
+# ── Bloquear archivos sensibles (credenciales, dotfiles) ──
+# Esto debe ir ANTES de las reglas de rewrite para que aplique siempre.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(env|env\..*|ini|log|sql|bak|sqlite|sqlite3)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "(composer\.(json|lock)|package(-lock)?\.json|yarn\.lock)$">
+    Require all denied
+</FilesMatch>
+
+# Diagnósticos _test_*: SÓLO accesibles desde la misma máquina (localhost).
+# Doble defensa: además de esto, cada _test_*.php incluye _test_guard.php
+# que también valida APP_ENV=development. En producción NUNCA se sirven.
+<FilesMatch "^_test_">
+    Require local
+</FilesMatch>
+
 # Bloquear acceso directo a directorios sensibles
-RewriteRule ^(core|config|app/models|app/controllers|logs)/ - [F,L]
+RewriteRule ^(core|config|app/models|app/controllers|logs|storage|database|vendor|tests)/ - [F,L]
 
 # No redirigir archivos y carpetas reales (css, js, img, etc.)
 RewriteCond %{REQUEST_FILENAME} !-f
@@ -12,11 +31,15 @@ RewriteCond %{REQUEST_FILENAME} !-d
 # Todo lo demás va a index.php
 RewriteRule ^(.*)$ index.php [QSA,L]
 
-# Seguridad adicional
+# Headers de seguridad
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
     Header set X-Frame-Options "SAMEORIGIN"
     Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+    # HSTS: actívese solo cuando el sitio sirva 100% por HTTPS
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 </IfModule>
 
 # Deshabilitar firma del servidor
