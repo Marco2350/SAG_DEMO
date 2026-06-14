@@ -91,11 +91,19 @@ class Database
      * Verifica si una tabla existe en la base actual.
      * Útil para que los controladores muestren un mensaje amable cuando
      * una migración aún no fue aplicada (en lugar de un PDO fatal).
+     *
+     * Usa information_schema (no SHOW TABLES LIKE) porque éste último con
+     * prepared statements falla silenciosamente en MySQL 5.7 de HostGator.
      */
     public function tablaExiste(string $nombre): bool
     {
         try {
-            $stmt = $this->pdo->prepare("SHOW TABLES LIKE ?");
+            $stmt = $this->pdo->prepare(
+                "SELECT 1 FROM information_schema.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME   = ?
+                  LIMIT 1"
+            );
             $stmt->execute([$nombre]);
             return (bool) $stmt->fetch(PDO::FETCH_NUM);
         } catch (\Throwable $e) {
