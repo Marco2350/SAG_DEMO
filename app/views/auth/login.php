@@ -29,19 +29,19 @@
     /* ── Top strip ── */
     .top-strip {
       background: var(--verde-deep);
-      padding: 14px 28px;
-      display: flex; align-items: center; gap: 18px;
+      padding: 10px 24px;
+      display: flex; align-items: center; gap: 14px;
       z-index: 10; position: relative;
     }
     .top-logo {
-      width: 50px; height: 50px;
-      background: #fff; border-radius: 10px;
+      width: 40px; height: 40px;
+      background: #fff; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 2px 8px rgba(0,0,0,.18);
     }
-    .top-logo i { font-size: 1.7rem; color: var(--verde-mid); }
+    .top-logo i { font-size: 1.35rem; color: var(--verde-mid); }
     .top-strip h6 {
-      color: #fff; font-size: .92rem;
+      color: #fff; font-size: .88rem;
       font-weight: 500; letter-spacing: .3px; margin: 0;
     }
     .top-strip h6 .sep { opacity: .6; margin: 0 6px; }
@@ -83,82 +83,82 @@
     .login-wrapper {
       flex: 1;
       display: flex; align-items: center; justify-content: center;
-      padding: 40px 16px;
+      padding: 18px 16px;
       z-index: 1; position: relative;
     }
     .login-card {
-      width: 100%; max-width: 460px;
-      background: #fff; border-radius: 18px;
-      box-shadow: 0 18px 48px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+      width: 100%; max-width: 430px;
+      background: #fff; border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.11), 0 2px 8px rgba(0,0,0,.06);
       overflow: hidden;
     }
 
     /* ── Card header verde ── */
     .card-header-custom {
       background: var(--verde-deep);
-      padding: 32px 28px 26px;
+      padding: 20px 26px 18px;
       text-align: center;
       position: relative;
     }
     .escudo-wrapper {
-      width: 86px; height: 86px; border-radius: 50%;
+      width: 64px; height: 64px; border-radius: 50%;
       background: #fff;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 18px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.22);
+      margin: 0 auto 10px;
+      box-shadow: 0 3px 12px rgba(0,0,0,.22);
     }
     .escudo-wrapper i {
-      font-size: 2.4rem;
+      font-size: 1.85rem;
       color: var(--verde-mid);
     }
     .card-header-custom h1 {
-      font-size: 1.55rem; font-weight: 700;
-      color: #fff; margin-bottom: 6px;
+      font-size: 1.25rem; font-weight: 700;
+      color: #fff; margin-bottom: 4px;
       line-height: 1.2;
     }
     .card-header-custom .subt {
-      font-size: .85rem; color: rgba(255,255,255,.85);
-      margin: 0 0 14px;
+      font-size: .78rem; color: rgba(255,255,255,.85);
+      margin: 0 0 10px;
     }
     .programa-badge {
-      display: inline-flex; align-items: center; gap: 7px;
+      display: inline-flex; align-items: center; gap: 6px;
       background: var(--verde-mid); color: #fff;
-      font-size: .76rem; font-weight: 600;
-      padding: 7px 16px; border-radius: 30px;
+      font-size: .72rem; font-weight: 600;
+      padding: 5px 14px; border-radius: 30px;
       box-shadow: 0 2px 6px rgba(22,163,74,.35);
     }
 
     /* ── Card body ── */
-    .card-body-custom { padding: 28px 32px 32px; }
+    .card-body-custom { padding: 18px 26px 22px; }
 
     .alerta {
-      border-radius: 10px; padding: 12px 14px;
-      font-size: .82rem; margin-bottom: 12px;
-      display: flex; align-items: flex-start; gap: 10px;
-      line-height: 1.4;
+      border-radius: 8px; padding: 9px 12px;
+      font-size: .78rem; margin-bottom: 9px;
+      display: flex; align-items: flex-start; gap: 9px;
+      line-height: 1.35;
     }
     .alerta i.icon-l {
-      font-size: 1rem; margin-top: 1px; flex-shrink: 0;
+      font-size: .95rem; margin-top: 1px; flex-shrink: 0;
     }
     .alerta-info  { background: #FFFBEA; border: 1px solid #F5E2A0; color: #7a5200; }
     .alerta-error { background: #FEF2F2; border: 1px solid #FECACA; color: #991b1b; }
 
     .form-label {
-      font-size: .88rem; font-weight: 600;
-      color: #333; margin-bottom: 8px;
+      font-size: .82rem; font-weight: 600;
+      color: #333; margin-bottom: 5px;
       display: block;
     }
 
     .input-group-icon {
       position: relative;
-      margin-bottom: 18px;
+      margin-bottom: 12px;
     }
     .form-control {
       background: #F1F1F0;
       border: 1.5px solid transparent;
-      border-radius: 10px;
-      padding: 13px 42px 13px 44px;
-      font-size: .92rem;
+      border-radius: 9px;
+      padding: 10px 42px 10px 42px;
+      font-size: .9rem;
       width: 100%;
       transition: background .2s, border-color .2s, box-shadow .2s;
       color: #333;
@@ -171,14 +171,14 @@
       outline: none;
     }
     .input-group-icon .icon-left {
-      position: absolute; left: 15px;
-      bottom: 14px;
-      color: #888; font-size: .95rem; z-index: 1;
+      position: absolute; left: 14px;
+      bottom: 11px;
+      color: #888; font-size: .92rem; z-index: 1;
     }
     .input-group-icon .icon-right {
-      position: absolute; right: 15px;
-      bottom: 14px;
-      color: #888; font-size: .95rem; z-index: 1;
+      position: absolute; right: 14px;
+      bottom: 11px;
+      color: #888; font-size: .92rem; z-index: 1;
       cursor: pointer;
     }
     .input-group-icon .icon-right:hover { color: var(--verde-deep); }
@@ -187,11 +187,11 @@
       width: 100%;
       background: var(--verde-deep);
       color: #fff;
-      border: none; padding: 14px;
-      border-radius: 10px;
-      font-size: 1rem; font-weight: 600;
+      border: none; padding: 11px;
+      border-radius: 9px;
+      font-size: .95rem; font-weight: 600;
       cursor: pointer; transition: all .2s;
-      margin-top: 6px;
+      margin-top: 4px;
       display: flex; align-items: center; justify-content: center; gap: 10px;
     }
     .btn-login:hover {
@@ -210,12 +210,12 @@
     /* ── Footer ── */
     footer {
       background: var(--verde-deep);
-      text-align: center; padding: 16px;
+      text-align: center; padding: 10px 16px;
       z-index: 10; position: relative;
     }
     footer p {
       color: rgba(255,255,255,.88);
-      font-size: .82rem; margin: 0;
+      font-size: .78rem; margin: 0;
     }
     footer p .pipe { color: rgba(255,255,255,.4); margin: 0 12px; }
     footer p .leaf { color: var(--verde-light); margin-right: 4px; }

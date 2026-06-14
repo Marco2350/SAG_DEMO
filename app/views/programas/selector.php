@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
   <style>
+    /* Variables compartidas con el resto del sistema SAG */
     :root {
       --sag-green:        #1f6e3a;
       --sag-green-dark:   #154a26;
@@ -17,14 +18,6 @@
       --sag-text:         #1f2937;
       --sag-text-soft:    #6b7280;
       --sag-border:       #e5e7eb;
-
-      /* Programas */
-      --pipc:        #6F4E37;
-      --pipc-light:  #f7efe7;
-      --pipg:        #2563eb;
-      --pipg-light:  #eaf1ff;
-      --pipa:        #16a34a;
-      --pipa-light:  #e8f7ee;
     }
     * { box-sizing:border-box; margin:0; padding:0; }
     html, body { height:100%; }
@@ -93,126 +86,205 @@
     }
     .sel-logout:hover { background:#fff; color: var(--sag-green); border-color:#fff; }
 
-    /* ── Contenido principal ── */
-    .sel-content {
-      flex:1; display:flex; flex-direction:column;
-      align-items:center; justify-content:center;
-      padding: 50px 20px 30px;
-      position:relative; z-index:2;
+    /* ════════════════════════════════════════════════════════════ */
+    /*  Selector de programas (rediseño de visualización)            */
+    /* ════════════════════════════════════════════════════════════ */
+    .program-selector-wrapper {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 22px 28px 16px;
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        width: 100%;
     }
-
-    .sel-title {
-      text-align:center; margin-bottom:38px;
+    .selector-title {
+        text-align: center;
+        margin-bottom: 20px;
     }
-    .sel-title h1 {
-      color: var(--sag-text);
-      font-size:1.9rem; font-weight:700; margin-bottom:8px;
-      display:inline-flex; align-items:center; gap:12px;
+    .selector-title h1 {
+        font-size: 26px;
+        font-weight: 800;
+        color: #101828;
+        margin-bottom: 4px;
     }
-    .sel-title h1 .ico {
-      color: var(--sag-green); font-size:1.6rem;
+    .selector-title p {
+        font-size: 14px;
+        color: #667085;
     }
-    .sel-title p {
-      color: var(--sag-text-soft);
-      font-size:.95rem;
+    .program-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(240px, 1fr));
+        gap: 18px;
+        margin-bottom: 18px;
     }
-
-    /* ── Grid de programas ── */
-    .programas-grid {
-      display:grid; grid-template-columns: repeat(4, 1fr);
-      gap:22px; max-width:1440px; width:100%;
+    .program-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 8px 22px rgba(16, 24, 40, 0.06);
+        transition: all 0.25s ease;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
     }
-    @media(max-width:1200px) { .programas-grid { grid-template-columns:1fr 1fr; max-width:720px; } }
-    @media(max-width:620px)  { .programas-grid { grid-template-columns:1fr; max-width:420px; } }
-
-    .prog-card {
-      background:#fff;
-      border-radius:18px;
-      overflow:hidden;
-      box-shadow: 0 6px 24px rgba(31,41,55,.08);
-      transition: transform .2s ease, box-shadow .2s ease;
-      cursor:pointer;
-      border:2px solid transparent;
-      display:flex; flex-direction:column;
+    .program-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 14px 30px rgba(16, 24, 40, 0.11);
+        border-color: rgba(15, 81, 50, 0.25);
     }
-    .prog-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 14px 36px rgba(31,41,55,.14);
+    .program-card.selected {
+        border-color: var(--sag-green);
+        box-shadow: 0 14px 30px rgba(31, 110, 58, 0.16);
     }
-    .prog-card.selected { border-color: var(--sag-green); }
-
-    .prog-header {
-      padding: 30px 22px 26px; text-align:center;
-      position:relative;
+    .program-card-header {
+        padding: 18px 22px 16px;
+        text-align: center;
     }
-    .prog-icon-wrap {
-      width:78px; height:78px; border-radius:50%;
-      display:flex; align-items:center; justify-content:center;
-      margin:0 auto 16px;
-      font-size:2rem;
+    .program-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        letter-spacing: .2px;
     }
-    .prog-sigla {
-      font-size:1.55rem; font-weight:800;
-      letter-spacing:.5px; line-height:1;
-      margin-bottom:8px;
+    .program-icon {
+        width: 66px;
+        height: 66px;
+        border-radius: 50%;
+        margin: 0 auto 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 26px;
     }
-    .prog-nombre {
-      font-size:.82rem;
-      color: var(--sag-text-soft);
-      line-height:1.45;
-      padding:0 6px;
+    .program-code {
+        font-size: 24px;
+        font-weight: 900;
+        letter-spacing: .8px;
+        margin-bottom: 6px;
+        line-height: 1;
     }
-
-    .prog-stats {
-      padding:18px 22px 20px;
-      border-top:1px solid #f0f0f0;
-      display:grid; grid-template-columns:1fr 1fr;
-      gap:14px 16px;
+    .program-description {
+        font-size: 12.5px;
+        color: #475467;
+        line-height: 1.4;
+        min-height: 36px;
     }
-    .prog-stat { text-align:center; }
-    .prog-stat .val { font-size:1.5rem; font-weight:800; line-height:1; }
-    .prog-stat .lbl {
-      font-size:.72rem; color: var(--sag-text-soft);
-      margin-top:4px; display:flex; align-items:center;
-      justify-content:center; gap:4px;
+    .program-stats {
+        border-top: 1px solid #eaecf0;
+        padding: 14px 22px 12px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px 10px;
     }
-    .prog-stat .lbl i { font-size:.7rem; }
-
-    .prog-btn {
-      display:flex; align-items:center; justify-content:center; gap:8px;
-      width:100%; padding:14px;
-      font-size:.95rem; font-weight:700;
-      color:#fff; border:none; cursor:pointer;
-      transition: filter .2s;
-      letter-spacing:.3px;
-      margin-top:auto;
+    .stat-item {
+        text-align: center;
     }
-    .prog-btn:hover { filter:brightness(.92); }
-    .prog-btn i { font-size:.9rem; }
-
-    /* ── Footer totales ── */
-    .sel-footer {
-      max-width:1440px; width:100%; margin-top:32px;
-      background:#fff; border-radius:16px;
-      padding:22px 30px;
-      display:grid; grid-template-columns:repeat(4,1fr);
-      gap:12px; text-align:left;
-      box-shadow: 0 4px 18px rgba(31,41,55,.06);
+    .stat-value {
+        font-size: 20px;
+        font-weight: 900;
+        line-height: 1;
     }
-    @media(max-width:760px) { .sel-footer { grid-template-columns:1fr 1fr; } }
-
-    .sf-item {
-      display:flex; align-items:center; gap:14px;
+    .stat-label {
+        font-size: 11.5px;
+        color: #667085;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
     }
-    .sf-icon {
-      width:48px; height:48px; border-radius:50%;
-      background: var(--sag-green-soft);
-      color: var(--sag-green);
-      display:flex; align-items:center; justify-content:center;
-      font-size:1.2rem; flex-shrink:0;
+    .stat-label i { font-size: .7rem; }
+    .program-button {
+        display: block;
+        width: calc(100% - 24px);
+        margin: 6px 12px 12px;
+        padding: 11px 14px;
+        border-radius: 10px;
+        border: none;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 800;
+        text-align: center;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        margin-top: auto;
     }
-    .sf-val { font-size:1.5rem; font-weight:800; color:var(--sag-text); line-height:1; }
-    .sf-lbl { font-size:.78rem; color:var(--sag-text-soft); margin-top:3px; }
+    .program-button:hover {
+        filter: brightness(0.95);
+        transform: translateY(-1px);
+    }
+    .summary-panel {
+        background: #ffffff;
+        border-radius: 18px;
+        border: 1px solid #e5e7eb;
+        padding: 16px 22px;
+        box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+    }
+    .summary-title {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: #101828;
+        margin-bottom: 12px;
+        padding-left: 10px;
+        border-left: 4px solid var(--sag-green);
+        line-height: 1.2;
+    }
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+    }
+    .summary-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .summary-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: #e9f7ef;
+        color: #0f6b3d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+    .summary-value {
+        font-size: 22px;
+        font-weight: 900;
+        color: #101828;
+        line-height: 1;
+    }
+    .summary-label {
+        font-size: 12.5px;
+        color: #667085;
+        margin-top: 3px;
+    }
+    @media (max-width: 1200px) {
+        .program-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 700px) {
+        .program-grid,
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
+        .program-selector-wrapper {
+            padding: 28px 16px;
+        }
+    }
 
     /* ── Page footer ── */
     .sel-pagefooter {
@@ -259,66 +331,81 @@
 </div>
 
 <!-- Contenido -->
-<div class="sel-content">
+<div class="program-selector-wrapper">
 
-  <div class="sel-title">
-    <h1><i class="fas fa-layer-group ico"></i> Seleccione el Programa</h1>
+  <div class="selector-title">
+    <h1><i class="fas fa-layer-group" style="color:var(--sag-green);"></i> Seleccione el Programa</h1>
     <p>Elija el programa con el que desea trabajar en esta sesión</p>
   </div>
 
   <!-- Grid de programas -->
-  <div class="programas-grid">
+  <?php
+  // Etiqueta corta descriptiva por programa (badge superior de la card)
+  $badges = [
+      'pipc'  => 'Incentivos Café',
+      'pipg'  => 'Incentivos ganaderos',
+      'pipa'  => 'Incentivos agrícola',
+      'fprog' => 'Fortalecimiento 2026',
+  ];
+  ?>
+  <div class="program-grid">
     <?php foreach ($programas as $key => $prog):
       $s = $stats[$key] ?? ['orgs'=>0,'benes'=>0,'caps'=>0,'at'=>0];
+      $badgeText = $badges[$key] ?? '';
     ?>
-    <div class="prog-card" onclick="seleccionar('<?= $key ?>')">
-      <div class="prog-header" style="background: linear-gradient(160deg, <?= $prog['color_light'] ?> 0%, #ffffff 90%);">
-        <div class="prog-icon-wrap" style="background: <?= $prog['color'] ?>22;">
+    <div class="program-card" onclick="seleccionar('<?= $key ?>')">
+      <div class="program-card-header" style="background: linear-gradient(160deg, <?= $prog['color_light'] ?> 0%, #ffffff 90%);">
+        <?php if ($badgeText !== ''): ?>
+        <div class="program-badge" style="background: <?= $prog['color_light'] ?>; color:<?= $prog['color'] ?>;">
+          <?= htmlspecialchars($badgeText) ?>
+        </div>
+        <?php endif; ?>
+        <div class="program-icon" style="background: <?= $prog['color_light'] ?>;">
           <?= progIconHtml($prog) ?>
         </div>
-        <div class="prog-sigla" style="color:<?= $prog['color'] ?>;"><?= $prog['sigla'] ?></div>
-        <div class="prog-nombre"><?= htmlspecialchars($prog['nombre']) ?></div>
+        <div class="program-code" style="color:<?= $prog['color'] ?>;"><?= $prog['sigla'] ?></div>
+        <div class="program-description"><?= htmlspecialchars($prog['nombre']) ?></div>
       </div>
 
-      <div class="prog-stats">
+      <div class="program-stats">
         <?php if (($s['tipo'] ?? 'pip') === 'fprog'): ?>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['total']) ?></div>
-          <div class="lbl"><i class="fas fa-list-check"></i>Acciones</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['total']) ?></div>
+          <div class="stat-label"><i class="fas fa-list-check"></i>Acciones</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['planificado']) ?></div>
-          <div class="lbl"><i class="fas fa-clock"></i>Planificadas</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['planificado']) ?></div>
+          <div class="stat-label"><i class="fas fa-clock"></i>Planificadas</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['ejecucion']) ?></div>
-          <div class="lbl"><i class="fas fa-spinner"></i>En Ejecución</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['ejecucion']) ?></div>
+          <div class="stat-label"><i class="fas fa-spinner"></i>En Ejecución</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['completado']) ?></div>
-          <div class="lbl"><i class="fas fa-circle-check"></i>Completadas</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['completado']) ?></div>
+          <div class="stat-label"><i class="fas fa-circle-check"></i>Completadas</div>
         </div>
         <?php else: ?>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['orgs']) ?></div>
-          <div class="lbl"><i class="fas fa-building-wheat"></i>Organizaciones</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['orgs']) ?></div>
+          <div class="stat-label"><i class="fas fa-building-wheat"></i>Organizaciones</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['benes']) ?></div>
-          <div class="lbl"><i class="fas fa-users"></i>Productores</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['benes']) ?></div>
+          <div class="stat-label"><i class="fas fa-users"></i>Productores</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['caps']) ?></div>
-          <div class="lbl"><i class="fas fa-graduation-cap"></i>Capacitaciones</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['caps']) ?></div>
+          <div class="stat-label"><i class="fas fa-graduation-cap"></i>Capacitaciones</div>
         </div>
-        <div class="prog-stat">
-          <div class="val" style="color:<?= $prog['color'] ?>;"><?= number_format($s['at']) ?></div>
-          <div class="lbl"><i class="fas fa-handshake"></i>Asistencias</div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:<?= $prog['color'] ?>;"><?= number_format($s['at']) ?></div>
+          <div class="stat-label"><i class="fas fa-handshake"></i>Asistencias</div>
         </div>
         <?php endif; ?>
       </div>
 
-      <button class="prog-btn" style="background:<?= $prog['color'] ?>;">
+      <button class="program-button" style="background:<?= $prog['color'] ?>;">
         <i class="fas fa-arrow-right-to-bracket"></i>
         Ingresar a <?= $prog['sigla'] ?>
       </button>
@@ -333,38 +420,41 @@
   $totCaps  = array_sum(array_map(fn($s) => $s['caps']  ?? 0, $stats));
   $totAT    = array_sum(array_map(fn($s) => $s['at']    ?? 0, $stats));
   ?>
-  <div class="sel-footer">
-    <div class="sf-item">
-      <div class="sf-icon"><i class="fas fa-building-wheat"></i></div>
-      <div>
-        <div class="sf-val"><?= number_format($totOrgs) ?></div>
-        <div class="sf-lbl">Organizaciones totales</div>
+  <div class="summary-panel">
+    <div class="summary-title">Resumen general de registros</div>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-icon"><i class="fas fa-building-wheat"></i></div>
+        <div>
+          <div class="summary-value"><?= number_format($totOrgs) ?></div>
+          <div class="summary-label">Organizaciones totales</div>
+        </div>
       </div>
-    </div>
-    <div class="sf-item">
-      <div class="sf-icon"><i class="fas fa-users"></i></div>
-      <div>
-        <div class="sf-val"><?= number_format($totBenes) ?></div>
-        <div class="sf-lbl">Productores totales</div>
+      <div class="summary-item">
+        <div class="summary-icon"><i class="fas fa-users"></i></div>
+        <div>
+          <div class="summary-value"><?= number_format($totBenes) ?></div>
+          <div class="summary-label">Productores totales</div>
+        </div>
       </div>
-    </div>
-    <div class="sf-item">
-      <div class="sf-icon"><i class="fas fa-graduation-cap"></i></div>
-      <div>
-        <div class="sf-val"><?= number_format($totCaps) ?></div>
-        <div class="sf-lbl">Capacitaciones totales</div>
+      <div class="summary-item">
+        <div class="summary-icon"><i class="fas fa-graduation-cap"></i></div>
+        <div>
+          <div class="summary-value"><?= number_format($totCaps) ?></div>
+          <div class="summary-label">Capacitaciones totales</div>
+        </div>
       </div>
-    </div>
-    <div class="sf-item">
-      <div class="sf-icon"><i class="fas fa-handshake"></i></div>
-      <div>
-        <div class="sf-val"><?= number_format($totAT) ?></div>
-        <div class="sf-lbl">Visitas AT totales</div>
+      <div class="summary-item">
+        <div class="summary-icon"><i class="fas fa-handshake"></i></div>
+        <div>
+          <div class="summary-value"><?= number_format($totAT) ?></div>
+          <div class="summary-label">Visitas / Asistencias totales</div>
+        </div>
       </div>
     </div>
   </div>
 
-</div><!-- /sel-content -->
+</div><!-- /program-selector-wrapper -->
 
 <!-- Page footer -->
 <div class="sel-pagefooter">
@@ -386,7 +476,7 @@ const BASE_URL = '<?= BASE_URL ?>';
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 
 function seleccionar(id) {
-  document.querySelectorAll('.prog-card').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.program-card').forEach(c => c.classList.remove('selected'));
   event.currentTarget.classList.add('selected');
 
   fetch(BASE_URL + '/programas/seleccionar', {
