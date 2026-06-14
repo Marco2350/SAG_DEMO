@@ -50,6 +50,27 @@ toggleBtn.addEventListener('click', () => {
   localStorage.setItem('sag_sidebar', sidebar.classList.contains('collapsed') ? 'collapsed' : 'open');
 });
 
+// ── GRUPOS DESPLEGABLES DEL SIDEBAR ──
+const navGroups = sidebar?.querySelectorAll('.nav-group') ?? [];
+navGroups.forEach((group) => {
+  const button = group.querySelector('.nav-group-toggle');
+  if (!button) return;
+
+  button.addEventListener('click', () => {
+    const shouldOpen = !group.classList.contains('open');
+
+    navGroups.forEach((otherGroup) => {
+      otherGroup.classList.remove('open');
+      otherGroup.querySelector('.nav-group-toggle')?.setAttribute('aria-expanded', 'false');
+    });
+
+    if (shouldOpen) {
+      group.classList.add('open');
+      button.setAttribute('aria-expanded', 'true');
+    }
+  });
+});
+
 // ── USER DROPDOWN ──
 const userChip     = document.getElementById('userChip');
 const userDropdown = document.getElementById('userDropdown');

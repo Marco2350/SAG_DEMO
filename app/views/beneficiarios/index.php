@@ -87,7 +87,7 @@
       </div>
     </div>
     <div style="padding:16px;overflow-x:auto;">
-      <table id="tablaBeneficiarios" class="sag-table" style="width:100%;">
+      <table id="tablaBeneficiarios" class="sag-table table-fit-content" style="width:100%;">
         <thead>
           <tr>
             <th>#</th><th>Nombre Completo</th><th>DNI</th><th>Edad</th>

@@ -11,6 +11,15 @@ function navActive(string $segment): string {
     global $uri;
     return (strpos($uri, $segment) !== false) ? 'active' : '';
 }
+function navGroupOpen(array $segments): string {
+    global $uri;
+    foreach ($segments as $segment) {
+        if (strpos($uri, $segment) !== false) {
+            return 'open';
+        }
+    }
+    return '';
+}
 ?>
 <!-- ══ SIDEBAR ══ -->
 <nav id="sidebar">
@@ -95,71 +104,106 @@ function navActive(string $segment): string {
   </a>
 
   <!-- Entregas e Inventarios (solo PIPs) -->
-  <div class="nav-section-label">Entregas e Inventarios</div>
-  <a class="nav-item-s <?= navActive('/entregas') ?>" href="<?= BASE_URL ?>/entregas">
-    <i class="fas fa-truck-ramp-box"></i>
-    <span class="nav-label">Entregas de Incentivos</span>
-    <?php $alertCount = (int)($_SESSION['entregas_alertas_count'] ?? 0); ?>
-    <?php if ($alertCount > 0): ?>
-      <span class="nav-badge-alert" title="<?= $alertCount ?> alerta(s) requieren revisión"><?= $alertCount ?></span>
-    <?php endif; ?>
-  </a>
-  <a class="nav-item-s <?= navActive('/inventarios') ?>" href="<?= BASE_URL ?>/inventarios">
-    <i class="fas fa-warehouse"></i>
-    <span class="nav-label">Inventarios de Incentivos</span>
-  </a>
+  <div class="nav-group <?= navGroupOpen(['/entregas', '/inventarios']) ?>">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/entregas', '/inventarios']) ? 'true' : 'false' ?>">
+      <span>Entregas e Inventarios</span>
+      <i class="fas fa-chevron-down" aria-hidden="true"></i>
+    </button>
+    <div class="nav-group-items">
+      <a class="nav-item-s <?= navActive('/entregas') ?>" href="<?= BASE_URL ?>/entregas">
+        <i class="fas fa-truck-ramp-box"></i>
+        <span class="nav-label">Entregas de Incentivos</span>
+        <?php $alertCount = (int)($_SESSION['entregas_alertas_count'] ?? 0); ?>
+        <?php if ($alertCount > 0): ?>
+          <span class="nav-badge-alert" title="<?= $alertCount ?> alerta(s) requieren revisión"><?= $alertCount ?></span>
+        <?php endif; ?>
+      </a>
+      <a class="nav-item-s <?= navActive('/inventarios') ?>" href="<?= BASE_URL ?>/inventarios">
+        <i class="fas fa-warehouse"></i>
+        <span class="nav-label">Inventarios de Incentivos</span>
+      </a>
+    </div>
+  </div>
   <?php endif; ?>
 
   <!-- Reportes -->
-  <div class="nav-section-label">Reportes</div>
-  <a class="nav-item-s <?= navActive('/estadisticas') ?>" href="<?= BASE_URL ?>/estadisticas">
-    <i class="fas fa-chart-bar"></i>
-    <span class="nav-label">Estadísticas</span>
-  </a>
-  <a class="nav-item-s <?= navActive('/exportar') ?>" href="<?= BASE_URL ?>/exportar">
-    <i class="fas fa-file-export"></i>
-    <span class="nav-label">Exportar Datos</span>
-  </a>
+  <div class="nav-group <?= navGroupOpen(['/estadisticas', '/exportar']) ?>">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/estadisticas', '/exportar']) ? 'true' : 'false' ?>">
+      <span>Reportes</span>
+      <i class="fas fa-chevron-down" aria-hidden="true"></i>
+    </button>
+    <div class="nav-group-items">
+      <a class="nav-item-s <?= navActive('/estadisticas') ?>" href="<?= BASE_URL ?>/estadisticas">
+        <i class="fas fa-chart-bar"></i>
+        <span class="nav-label">Estadísticas</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/exportar') ?>" href="<?= BASE_URL ?>/exportar">
+        <i class="fas fa-file-export"></i>
+        <span class="nav-label">Exportar Datos</span>
+      </a>
+    </div>
+  </div>
 
   <!-- Administración Financiera -->
-  <div class="nav-section-label">Administración</div>
-  <a class="nav-item-s <?= navActive('/presupuesto') ?>" href="<?= BASE_URL ?>/presupuesto">
-    <i class="fas fa-scale-balanced"></i>
-    <span class="nav-label">Ejecución Presupuestaria</span>
-  </a>
+  <div class="nav-group <?= navGroupOpen(['/presupuesto']) ?>">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/presupuesto']) ? 'true' : 'false' ?>">
+      <span>Administración</span>
+      <i class="fas fa-chevron-down" aria-hidden="true"></i>
+    </button>
+    <div class="nav-group-items">
+      <a class="nav-item-s <?= navActive('/presupuesto') ?>" href="<?= BASE_URL ?>/presupuesto">
+        <i class="fas fa-scale-balanced"></i>
+        <span class="nav-label">Ejecución Presupuestaria</span>
+      </a>
+    </div>
+  </div>
 
   <!-- Parametrización y Sistema (solo roles con acceso a catálogos — ver MantenimientoController::ROLES_CATALOGOS) -->
   <?php $rolSlug = $_SESSION['user']['rol_slug'] ?? '';
         if (in_array($rolSlug, ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'], true)): ?>
-  <div class="nav-section-label">Parametrización</div>
-  <a class="nav-item-s <?= navActive('/catalogos/tecnicos') ?>" href="<?= BASE_URL ?>/catalogos/tecnicos">
-    <i class="fas fa-user-tie"></i>
-    <span class="nav-label">Técnicos</span>
-  </a>
-  <a class="nav-item-s <?= navActive('/catalogos/temas') ?>" href="<?= BASE_URL ?>/catalogos/temas">
-    <i class="fas fa-tags"></i>
-    <span class="nav-label">Temas y Subtemas</span>
-  </a>
-  <a class="nav-item-s <?= navActive('/catalogos/cultivos') ?>" href="<?= BASE_URL ?>/catalogos/cultivos">
-    <i class="fas fa-seedling"></i>
-    <span class="nav-label">Cultivos y Rubros</span>
-  </a>
-  <a class="nav-item-s <?= navActive('/catalogos/tiposat') ?>" href="<?= BASE_URL ?>/catalogos/tiposat">
-    <i class="fas fa-list-check"></i>
-    <span class="nav-label">Tipos de Asistencia</span>
-  </a>
+  <div class="nav-group <?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ?>">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ? 'true' : 'false' ?>">
+      <span>Parametrización</span>
+      <i class="fas fa-chevron-down" aria-hidden="true"></i>
+    </button>
+    <div class="nav-group-items">
+      <a class="nav-item-s <?= navActive('/catalogos/tecnicos') ?>" href="<?= BASE_URL ?>/catalogos/tecnicos">
+        <i class="fas fa-user-tie"></i>
+        <span class="nav-label">Técnicos</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/catalogos/temas') ?>" href="<?= BASE_URL ?>/catalogos/temas">
+        <i class="fas fa-tags"></i>
+        <span class="nav-label">Temas y Subtemas</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/catalogos/cultivos') ?>" href="<?= BASE_URL ?>/catalogos/cultivos">
+        <i class="fas fa-seedling"></i>
+        <span class="nav-label">Cultivos y Rubros</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/catalogos/tiposat') ?>" href="<?= BASE_URL ?>/catalogos/tiposat">
+        <i class="fas fa-list-check"></i>
+        <span class="nav-label">Tipos de Asistencia</span>
+      </a>
+    </div>
+  </div>
 
-  <div class="nav-section-label">Sistema</div>
-  <a class="nav-item-s <?= navActive('/mantenimiento') ?>" href="<?= BASE_URL ?>/mantenimiento">
-    <i class="fas fa-gears"></i>
-    <span class="nav-label">Mantenimiento</span>
-  </a>
-  <?php if (in_array($rolSlug, ['admin', 'super_admin'], true)): ?>
-  <a class="nav-item-s <?= navActive('/auditoria') ?>" href="<?= BASE_URL ?>/auditoria">
-    <i class="fas fa-clipboard-list"></i>
-    <span class="nav-label">Auditoría</span>
-  </a>
-  <?php endif; ?>
+  <div class="nav-group <?= navGroupOpen(['/mantenimiento', '/auditoria']) ?>">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/mantenimiento', '/auditoria']) ? 'true' : 'false' ?>">
+      <span>Sistema</span>
+      <i class="fas fa-chevron-down" aria-hidden="true"></i>
+    </button>
+    <div class="nav-group-items">
+      <a class="nav-item-s <?= navActive('/mantenimiento') ?>" href="<?= BASE_URL ?>/mantenimiento">
+        <i class="fas fa-gears"></i>
+        <span class="nav-label">Mantenimiento</span>
+      </a>
+      <?php if (in_array($rolSlug, ['admin', 'super_admin'], true)): ?>
+      <a class="nav-item-s <?= navActive('/auditoria') ?>" href="<?= BASE_URL ?>/auditoria">
+        <i class="fas fa-clipboard-list"></i>
+        <span class="nav-label">Auditoría</span>
+      </a>
+      <?php endif; ?>
+    </div>
+  </div>
   <?php endif; ?>
 
   </div><!-- /sidebar-nav -->
