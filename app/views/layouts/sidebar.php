@@ -93,15 +93,6 @@ function navActive(string $segment): string {
     <i class="fas fa-graduation-cap"></i>
     <span class="nav-label">Capacitaciones</span>
   </a>
-  <!-- Metas e Indicadores también disponibles en PIPs (cada PIP los tiene aislados) -->
-  <a class="nav-item-s <?= navActive('/metas') ?>" href="<?= BASE_URL ?>/metas">
-    <i class="fas fa-bullseye"></i>
-    <span class="nav-label">Metas</span>
-  </a>
-  <a class="nav-item-s <?= navActive('/indicadores') ?>" href="<?= BASE_URL ?>/indicadores">
-    <i class="fas fa-gauge-high"></i>
-    <span class="nav-label">Indicadores</span>
-  </a>
 
   <!-- Entregas e Inventarios (solo PIPs) -->
   <div class="nav-section-label">Entregas e Inventarios</div>

@@ -220,6 +220,7 @@ $router->get('/beneficiarios',               'BeneficiariosController', 'index')
 $router->post('/beneficiarios/listar',       'BeneficiariosController', 'listar');
 $router->post('/beneficiarios/get',          'BeneficiariosController', 'get');
 $router->post('/beneficiarios/save',         'BeneficiariosController', 'save');
+$router->post('/beneficiarios/buscarPorDNI', 'BeneficiariosController', 'buscarPorDNI');
 $router->post('/beneficiarios/masivo',       'BeneficiariosController', 'masivo');
 $router->post('/beneficiarios/delete',       'BeneficiariosController', 'delete');
 
@@ -397,5 +398,6 @@ $router->get('/api/subtemas',                'ApiController', 'subtemas');
 $router->get('/api/tecnicos',                'ApiController', 'tecnicos');
 $router->get('/api/organizaciones',          'ApiController', 'organizaciones');
 $router->get('/api/departamentos',           'ApiController', 'departamentos');
+$router->get('/api/aldeas',                  'ApiController', 'aldeas');
 
 $router->dispatch();

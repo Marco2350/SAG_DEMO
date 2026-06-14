@@ -105,6 +105,26 @@ define('OIRSA_TIPOS_MOVIMIENTO', [
     113 => ['nombre' => 'Proveedor a Bodega', 'naturaleza' => 'Entrada'],
 ]);
 
+// ── Catálogo de etnias reconocidas en Honduras ─────────────────
+// Fuente: pueblos indígenas y afrohondureños reconocidos oficialmente
+// + categorías generales (mestizo, ladino) + "otro" libre.
+// Usado para validar entrada en Beneficiarios y carga masiva.
+define('ETNIAS_HONDURAS', [
+    'lenca'       => 'Lenca',
+    'garifuna'    => 'Garífuna',
+    'miskito'     => 'Miskito',
+    'pech'        => 'Pech (Paya)',
+    'tawahka'     => 'Tawahka (Sumo)',
+    'tolupan'     => 'Tolupán (Jicaque)',
+    'maya_chorti' => 'Maya Ch\'ortí',
+    'nahua'       => 'Nahua',
+    'negro_ingles'=> 'Negro de habla inglesa',
+    'mestizo'     => 'Mestizo',
+    'ladino'      => 'Ladino',
+    'otro'        => 'Otro',
+    'sin_dato'    => 'Sin dato / Prefiere no decir',
+]);
+
 // ── Base de datos única (autenticación + todos los programas) ──
 define('DB_MAIN', [
     'host'     => Env::get('DB_HOST', 'localhost'),

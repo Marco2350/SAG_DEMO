@@ -1,0 +1,281 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ *  sag-compact.css — Escala compacta global para SAG_DEMO
+ *  Sobrescribe estilos de main.css cuando corresponde
+ *
+ *  Objetivos:
+ *    - Vistas principales (dashboard, módulos) deben entrar sin scroll
+ *    - Listas largas pueden tener scroll natural (no se fuerzan a una vista)
+ *    - Tablas legibles, ordenadas y ajustadas a sus textos
+ *    - Mantener jerarquía visual y patrones de SAG_DEMO
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+
+/* ──────────────────────────────────────────────────────────────
+ *  1. Page header — título de módulo más bajo
+ * ────────────────────────────────────────────────────────────── */
+.page-header {
+    padding: 12px 0 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #eef2f6;
+}
+.page-header .page-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.page-header .page-title small {
+    display: block;
+    font-size: .78rem;
+    color: #6b7280;
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  2. Mini-stats / KPI cards — compactos
+ * ────────────────────────────────────────────────────────────── */
+.mini-stat {
+    background: #fff;
+    border: 1px solid #eef2f6;
+    border-left: 4px solid #1f6e3a;
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04);
+    min-height: 64px;
+}
+.mini-stat .ms-val {
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #101828;
+}
+.mini-stat .ms-lbl {
+    font-size: .78rem;
+    color: #6b7280;
+    margin-top: 2px;
+    line-height: 1.25;
+}
+
+/* Variantes de borde (colores) se mantienen del HTML inline */
+
+/* ──────────────────────────────────────────────────────────────
+ *  3. Crumb bar — más fino
+ * ────────────────────────────────────────────────────────────── */
+.crumb-bar {
+    padding: 8px 0;
+    font-size: .8rem;
+    margin-bottom: 6px;
+}
+.crumb-bar .crumb-pill {
+    padding: 4px 10px;
+    font-size: .78rem;
+    border-radius: 12px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  4. Card boxes (los contenedores de tablas / filtros)
+ * ────────────────────────────────────────────────────────────── */
+.card-box {
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(16, 24, 40, 0.04);
+    border: 1px solid #eef2f6;
+}
+.card-box-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid #eef2f6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.card-box-header h6 {
+    font-size: .92rem;
+    font-weight: 700;
+    margin: 0;
+    color: #1f2937;
+}
+.card-box-header h6 i {
+    color: #1f6e3a;
+    margin-right: 6px;
+    font-size: .9rem;
+}
+.card-box-body {
+    padding: 10px 14px 14px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  5. Tabla unificada — clase .sag-table
+ *  Aplica a TODAS las tablas para consistencia y buena lectura
+ * ────────────────────────────────────────────────────────────── */
+.table.sag-table,
+.card-box-body table.table {
+    font-size: 13px;
+    width: 100% !important;
+    margin-bottom: 0;
+}
+
+/* Encabezados de tabla */
+.table.sag-table thead th,
+.card-box-body table.table thead th {
+    background: #f8fafc;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: #475467;
+    padding: 10px 12px;
+    border-bottom: 2px solid #e5e7eb;
+    border-top: none;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Celdas */
+.table.sag-table tbody td,
+.card-box-body table.table tbody td {
+    padding: 10px 12px;
+    vertical-align: middle;
+    line-height: 1.4;
+    border-top: 1px solid #f1f5f9;
+    color: #1f2937;
+}
+
+/* Hover suave en filas */
+.table.sag-table tbody tr:hover,
+.card-box-body table.table tbody tr:hover {
+    background: #f9fafb;
+}
+
+/* Wrap controlado en columnas con textos largos */
+.table.sag-table td.text-wrap,
+.card-box-body table.table td.text-wrap {
+    white-space: normal;
+    max-width: 260px;
+    line-height: 1.35;
+}
+
+/* Columnas estándar */
+.table.sag-table td.col-id,
+.card-box-body table.table td.col-id { width: 50px; text-align: center; color: #6b7280; font-weight: 600; }
+
+.table.sag-table td.col-fecha,
+.card-box-body table.table td.col-fecha { width: 100px; white-space: nowrap; color: #475467; }
+
+.table.sag-table td.col-actions,
+.card-box-body table.table td.col-actions { width: 110px; white-space: nowrap; text-align: center; }
+
+/* Botones de acción en tabla — tamaño homogéneo */
+.table.sag-table td .btn-sm-icon,
+.table.sag-table td .btn-outline,
+.table.sag-table td .btn-danger-sm,
+.card-box-body table.table td .btn-sm-icon,
+.card-box-body table.table td .btn-outline,
+.card-box-body table.table td .btn-danger-sm {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    font-size: .8rem;
+    margin: 0 1px;
+}
+
+/* Badges de estado consistentes */
+.badge-estado,
+.table.sag-table .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    letter-spacing: .3px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  6. DataTables — filtros y paginación más chicos
+ * ────────────────────────────────────────────────────────────── */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    font-size: 12px;
+    padding: 6px 0;
+}
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    height: 30px;
+    padding: 3px 8px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+.dataTables_wrapper .pagination .page-link {
+    padding: 4px 9px;
+    font-size: 12px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  7. Filtros (select y input dentro de card-box-header) — compactos
+ * ────────────────────────────────────────────────────────────── */
+.card-box-header select.fs,
+.card-box-header input.fs {
+    font-size: 12px;
+    padding: 5px 10px;
+    height: 32px;
+    border: 1px solid #d1d5db;
+    border-radius: 7px;
+    background: #fff;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  8. Modales — body con más aire
+ * ────────────────────────────────────────────────────────────── */
+.modal-header { padding: 12px 18px; }
+.modal-header .modal-title { font-size: 1rem; font-weight: 700; }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 10px 18px; }
+.modal-body .form-label { font-size: .82rem; font-weight: 600; margin-bottom: 4px; }
+.modal-body .form-control,
+.modal-body .form-select {
+    font-size: .88rem;
+    padding: 7px 10px;
+    height: 34px;
+    border-radius: 7px;
+}
+.modal-body textarea.form-control {
+    height: auto;
+    min-height: 60px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ *  9. Botones primarios — escala estándar
+ * ────────────────────────────────────────────────────────────── */
+.btn-primario {
+    font-size: .85rem;
+    padding: 7px 14px;
+    border-radius: 7px;
+    font-weight: 600;
+}
+.btn-primario i { font-size: .8rem; margin-right: 3px; }
+
+/* ──────────────────────────────────────────────────────────────
+ * 10. Tarjetas de "Acciones Rápidas" / dashboard — compactas
+ * ────────────────────────────────────────────────────────────── */
+.quick-action {
+    padding: 10px 14px;
+    min-height: auto;
+}
+.quick-action .qa-title { font-size: .9rem; font-weight: 600; }
+.quick-action .qa-desc  { font-size: .76rem; color: #6b7280; }
+
+/* ──────────────────────────────────────────────────────────────
+ * 11. Responsive — móviles
+ * ────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .page-header .page-title { font-size: 1.15rem; }
+    .mini-stat .ms-val { font-size: 1.3rem; }
+    .table.sag-table { font-size: 12px; }
+    .table.sag-table thead th { padding: 8px 8px; font-size: 10px; }
+    .table.sag-table tbody td { padding: 8px 8px; }
+}

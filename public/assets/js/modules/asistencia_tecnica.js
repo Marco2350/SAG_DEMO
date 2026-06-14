@@ -114,9 +114,10 @@ $(function () {
         $('#atId').val(0);
         $('#atMun').html('<option value="">— Seleccione departamento primero —</option>');
         $('#atSubtema').html('<option value="">— Seleccione tema primero —</option>');
-        // Resetear bloque de evidencia al estado "visita nueva"
+        // Resetear bloque de Ficha Técnica al estado "visita nueva"
+        // (Antes se deshabilitaba hasta guardar la visita; ahora siempre habilitado)
         $('#evATIdAt').val(0);
-        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', true);
+        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', false);
         $('#evATArchivo').val('');
         $('#evATAviso').show();
         $('#evATSinArchivo').show();
@@ -125,9 +126,51 @@ $(function () {
         SAG.refreshSelect2('#modalAT');
     }
 
+    // ── CHANGE TIPO → alternar individual vs grupal ────
+    $('#atTipo').on('change', function () {
+        const $opt = $(this).find('option:selected');
+        const esGrupal = $opt.data('grupal') == 1 || $opt.attr('data-grupal') === '1';
+        if (esGrupal) {
+            $('#atBloqueIndividual').hide();
+            $('#atBloqueGrupal').show();
+            // Limpiar campos individuales para que no manden datos huérfanos
+            $('#atPNombre, #atPApellido, #atPDni, #atPEdad, #atPTel, #atArea').val('');
+            $('#atPSexo').val('');
+        } else {
+            $('#atBloqueGrupal').hide();
+            $('#atBloqueIndividual').show();
+            $('#atGrTotal, #atGrHombres, #atGrMujeres, #atGrLista').val('');
+        }
+    });
+
+    // Recalcular total grupo cuando cambien hombres o mujeres
+    $('#atGrHombres, #atGrMujeres').on('input', function () {
+        const h = parseInt($('#atGrHombres').val()) || 0;
+        const m = parseInt($('#atGrMujeres').val()) || 0;
+        if (h || m) $('#atGrTotal').val(h + m);
+    });
+
     // ── CHANGE DEPTO ──────────────────────────────────
     $('#atDep').on('change', function () {
         SAG.loadMunicipios($(this).val(), '#atMun');
+        $('#atAldeaSelect').hide().html('<option value="">— Seleccione municipio primero —</option>');
+        $('#atAldea').val('');
+    });
+
+    // ── CHANGE MUNI → cargar aldeas oficiales ─────────
+    $('#atMun').on('change', function () {
+        const codMuni = $(this).find('option:selected').data('codigo') || '';
+        if (codMuni) {
+            $('#atAldeaSelect').show();
+            SAG.loadAldeas(codMuni, '#atAldeaSelect');
+        } else {
+            $('#atAldeaSelect').hide();
+        }
+    });
+
+    $(document).on('change', '#atAldeaSelect', function () {
+        const v = $(this).val();
+        if (v) $('#atAldea').val(v);
     });
 
     // ── CHANGE TEMA ───────────────────────────────────
@@ -345,27 +388,53 @@ $(function () {
     $(document).on('click', '#btnSubirEvAT', function () {
         const file = $('#evATArchivo')[0].files[0];
         const id   = $('#evATIdAt').val();
-        if (!id || id == '0') { SAG.toast('Primero guarda la visita.', 'warning'); return; }
-        if (!file)            { SAG.toast('Seleccione un archivo.', 'warning'); return; }
+        if (!file) { SAG.toast('Seleccione un archivo.', 'warning'); return; }
 
-        const fd = new FormData();
-        fd.append('id_at', id);
-        fd.append('archivo', file);
-        fd.append('observaciones', $('#evATObs').val());
-        if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+        // Función real que sube el archivo
+        const subirArchivo = (idAt) => {
+            const fd = new FormData();
+            fd.append('id_at', idAt);
+            fd.append('archivo', file);
+            fd.append('observaciones', $('#evATObs').val());
+            if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+            $.ajax({
+                url: SAG.BASE_URL + '/asistencia/evidencia/subir',
+                method: 'POST',
+                data: fd, processData: false, contentType: false,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                success: function (res) {
+                    if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                    SAG.toast(res.message, 'success');
+                    cargarParaEditar(idAt);
+                    tabla.ajax.reload(null, false);
+                },
+                error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
+            });
+        };
 
-        $.ajax({
-            url: SAG.BASE_URL + '/asistencia/evidencia/subir',
-            method: 'POST',
-            data: fd, processData: false, contentType: false,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            success: function (res) {
-                if (!res.success) { SAG.toast(res.message, 'error'); return; }
-                SAG.toast(res.message, 'success');
-                cargarParaEditar(id); // recarga con evidencia
-            },
-            error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
-        });
+        // Si la visita aún no fue guardada, guardarla primero y luego subir
+        if (!id || id == '0') {
+            SAG.toast('Guardando visita y luego subiendo Ficha Técnica…', 'info');
+            SAG.ajax({
+                url:  '/asistencia/save',
+                data: $('#formAT').serialize(),
+                success: function (res) {
+                    if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                    const nuevoId = res.data && (res.data.id_at || res.data.id) ? (res.data.id_at || res.data.id) : null;
+                    if (!nuevoId) {
+                        SAG.toast('Visita guardada pero no se obtuvo el ID. Reintente subir la ficha.', 'warning');
+                        return;
+                    }
+                    $('#evATIdAt').val(nuevoId);
+                    subirArchivo(nuevoId);
+                },
+                error: function () { SAG.toast('Error al guardar la visita.', 'error'); }
+            });
+            return;
+        }
+
+        // Visita ya guardada → upload directo
+        subirArchivo(id);
     });
 
     $(document).on('click', '#btnReemplazarEvAT', function () {

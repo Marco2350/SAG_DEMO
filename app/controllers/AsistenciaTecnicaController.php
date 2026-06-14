@@ -148,28 +148,53 @@ class AsistenciaTecnicaController extends Controller
             }
         }
 
-        // ── Productor ──
-        if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
-        if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
-        if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
-            $this->error('Sexo no válido.'); return;
-        }
-        if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
-            $this->error('La edad debe ser un número entre 1 y 120.'); return;
-        }
-        $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
-        if ($dni !== '' && strlen($dni) !== 13) {
-            $this->error('El DNI del productor debe tener 13 dígitos.'); return;
-        }
-        $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
-        if ($telefono !== '' && strlen($telefono) !== 8) {
-            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
-        }
-        if ($area !== '' && (!is_numeric($area) || (float) $area < 0)) {
-            $this->error('El área productiva debe ser un número positivo.'); return;
-        }
-        if ($idOrg && !$this->model->organizacionValida($idOrg)) {
-            $this->error('La organización seleccionada no es válida.'); return;
+        // ── Detectar modalidad: individual vs grupal ──
+        // Lo decide el cliente con los campos enviados, pero validamos en server.
+        $grupoTotal   = (int) $this->getPost('grupo_total', 0);
+        $grupoHombres = (int) $this->getPost('grupo_hombres', 0);
+        $grupoMujeres = (int) $this->getPost('grupo_mujeres', 0);
+        $idOrgGrupo   = (int) $this->getPost('id_organizacion_grupal', 0);
+        $esGrupal     = ($grupoTotal > 0 || $grupoHombres > 0 || $grupoMujeres > 0);
+
+        if ($esGrupal) {
+            // ── Validación GRUPAL ──
+            if ($grupoTotal < 1 || $grupoTotal > 500) {
+                $this->error('El total de asistentes debe estar entre 1 y 500.'); return;
+            }
+            if ($grupoHombres + $grupoMujeres > $grupoTotal) {
+                $this->error('La suma de hombres y mujeres no puede superar el total.'); return;
+            }
+            if ($idOrgGrupo && !$this->model->organizacionValida($idOrgGrupo)) {
+                $this->error('La organización seleccionada no es válida.'); return;
+            }
+            // En grupal, los campos individuales se ignoran
+            $productor = 'Atención grupal · ' . $grupoTotal . ' asistentes';
+            $sexo = ''; $edad = ''; $dni = ''; $telefono = ''; $area = '';
+            $idOrg = $idOrgGrupo ?: 0;
+        } else {
+            // ── Validación INDIVIDUAL ──
+            if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
+            if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
+            if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
+                $this->error('Sexo no válido.'); return;
+            }
+            if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
+                $this->error('La edad debe ser un número entre 1 y 120.'); return;
+            }
+            $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
+            if ($dni !== '' && strlen($dni) !== 13) {
+                $this->error('El DNI del productor debe tener 13 dígitos.'); return;
+            }
+            $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
+            if ($telefono !== '' && strlen($telefono) !== 8) {
+                $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+            }
+            if ($area !== '' && (!is_numeric($area) || (float) $area < 0)) {
+                $this->error('El área productiva debe ser un número positivo.'); return;
+            }
+            if ($idOrg && !$this->model->organizacionValida($idOrg)) {
+                $this->error('La organización seleccionada no es válida.'); return;
+            }
         }
 
         $data = [

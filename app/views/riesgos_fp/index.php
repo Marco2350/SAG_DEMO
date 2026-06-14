@@ -88,7 +88,7 @@
       </div>
     </div>
     <div class="card-box-body">
-      <table id="tablaRiesgos" class="table table-striped table-hover" style="width:100%;">
+      <table id="tablaRiesgos" class="table sag-table" style="width:100%;">
         <thead>
           <tr>
             <th>Categoría</th>

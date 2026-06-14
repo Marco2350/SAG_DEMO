@@ -42,13 +42,13 @@
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
         <div class="ms-val"><?= $resumen['hombres'] ?></div>
-        <div class="ms-lbl"><i class="fas fa-mars" style="color:#3b82f6;margin-right:4px;"></i>Hombres</div>
+        <div class="ms-lbl"><i class="fas fa-user" style="color:#3b82f6;margin-right:4px;"></i>Hombres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#db2777;">
         <div class="ms-val"><?= $resumen['mujeres'] ?></div>
-        <div class="ms-lbl"><i class="fas fa-venus" style="color:#db2777;margin-right:4px;"></i>Mujeres</div>
+        <div class="ms-lbl"><i class="fas fa-user" style="color:#db2777;margin-right:4px;"></i>Mujeres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
@@ -118,8 +118,22 @@
 
           <!-- Datos personales -->
           <div class="form-section-title" style="background:#f0fdf4;padding:8px 12px;border-left:4px solid #16a34a;border-radius:4px;margin-bottom:14px;">
-            <i class="fas fa-id-card me-1" style="color:#16a34a;"></i>Datos Personales
+            <i class="fas fa-id-card me-1" style="color:#16a34a;"></i>Identidad del Productor
           </div>
+          <!-- ── DNI primero — Búsqueda automática en censo y beneficiarios ── -->
+          <div class="row g-3 mb-2">
+            <div class="col-md-6">
+              <label class="form-label-b">DNI / Identidad <span class="req">*</span></label>
+              <input type="text" class="fc input-dni" id="bDni" name="dni"
+                     placeholder="0000-0000-00000" maxlength="15" inputmode="numeric" autofocus/>
+              <small style="color:#6b7280;font-size:.72rem;">Ingrese el DNI primero para buscar en sus beneficiarios y en el censo nacional.</small>
+            </div>
+            <div class="col-md-6">
+              <!-- Banner de estado de búsqueda por DNI -->
+              <div id="bDniEstado" style="display:none;margin-top:22px;padding:8px 12px;border-radius:8px;font-size:.82rem;line-height:1.3;"></div>
+            </div>
+          </div>
+
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <label class="form-label-b">Nombre <span class="req">*</span></label>
@@ -128,11 +142,6 @@
             <div class="col-md-6">
               <label class="form-label-b">Apellido <span class="req">*</span></label>
               <input type="text" class="fc" id="bApellido" name="apellido" placeholder="Primer apellido" maxlength="100"/>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label-b">DNI / Identidad</label>
-              <input type="text" class="fc input-dni" id="bDni" name="dni"
-                     placeholder="0000-0000-00000" maxlength="15" inputmode="numeric"/>
             </div>
             <div class="col-md-4">
               <label class="form-label-b">Fecha de Nacimiento</label>
@@ -144,6 +153,15 @@
                 <option value="">— Seleccione —</option>
                 <option value="M">Masculino</option>
                 <option value="F">Femenino</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label-b">Etnia</label>
+              <select class="fs" id="bEtnia" name="etnia">
+                <option value="">— Seleccione —</option>
+                <?php foreach (ETNIAS_HONDURAS as $val => $label): ?>
+                  <option value="<?= htmlspecialchars($val) ?>"><?= htmlspecialchars($label) ?></option>
+                <?php endforeach; ?>
               </select>
             </div>
           </div>
@@ -170,7 +188,13 @@
             </div>
             <div class="col-md-4">
               <label class="form-label-b">Aldea</label>
+              <!-- Select dependiente del municipio (catálogo nacional 3,733 aldeas) -->
+              <select class="fs sag-search" id="bAldeaSelect" style="margin-bottom:4px;display:none;">
+                <option value="">— Seleccione municipio primero —</option>
+              </select>
+              <!-- Fallback texto libre (si el municipio no está en catálogo o el usuario quiere otra) -->
               <input type="text" class="fc" id="bAldea" name="aldea" placeholder="Ej. El Porvenir" maxlength="200"/>
+              <small style="color:#6b7280;font-size:.7rem;">Elija del catálogo o escriba directamente.</small>
             </div>
           </div>
 
@@ -210,20 +234,20 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header modal-header-sag">
-        <h5 class="modal-title"><i class="fas fa-file-csv me-2"></i>Carga Masiva de Beneficiarios</h5>
+        <h5 class="modal-title"><i class="fas fa-file-import me-2"></i>Carga Masiva de Beneficiarios</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p style="font-size:.82rem;color:#555;margin-bottom:8px;">Columnas requeridas en el CSV:</p>
+        <p style="font-size:.82rem;color:#555;margin-bottom:8px;">Columnas requeridas (CSV o Excel .xlsx):</p>
         <div style="display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 10px;">
-          <?php foreach (['nombre','apellido','dni','fecha_nacimiento','sexo','id_departamento','id_municipio','aldea','id_organizacion','telefono'] as $col): ?>
+          <?php foreach (['nombre','apellido','dni','fecha_nacimiento','sexo','etnia','id_departamento','id_municipio','aldea','id_organizacion','telefono'] as $col): ?>
           <span style="background:#e8edf5;color:var(--primario);padding:4px 10px;border-radius:5px;font-size:.73rem;font-weight:600;"><?= $col ?></span>
           <?php endforeach; ?>
         </div>
         <div class="upload-zone" id="uploadZone" style="margin-top:6px;">
-          <input type="file" id="inputCSV" accept=".csv" style="display:none;"/>
-          <i class="fas fa-file-csv" style="font-size:2.5rem;color:#b0bec5;display:block;margin-bottom:10px;"></i>
-          <h6 style="font-size:.9rem;font-weight:700;color:#444;margin-bottom:4px;">Arrastra tu archivo CSV aquí</h6>
+          <input type="file" id="inputCSV" accept=".csv,.xlsx" style="display:none;"/>
+          <i class="fas fa-file-import" style="font-size:2.5rem;color:#b0bec5;display:block;margin-bottom:10px;"></i>
+          <h6 style="font-size:.9rem;font-weight:700;color:#444;margin-bottom:4px;">Arrastra tu archivo CSV o Excel (.xlsx) aquí</h6>
           <p style="font-size:.78rem;color:#888;margin-bottom:12px;">o haz clic para seleccionarlo</p>
           <button type="button" class="btn-outline" onclick="document.getElementById('inputCSV').click()">
             <i class="fas fa-folder-open"></i> Seleccionar archivo

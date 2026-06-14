@@ -24,7 +24,24 @@ class MetasController extends Controller
     public function __construct()
     {
         $this->requirePrograma();
+        $this->requireFprog();
         $this->model = new MetaModel();
+    }
+
+    /**
+     * Metas son exclusivas del programa FPROG.
+     * Bloquea acceso por URL desde PIPs (defensa en profundidad — el sidebar
+     * tampoco las muestra, pero un usuario con la URL no debe poder entrar).
+     */
+    private function requireFprog(): void
+    {
+        if (($_SESSION['programa']['id'] ?? '') !== 'fprog') {
+            if ($this->isAjax()) {
+                $this->error('Metas sólo aplica al programa FPROG.', 403);
+            }
+            http_response_code(403);
+            $this->redirect('/dashboard');
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

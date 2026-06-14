@@ -27,6 +27,8 @@
 
   <!-- CSS principal -->
   <link rel="stylesheet" href="<?= asset('public/assets/css/main.css') ?>"/>
+  <!-- CSS compacto global (sobreescribe main.css en escala) -->
+  <link rel="stylesheet" href="<?= asset('public/assets/css/sag-compact.css') ?>?v=<?= APP_VERSION ?>"/>
 
   <?php if (!empty($cssExtra)): ?>
   <?= $cssExtra ?>

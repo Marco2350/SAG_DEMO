@@ -248,12 +248,61 @@ const SAG = (function () {
           const opt      = document.createElement('option');
           opt.value      = m.id_municipio;
           opt.textContent = m.nombre;
+          // Guarda codigo del municipio para que se puedan cargar aldeas oficiales
+          if (m.codigo) opt.setAttribute('data-codigo', m.codigo);
           // Preseleccionar si selected es numérico/string de ID
           if (selected && String(m.id_municipio) === String(selected)) {
             opt.selected = true;
           }
           sel.appendChild(opt);
         });
+      }
+      sel.disabled = false;
+      if (useJq && $(sel).data('select2')) $(sel).trigger('change');
+    });
+  }
+
+  // ──────────────────────────────────────────────────
+  //  Cargar aldeas oficiales del catálogo nacional
+  //  Args: codigoMunicipio (ej '0101'), targetSelect, selected (opcional)
+  //  Si el select de municipio NO tiene 'data-codigo' (catálogo no migrado),
+  //  el caller debe hacer fallback a input libre.
+  // ──────────────────────────────────────────────────
+  function loadAldeas(codigoMuni, target, selected) {
+    const useJq = typeof $ !== 'undefined';
+    const sel   = typeof target === 'string'
+        ? (useJq ? $(target)[0] : document.getElementById(target.replace('#', '')))
+        : target;
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Cargando aldeas...</option>';
+    sel.disabled  = true;
+
+    if (!codigoMuni) {
+      sel.innerHTML = '<option value="">— Seleccione municipio primero —</option>';
+      sel.disabled  = false;
+      return;
+    }
+
+    ajaxGet('/api/aldeas', { codigo_municipio: codigoMuni }, function (res) {
+      sel.innerHTML = '<option value="">— Seleccione aldea —</option>';
+      if (res.success && res.data && res.data.length) {
+        res.data.forEach(function (a) {
+          const opt = document.createElement('option');
+          opt.value = a.nombre;            // valor = nombre (compatible con campo texto antiguo)
+          opt.textContent = a.nombre;
+          opt.setAttribute('data-codigo', a.codigo);
+          if (selected && (String(a.nombre).toUpperCase() === String(selected).toUpperCase()
+                        || String(a.codigo) === String(selected))) {
+            opt.selected = true;
+          }
+          sel.appendChild(opt);
+        });
+      } else {
+        // Sin aldeas en catálogo para este municipio
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(Sin aldeas en catálogo — escriba en el campo libre)';
+        sel.appendChild(opt);
       }
       sel.disabled = false;
       if (useJq && $(sel).data('select2')) $(sel).trigger('change');
@@ -361,6 +410,7 @@ const SAG = (function () {
     confirm: confirm,
     btnLoading: btnLoading,
     loadMunicipios: loadMunicipios,
+    loadAldeas:     loadAldeas,
     loadSubtemas: loadSubtemas,
     formatDNI: formatDNI,
     formatTel: formatTel,
@@ -370,6 +420,92 @@ const SAG = (function () {
     BASE: BASE,
     BASE_URL: BASE,
     CSRF: CSRF,
-    withCsrf: withCsrf
+    withCsrf: withCsrf,
+    // ── Borradores / autoguardado ──
+    autosaveAttach:  autosaveAttach,
+    autosaveClear:   autosaveClear,
+    autosaveRestore: autosaveRestore
   };
+
+  // ════════════════════════════════════════════════════════════
+  //  BORRADORES — autoguardado en localStorage
+  //
+  //  Uso (HTML):
+  //    <form id="formAT" data-sag-autosave="form-at"> ... </form>
+  //
+  //  Uso (JS):
+  //    SAG.autosaveAttach('#formAT', 'form-at');
+  //    SAG.autosaveRestore('#formAT', 'form-at'); // restaura
+  //    SAG.autosaveClear('form-at');              // limpia tras submit
+  //
+  //  Características:
+  //    - Guarda cada 2.5s mientras el usuario teclea
+  //    - Llave: 'sag_draft_' + key (por usuario implícito en el navegador)
+  //    - Persiste en localStorage del navegador (no envía a servidor)
+  //    - Excluye campos password y file
+  // ════════════════════════════════════════════════════════════
+  function autosaveAttach(selector, key) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const $form = (typeof $ !== 'undefined') ? $(selector) : null;
+    if (!$form || !$form.length) return;
+    let t;
+    $form.on('input change', function () {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        try {
+          const data = {};
+          $form.find(':input').each(function () {
+            const name = this.name || this.id;
+            if (!name) return;
+            const tipo = (this.type || '').toLowerCase();
+            if (tipo === 'password' || tipo === 'file') return;
+            if (tipo === 'checkbox' || tipo === 'radio') {
+              if (this.checked) data[name] = this.value;
+            } else {
+              data[name] = this.value;
+            }
+          });
+          data.__ts = Date.now();
+          localStorage.setItem('sag_draft_' + key, JSON.stringify(data));
+        } catch (e) { /* localStorage full / privado */ }
+      }, 2500);
+    });
+  }
+
+  function autosaveClear(key) {
+    try { localStorage.removeItem('sag_draft_' + key); } catch (e) { /* no-op */ }
+  }
+
+  /**
+   * Devuelve true si se restauró algo, false si no había nada.
+   * Si recibe onPrompt(antiguedadMs) → función que pregunta al usuario;
+   * si onPrompt devuelve false, NO restaura.
+   */
+  function autosaveRestore(selector, key, onPrompt) {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    let raw;
+    try { raw = localStorage.getItem('sag_draft_' + key); } catch (e) { return false; }
+    if (!raw) return false;
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return false; }
+    const ts = data.__ts || 0;
+    const antiguedadMs = Date.now() - ts;
+    if (typeof onPrompt === 'function') {
+      if (onPrompt(antiguedadMs) === false) return false;
+    }
+    const $form = (typeof $ !== 'undefined') ? $(selector) : null;
+    if (!$form || !$form.length) return false;
+    $form.find(':input').each(function () {
+      const name = this.name || this.id;
+      if (!name || !(name in data)) return;
+      const tipo = (this.type || '').toLowerCase();
+      if (tipo === 'password' || tipo === 'file') return;
+      if (tipo === 'checkbox' || tipo === 'radio') {
+        this.checked = (this.value === data[name]);
+      } else {
+        this.value = data[name];
+      }
+    });
+    return true;
+  }
 })();

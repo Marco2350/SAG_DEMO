@@ -17,7 +17,23 @@ class IndicadoresController extends Controller
     public function __construct()
     {
         $this->requirePrograma();
+        $this->requireFprog();
         $this->model = new IndicadorModel();
+    }
+
+    /**
+     * Indicadores son exclusivos del programa FPROG.
+     * Defensa en profundidad: además del sidebar, bloquea URL directa.
+     */
+    private function requireFprog(): void
+    {
+        if (($_SESSION['programa']['id'] ?? '') !== 'fprog') {
+            if ($this->isAjax()) {
+                $this->error('Indicadores sólo aplica al programa FPROG.', 403);
+            }
+            http_response_code(403);
+            $this->redirect('/dashboard');
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

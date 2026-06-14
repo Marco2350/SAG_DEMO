@@ -126,6 +126,24 @@ $(function () {
     // ── CHANGE DEPTO ──────────────────────────────────
     $('#cDep').on('change', function () {
         SAG.loadMunicipios($(this).val(), '#cMun');
+        $('#cAldeaSelect').hide().html('<option value="">— Seleccione municipio primero —</option>');
+        $('#cAldea').val('');
+    });
+
+    // ── CHANGE MUNI → cargar aldeas oficiales ─────────
+    $('#cMun').on('change', function () {
+        const codMuni = $(this).find('option:selected').data('codigo') || '';
+        if (codMuni) {
+            $('#cAldeaSelect').show();
+            SAG.loadAldeas(codMuni, '#cAldeaSelect');
+        } else {
+            $('#cAldeaSelect').hide();
+        }
+    });
+
+    $(document).on('change', '#cAldeaSelect', function () {
+        const v = $(this).val();
+        if (v) $('#cAldea').val(v);
     });
 
     // ── CHANGE TEMA ───────────────────────────────────
