@@ -1,0 +1,149 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║  COMANDOS GIT — Commit selectivo de los cambios FPROG 2026          ║
+║  Manifesto SAG_DEMO: "Conserva todos los cambios existentes que     ║
+║  no sean tuyos." → NO uses 'git add .'                              ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+# ═══ 1. ARCHIVOS NUEVOS — código del módulo FPROG (seguros) ═══════════
+# Pegá este bloque entero en tu terminal Git Bash de VS Code:
+
+git add \
+  app/controllers/MetasController.php \
+  app/controllers/IndicadoresController.php \
+  app/controllers/ComponentesFPController.php \
+  app/controllers/RiesgosFPController.php \
+  app/controllers/EquipoFPController.php \
+  app/controllers/CronogramaFPController.php \
+  app/models/MetaModel.php \
+  app/models/IndicadorModel.php \
+  app/models/ComponenteFPModel.php \
+  app/models/RiesgoFPModel.php \
+  app/models/EquipoFPModel.php \
+  app/models/CronogramaFPModel.php \
+  app/views/metas/ \
+  app/views/indicadores/ \
+  app/views/componentes_fp/ \
+  app/views/riesgos_fp/ \
+  app/views/equipo_fp/ \
+  app/views/cronograma_fp/ \
+  app/views/_partial/ \
+  public/assets/js/modules/metas.js \
+  public/assets/js/modules/indicadores.js \
+  public/assets/js/modules/componentes_fp.js \
+  public/assets/js/modules/riesgos_fp.js \
+  public/assets/js/modules/equipo_fp.js \
+  public/assets/js/modules/cronograma_fp.js \
+  sql/migracion_011_metas_indicadores.sql \
+  sql/migracion_012_fprog_identidad.sql \
+  sql/migracion_013_fp_componentes.sql \
+  sql/migracion_014_metas_indicadores_componente.sql \
+  sql/migracion_015_fp_riesgos_equipo_cronograma.sql \
+  sql/migracion_016_seed_fprog_2026.sql
+
+
+# ═══ 2. ARCHIVOS MODIFICADOS — sólo los que toqué en esta sesión ════
+# (cierre de fugas de aislamiento + módulo FPROG + helper Database)
+
+git add \
+  config/app.php \
+  core/Database.php \
+  app/controllers/DashboardController.php \
+  app/controllers/EstadisticasController.php \
+  app/controllers/EntregasController.php \
+  app/controllers/PresupuestoController.php \
+  app/models/AccionFortalecimientoModel.php \
+  app/views/layouts/sidebar.php \
+  index.php
+
+
+# ═══ 3. ARCHIVOS RENOMBRADOS — marcadores de migración renumerada ══
+# Sólo si querés conservar el marcador "RENUMERADA"; si no, podés
+# saltarte este paso y borrarlos manualmente.
+
+git add \
+  sql/migracion_005_metas_indicadores.sql \
+  sql/migracion_006_fprog_identidad.sql
+
+
+# ═══ 4. NO COMITEAR — scripts diagnóstico (manifiesto prohíbe) ════
+# Estos archivos los creé yo en sesiones anteriores para debug;
+# NO deben ir al repo. Borralos o agregalos al .gitignore:
+
+# Opción A — borrar de tu working tree:
+rm -f \
+  _test_trazaragro.php \
+  _test_trazaragro_tipos.php \
+  _test_trazaragro_entregas.php \
+  _test_trazaragro_final.php \
+  _test_trazaragro_rubros.php \
+  _test_sync_pipa.php \
+  _test_filtro_fechas.php \
+  _test_guard.php \
+  _diag_persistencia.php \
+  _migrar_trazaragro_v2.php
+
+# Opción B — agregarlos al .gitignore (si querés conservarlos local):
+# echo "/_test_*.php" >> .gitignore
+# echo "/_diag_*.php" >> .gitignore
+# echo "/_migrar_*.php" >> .gitignore
+
+
+# ═══ 5. CONFIRMÁ qué quedó staged antes de comitear ═══════════════
+
+git status --short
+
+# Deberías ver una lista clean con sólo cambios marcados como A/M
+# en archivos del módulo FPROG, sin los 99 archivos modificados del
+# otro dev y sin los _test_/_diag_/_migrar_.
+
+
+# ═══ 6. COMMIT con mensaje descriptivo ════════════════════════════
+
+git commit -m "feat(fprog): módulo Fortalecimiento de Programas y Proyectos SAG 2026
+
+- 6 módulos nuevos para FPROG: Metas, Indicadores, Componentes,
+  Riesgos, Equipo Técnico, Cronograma (CRUD completo)
+- 6 migraciones SQL incrementales e idempotentes (011-016)
+- Seed con los datos del PPTX del Despacho (7 componentes,
+  5 riesgos, 8 roles, 12 actividades)
+- Aislamiento por id_proyecto en TODAS las queries
+- requireCsrf + requireRole + logAction en mutaciones
+- Helper Database::tablaExiste() para vista amigable cuando
+  una migración no fue aplicada (sin stack trace al usuario)
+
+Bonus — cierre de fugas de aislamiento documentadas en auditoría:
+- DashboardController (144 productores PIPA visibles en PIPC)
+- EntregasController (9 queries sin id_proyecto)
+- PresupuestoController (12 fugas)
+- EstadisticasController (LEFT JOIN)
+- AccionFortalecimientoModel (participantes)
+
+Sidebar FPROG con 6 menús nuevos; PIPs ven Metas/Indicadores
+sin la columna Componente (UI dinámica)."
+
+
+# ═══ 7. PUSH al repo ═══════════════════════════════════════════════
+
+git push origin <nombre-de-tu-branch>
+
+
+# ═══ NOTAS FINALES ════════════════════════════════════════════════
+#
+# 1) Los 99 archivos modificados que vés en 'git status' NO los toqué.
+#    Son cambios previos del otro dev. NO los comitees acá; coordiná
+#    con quien los hizo. Si querés ver qué cambios tienen:
+#       git diff app/controllers/AuthController.php
+#       git diff app/views/auth/login.php
+#       ...
+#
+# 2) El .env está en .gitignore (verificado). Las credenciales OIRSA
+#    productivas NO van a viajar al repo. Si las cambiás, asegurate de
+#    pasárselas al otro dev por canal seguro.
+#
+# 3) Cuando alguien con la base mddesarr_sag (vos en localhost o el
+#    otro dev) haga 'git pull', deberá aplicar las migraciones 011 a
+#    016 en orden desde phpMyAdmin (o desde mysql CLI).
+#
+╔══════════════════════════════════════════════════════════════════════╗
+║  Fin                                                                 ║
+╚══════════════════════════════════════════════════════════════════════╝

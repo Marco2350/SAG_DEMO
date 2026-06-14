@@ -60,12 +60,18 @@ class EstadisticasController extends Controller
             );
 
             // ── AT por tipo ────────────────────────────
+            // Defensa en profundidad: el LEFT JOIN también filtra por id_proyecto
+            // para que AT de otro programa no contaminen el conteo (aunque el
+            // id_tipo_at ya esté aislado por proyecto).
             $atTipo = $db->fetchAll(
                 "SELECT t.nombre AS tipo, COUNT(a.id_at) AS total
                  FROM sag_tipo_at t
-                 LEFT JOIN sag_asistencias_tecnicas a ON a.id_tipo_at = t.id_tipo_at
-                    AND YEAR(a.fecha_visita) = ? AND a.estado='finalizado'
-                 WHERE t.id_proyecto=?
+                 LEFT JOIN sag_asistencias_tecnicas a
+                        ON a.id_tipo_at = t.id_tipo_at
+                       AND a.id_proyecto = t.id_proyecto
+                       AND YEAR(a.fecha_visita) = ?
+                       AND a.estado = 'finalizado'
+                 WHERE t.id_proyecto = ?
                  GROUP BY t.id_tipo_at ORDER BY total DESC",
                 [$anio, $pid]
             );

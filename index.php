@@ -341,6 +341,56 @@ $router->post('/fortalecimiento/estado',                 'FortalecimientoControl
 $router->post('/fortalecimiento/participante/add',       'FortalecimientoController', 'addParticipante');
 $router->post('/fortalecimiento/participante/delete',    'FortalecimientoController', 'deleteParticipante');
 
+// ── Metas (por programa, aislamiento por id_proyecto) ─────────
+$router->get( '/metas',                                  'MetasController', 'index');
+$router->post('/metas/listar',                           'MetasController', 'listar');
+$router->post('/metas/get',                              'MetasController', 'get');
+$router->post('/metas/save',                             'MetasController', 'save');
+$router->post('/metas/delete',                           'MetasController', 'delete');
+$router->post('/metas/estado',                           'MetasController', 'estado');
+$router->post('/metas/apiLista',                         'MetasController', 'apiLista');
+
+// ── Indicadores (por programa, aislamiento por id_proyecto) ───
+$router->get( '/indicadores',                            'IndicadoresController', 'index');
+$router->post('/indicadores/listar',                     'IndicadoresController', 'listar');
+$router->post('/indicadores/get',                        'IndicadoresController', 'get');
+$router->post('/indicadores/save',                       'IndicadoresController', 'save');
+$router->post('/indicadores/delete',                     'IndicadoresController', 'delete');
+$router->post('/indicadores/estado',                     'IndicadoresController', 'estado');
+
+// ── Componentes FPROG 2026 (exclusivo programa FPROG, aislado por id_proyecto) ──
+$router->get( '/componentes_fp',                         'ComponentesFPController', 'index');
+$router->post('/componentes_fp/listar',                  'ComponentesFPController', 'listar');
+$router->post('/componentes_fp/get',                     'ComponentesFPController', 'get');
+$router->post('/componentes_fp/save',                    'ComponentesFPController', 'save');
+$router->post('/componentes_fp/delete',                  'ComponentesFPController', 'delete');
+$router->post('/componentes_fp/estado',                  'ComponentesFPController', 'estado');
+$router->post('/componentes_fp/apiLista',                'ComponentesFPController', 'apiLista');
+
+// ── Riesgos FPROG 2026 (matriz prob×impacto + mitigación) ──
+$router->get( '/riesgos_fp',                             'RiesgosFPController', 'index');
+$router->post('/riesgos_fp/listar',                      'RiesgosFPController', 'listar');
+$router->post('/riesgos_fp/get',                         'RiesgosFPController', 'get');
+$router->post('/riesgos_fp/save',                        'RiesgosFPController', 'save');
+$router->post('/riesgos_fp/delete',                      'RiesgosFPController', 'delete');
+$router->post('/riesgos_fp/estado',                      'RiesgosFPController', 'estado');
+
+// ── Equipo FPROG 2026 (estructura técnica) ──
+$router->get( '/equipo_fp',                              'EquipoFPController', 'index');
+$router->post('/equipo_fp/listar',                       'EquipoFPController', 'listar');
+$router->post('/equipo_fp/get',                          'EquipoFPController', 'get');
+$router->post('/equipo_fp/save',                         'EquipoFPController', 'save');
+$router->post('/equipo_fp/delete',                       'EquipoFPController', 'delete');
+$router->post('/equipo_fp/estado',                       'EquipoFPController', 'estado');
+
+// ── Cronograma FPROG 2026 (actividades Jun–Dic) ──
+$router->get( '/cronograma_fp',                          'CronogramaFPController', 'index');
+$router->post('/cronograma_fp/listar',                   'CronogramaFPController', 'listar');
+$router->post('/cronograma_fp/get',                      'CronogramaFPController', 'get');
+$router->post('/cronograma_fp/save',                     'CronogramaFPController', 'save');
+$router->post('/cronograma_fp/delete',                   'CronogramaFPController', 'delete');
+$router->post('/cronograma_fp/estado',                   'CronogramaFPController', 'estado');
+
 // ── API catálogos AJAX ────────────────────────────
 $router->get('/api/municipios',              'ApiController', 'municipios');
 $router->get('/api/subtemas',                'ApiController', 'subtemas');

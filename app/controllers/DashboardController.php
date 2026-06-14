@@ -43,15 +43,23 @@ class DashboardController extends Controller
 
             $benIncentivo = 0;
             try {
+                // Aislamiento por programa: cada PIP cuenta solo SUS productores
+                // beneficiados (DNIs únicos en sag_trazaragro_movimientos).
+                // Antes esta query NO filtraba por id_proyecto, por lo que mostraba
+                // los 144 productores de PIPA dentro de PIPC y PIPG.
                 $tr = $db->fetchOne(
                     "SELECT COUNT(DISTINCT destino_dni) AS c
                      FROM sag_trazaragro_movimientos
-                     WHERE destino_dni IS NOT NULL AND destino_dni <> ''"
+                     WHERE destino_dni IS NOT NULL AND destino_dni <> ''
+                       AND id_proyecto = ?",
+                    [$pid]
                 );
                 $benIncentivo = (int)($tr['c'] ?? 0);
             } catch (\Throwable $e) { /* tabla opcional */ }
 
-            // Últimas 5 organizaciones — JOIN en lugar de subquery correlacionada por fila
+            // Últimas 5 organizaciones — JOIN en lugar de subquery correlacionada por fila.
+            // La subquery 'bc' también filtra por id_proyecto (defensa en profundidad
+            // para que un beneficiario de otro proyecto no infle el conteo).
             $ultimas = $db->fetchAll(
                 "SELECT o.nombre, o.representante, o.email,
                         d.nombre AS departamento,
@@ -62,13 +70,14 @@ class DashboardController extends Controller
                  LEFT JOIN sag_departamentos d  ON d.id_departamento = m.id_departamento
                  LEFT JOIN (
                      SELECT id_organizacion, COUNT(*) AS num_beneficiarios
-                     FROM sag_beneficiarios WHERE estado='activo'
+                     FROM sag_beneficiarios
+                     WHERE estado='activo' AND id_proyecto=?
                      GROUP BY id_organizacion
                  ) bc ON bc.id_organizacion = o.id_organizacion
                  WHERE o.id_proyecto=?
                  ORDER BY o.id_organizacion DESC
                  LIMIT 5",
-                [$pid]
+                [$pid, $pid]
             );
 
             $this->success('OK', [
@@ -93,7 +102,9 @@ class DashboardController extends Controller
         try {
             $db = Database::programa();
 
-            // Subquery correlacionada por fila → LEFT JOIN con agregación
+            // Subquery correlacionada por fila → LEFT JOIN con agregación.
+            // La subquery 'bc' también filtra por id_proyecto (defensa en profundidad).
+            $pid = Database::proyectoId();
             $puntos = $db->fetchAll(
                 "SELECT o.nombre, o.representante,
                         TRIM(SUBSTRING_INDEX(o.coordenadas, ',', 1))  AS latitud,
@@ -106,11 +117,12 @@ class DashboardController extends Controller
                  LEFT JOIN sag_departamentos d  ON d.id_departamento = m.id_departamento
                  LEFT JOIN (
                      SELECT id_organizacion, COUNT(*) AS num_beneficiarios
-                     FROM sag_beneficiarios WHERE estado='activo'
+                     FROM sag_beneficiarios
+                     WHERE estado='activo' AND id_proyecto=?
                      GROUP BY id_organizacion
                  ) bc ON bc.id_organizacion = o.id_organizacion
                  WHERE o.coordenadas IS NOT NULL AND o.coordenadas LIKE '%,%' AND o.id_proyecto=?",
-                [Database::proyectoId()]
+                [$pid, $pid]
             );
 
             $this->success('OK', $puntos);

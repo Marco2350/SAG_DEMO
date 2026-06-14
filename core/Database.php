@@ -87,6 +87,22 @@ class Database
     public function commit(): void           { $this->pdo->commit(); }
     public function rollback(): void         { $this->pdo->rollBack(); }
 
+    /**
+     * Verifica si una tabla existe en la base actual.
+     * Útil para que los controladores muestren un mensaje amable cuando
+     * una migración aún no fue aplicada (en lugar de un PDO fatal).
+     */
+    public function tablaExiste(string $nombre): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare("SHOW TABLES LIKE ?");
+            $stmt->execute([$nombre]);
+            return (bool) $stmt->fetch(PDO::FETCH_NUM);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     // ── Internos ──────────────────────────────────
 
     private PDO $pdo;

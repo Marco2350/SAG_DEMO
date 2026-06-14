@@ -1,0 +1,11 @@
+-- =====================================================
+--  RENUMERADA: este archivo fue movido a:
+--      sql/migracion_011_metas_indicadores.sql
+--
+--  Motivo: la numeración 005 ya estaba ocupada por
+--  migracion_005_organizaciones_campos_nuevos.sql en el
+--  repositorio. Se renumeró para mantener el orden
+--  cronológico de las migraciones.
+--
+--  NO EJECUTAR ESTE ARCHIVO.
+-- =====================================================

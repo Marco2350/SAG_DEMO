@@ -45,7 +45,31 @@ function navActive(string $segment): string {
   </a>
 
   <?php if ($progId === 'fprog'): ?>
-  <!-- ── FPROG: Fortalecimiento de Programas ── -->
+  <!-- ── FPROG 2026: Fortalecimiento de Programas y Proyectos SAG ── -->
+  <a class="nav-item-s <?= navActive('/componentes_fp') ?>" href="<?= BASE_URL ?>/componentes_fp">
+    <i class="fas fa-layer-group"></i>
+    <span class="nav-label">Componentes</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/metas') ?>" href="<?= BASE_URL ?>/metas">
+    <i class="fas fa-bullseye"></i>
+    <span class="nav-label">Metas</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/indicadores') ?>" href="<?= BASE_URL ?>/indicadores">
+    <i class="fas fa-gauge-high"></i>
+    <span class="nav-label">Indicadores</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/cronograma_fp') ?>" href="<?= BASE_URL ?>/cronograma_fp">
+    <i class="fas fa-calendar-days"></i>
+    <span class="nav-label">Cronograma</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/equipo_fp') ?>" href="<?= BASE_URL ?>/equipo_fp">
+    <i class="fas fa-users-gear"></i>
+    <span class="nav-label">Equipo Técnico</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/riesgos_fp') ?>" href="<?= BASE_URL ?>/riesgos_fp">
+    <i class="fas fa-triangle-exclamation"></i>
+    <span class="nav-label">Riesgos</span>
+  </a>
   <a class="nav-item-s <?= navActive('/fortalecimiento') ?>" href="<?= BASE_URL ?>/fortalecimiento">
     <i class="fas fa-chart-line"></i>
     <span class="nav-label">Acciones de Fortalecimiento</span>
@@ -68,6 +92,15 @@ function navActive(string $segment): string {
   <a class="nav-item-s <?= navActive('/capacitaciones') ?>" href="<?= BASE_URL ?>/capacitaciones">
     <i class="fas fa-graduation-cap"></i>
     <span class="nav-label">Capacitaciones</span>
+  </a>
+  <!-- Metas e Indicadores también disponibles en PIPs (cada PIP los tiene aislados) -->
+  <a class="nav-item-s <?= navActive('/metas') ?>" href="<?= BASE_URL ?>/metas">
+    <i class="fas fa-bullseye"></i>
+    <span class="nav-label">Metas</span>
+  </a>
+  <a class="nav-item-s <?= navActive('/indicadores') ?>" href="<?= BASE_URL ?>/indicadores">
+    <i class="fas fa-gauge-high"></i>
+    <span class="nav-label">Indicadores</span>
   </a>
 
   <!-- Entregas e Inventarios (solo PIPs) -->

@@ -53,23 +53,27 @@ class EntregasController extends Controller
     private function cargarMovimientos(): array
     {
         try {
-            $db = Database::programa();
-            // raw_json excluido: es un blob grande sólo necesario en detalle()
-            return $db->fetchAll("
-                SELECT movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
-                       objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
-                       guiasa_no, codigo_autorizacion,
-                       fecha_registro, fecha_autorizacion, fecha_expiracion,
-                       origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
-                       destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue,
-                       destino_departamento, destino_municipio,
-                       cantidad, unidad, transportista, vehiculo, condicion, proposito,
-                       autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
-                       estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
-                FROM sag_trazaragro_movimientos
-                ORDER BY fecha_autorizacion DESC, movement_id DESC
-                LIMIT 1000
-            ");
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // raw_json excluido: es un blob grande sólo necesario en detalle().
+            // Aislamiento por proyecto: cada PIP sólo ve SUS entregas OIRSA.
+            return $db->fetchAll(
+                "SELECT movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
+                        objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
+                        guiasa_no, codigo_autorizacion,
+                        fecha_registro, fecha_autorizacion, fecha_expiracion,
+                        origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
+                        destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue,
+                        destino_departamento, destino_municipio,
+                        cantidad, unidad, transportista, vehiculo, condicion, proposito,
+                        autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
+                        estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
+                 FROM sag_trazaragro_movimientos
+                 WHERE id_proyecto = ?
+                 ORDER BY fecha_autorizacion DESC, movement_id DESC
+                 LIMIT 1000",
+                [$pid]
+            );
         } catch (\Throwable $e) {
             error_log('cargarMovimientos: ' . $e->getMessage());
             return [];
@@ -79,22 +83,28 @@ class EntregasController extends Controller
     private function cargarCatalogosFiltros(): array
     {
         try {
-            $db = Database::programa();
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // Aislamiento: los valores DISTINCT salen sólo de los movimientos del PIP activo.
             $rubros = $db->fetchAll(
                 "SELECT DISTINCT rubro FROM sag_trazaragro_movimientos
-                 WHERE rubro IS NOT NULL AND rubro <> '' ORDER BY rubro"
+                 WHERE id_proyecto = ? AND rubro IS NOT NULL AND rubro <> '' ORDER BY rubro",
+                [$pid]
             );
             $tipos = $db->fetchAll(
                 "SELECT DISTINCT tipo_movimiento FROM sag_trazaragro_movimientos
-                 WHERE tipo_movimiento IS NOT NULL AND tipo_movimiento <> '' ORDER BY tipo_movimiento"
+                 WHERE id_proyecto = ? AND tipo_movimiento IS NOT NULL AND tipo_movimiento <> '' ORDER BY tipo_movimiento",
+                [$pid]
             );
             $deptos = $db->fetchAll(
                 "SELECT DISTINCT destino_departamento AS depto FROM sag_trazaragro_movimientos
-                 WHERE destino_departamento IS NOT NULL AND destino_departamento <> '' ORDER BY depto"
+                 WHERE id_proyecto = ? AND destino_departamento IS NOT NULL AND destino_departamento <> '' ORDER BY depto",
+                [$pid]
             );
             $objetos = $db->fetchAll(
                 "SELECT DISTINCT objeto_trazable FROM sag_trazaragro_movimientos
-                 WHERE objeto_trazable IS NOT NULL AND objeto_trazable <> '' ORDER BY objeto_trazable"
+                 WHERE id_proyecto = ? AND objeto_trazable IS NOT NULL AND objeto_trazable <> '' ORDER BY objeto_trazable",
+                [$pid]
             );
             return [
                 'rubros'  => array_column($rubros, 'rubro'),
@@ -831,8 +841,15 @@ class EntregasController extends Controller
     private function limpiarMovimientos(): int
     {
         try {
-            $db = Database::programa();
-            return $db->execute("DELETE FROM sag_trazaragro_movimientos");
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // Aislamiento crítico: el botón "limpiar y re-sincronizar" SÓLO borra
+            // las entregas del PIP activo. Antes borraba la tabla entera y se
+            // perdían entregas de otros programas.
+            return $db->execute(
+                "DELETE FROM sag_trazaragro_movimientos WHERE id_proyecto = ?",
+                [$pid]
+            );
         } catch (\Throwable $e) {
             return 0;
         }
@@ -852,11 +869,15 @@ class EntregasController extends Controller
             exit;
         }
 
-        $rows = $db->fetchAll("
-            SELECT *
-            FROM sag_trazaragro_movimientos
-            ORDER BY fecha_autorizacion DESC, movement_id DESC
-        ");
+        // Aislamiento: el CSV exporta SOLO movimientos del PIP activo
+        $pid  = Database::proyectoId();
+        $rows = $db->fetchAll(
+            "SELECT *
+             FROM sag_trazaragro_movimientos
+             WHERE id_proyecto = ?
+             ORDER BY fecha_autorizacion DESC, movement_id DESC",
+            [$pid]
+        );
 
         $sigla = $_SESSION['programa']['sigla'] ?? 'SAG';
         $fname = "trazaragro_movimientos_{$sigla}_" . date('Ymd_His') . '.csv';
@@ -934,7 +955,8 @@ class EntregasController extends Controller
         }
 
         try {
-            $db = Database::programa();
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
         } catch (\Throwable $e) {
             error_log('EntregasController::acta — ' . $e->getMessage());
             http_response_code(500);
@@ -942,11 +964,12 @@ class EntregasController extends Controller
             exit;
         }
 
+        // Aislamiento por proyecto: el acta sólo agrega entregas del PIP activo
         $movs = $db->fetchAll(
             "SELECT * FROM sag_trazaragro_movimientos
-             WHERE destino_dni = ?
+             WHERE destino_dni = ? AND id_proyecto = ?
              ORDER BY fecha_autorizacion ASC, guiasa_no ASC",
-            [$dni]
+            [$dni, $pid]
         );
 
         if (empty($movs)) {
@@ -1004,11 +1027,14 @@ class EntregasController extends Controller
         $id = (int) $this->getPost('id', 0);
         try {
             $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // Aislamiento: el movimiento debe pertenecer al PIP activo
             $row = $db->fetchOne(
-                "SELECT * FROM sag_trazaragro_movimientos WHERE movement_id = ?",
-                [$id]
+                "SELECT * FROM sag_trazaragro_movimientos
+                  WHERE movement_id = ? AND id_proyecto = ?",
+                [$id, $pid]
             );
-            if (!$row) { $this->error('Movimiento no encontrado.'); return; }
+            if (!$row) { $this->error('Movimiento no encontrado en su proyecto.'); return; }
             // Decodificar el raw_json para enviarlo como objeto
             if (!empty($row['raw_json'])) {
                 $row['raw'] = json_decode($row['raw_json'], true);
@@ -1048,11 +1074,16 @@ class EntregasController extends Controller
 
         $tablaExiste = false; $totalMovs = 0;
         try {
-            $db = Database::programa();
-            $r  = $db->fetchOne("SHOW TABLES LIKE 'sag_trazaragro_movimientos'");
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            $r   = $db->fetchOne("SHOW TABLES LIKE 'sag_trazaragro_movimientos'");
             $tablaExiste = (bool)$r;
             if ($tablaExiste) {
-                $r2 = $db->fetchOne("SELECT COUNT(*) AS c FROM sag_trazaragro_movimientos");
+                // Aislamiento: el conteo de diagnóstico es por proyecto
+                $r2 = $db->fetchOne(
+                    "SELECT COUNT(*) AS c FROM sag_trazaragro_movimientos WHERE id_proyecto = ?",
+                    [$pid]
+                );
                 $totalMovs = (int)($r2['c'] ?? 0);
             }
         } catch (\Throwable $e) {}
@@ -1092,13 +1123,16 @@ class EntregasController extends Controller
         $id  = (int) $this->getPost('id', 0);
         $obs = $this->getPost('observacion', '');
         try {
-            $db = Database::programa();
-            $db->execute(
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // Aislamiento: sólo afecta movimientos del PIP activo
+            $afect = $db->execute(
                 "UPDATE sag_trazaragro_movimientos
                  SET estado_local='entregado', observaciones_local=?, revisado_por_local=?, fecha_revision_local=NOW()
-                 WHERE movement_id=?",
-                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id]
+                 WHERE movement_id=? AND id_proyecto=?",
+                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id, $pid]
             );
+            if ($afect === 0) { $this->error('Movimiento no encontrado en su proyecto.'); return; }
             $this->logAction('APROBAR_MOV', 'entregas', "#{$id}");
             $this->success("Movimiento #{$id} marcado como entregado.", ['id' => $id]);
         } catch (\Throwable $e) {
@@ -1113,13 +1147,16 @@ class EntregasController extends Controller
         $obs = $this->getPost('observacion', '');
         if (!$obs) { $this->error('Debe indicar el motivo del rechazo.'); return; }
         try {
-            $db = Database::programa();
-            $db->execute(
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            // Aislamiento: sólo afecta movimientos del PIP activo
+            $afect = $db->execute(
                 "UPDATE sag_trazaragro_movimientos
                  SET estado_local='observado', observaciones_local=?, revisado_por_local=?, fecha_revision_local=NOW()
-                 WHERE movement_id=?",
-                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id]
+                 WHERE movement_id=? AND id_proyecto=?",
+                [$obs, $_SESSION['user']['email'] ?? 'sistema', $id, $pid]
             );
+            if ($afect === 0) { $this->error('Movimiento no encontrado en su proyecto.'); return; }
             $this->logAction('OBSERVAR_MOV', 'entregas', "#{$id} obs={$obs}");
             $this->success("Movimiento #{$id} observado.", ['id' => $id]);
         } catch (\Throwable $e) {

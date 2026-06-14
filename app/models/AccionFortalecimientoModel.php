@@ -111,23 +111,43 @@ class AccionFortalecimientoModel extends Model
 
     public function getParticipantes(int $idAccion): array
     {
+        // Aislamiento por proyecto activo
         return $this->db->fetchAll(
             "SELECT id_participante, nombre, apellido, cargo, institucion, sexo
              FROM sag_fprog_participantes
-             WHERE id_accion = ? AND activo = 1
+             WHERE id_accion = ? AND id_proyecto = ? AND activo = 1
              ORDER BY nombre, apellido",
-            [$idAccion]
+            [$idAccion, Database::proyectoId()]
+        );
+    }
+
+    /**
+     * Verifica que una acción pertenezca al proyecto activo.
+     * Defensa contra IDs enviados por cliente que apunten a otro proyecto.
+     */
+    public function accionPerteneceProyecto(int $idAccion): bool
+    {
+        return (bool) $this->db->fetchOne(
+            "SELECT id_accion FROM sag_acciones_fortalecimiento
+              WHERE id_accion = ? AND id_proyecto = ? AND activo = 1",
+            [$idAccion, Database::proyectoId()]
         );
     }
 
     public function agregarParticipante(array $data): int
     {
+        $idAccion = (int)($data['id_accion'] ?? 0);
+        // Validación de pertenencia ANTES de insertar. Nunca confiar en IDs
+        // que llegan del navegador (manifiesto SAG_DEMO).
+        if (!$this->accionPerteneceProyecto($idAccion)) {
+            throw new \RuntimeException('Acción no pertenece al proyecto activo.');
+        }
         $this->db->execute(
             "INSERT INTO sag_fprog_participantes
              (id_accion, id_proyecto, nombre, apellido, cargo, institucion, sexo)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                $data['id_accion'],
+                $idAccion,
                 Database::proyectoId(),
                 $data['nombre'],
                 $data['apellido']    ?? null,
@@ -137,12 +157,16 @@ class AccionFortalecimientoModel extends Model
             ]
         );
         $newId = (int) $this->db->lastInsertId();
-        $this->actualizarContador((int) $data['id_accion']);
+        $this->actualizarContador($idAccion);
         return $newId;
     }
 
     public function softDeleteParticipante(int $idParticipante, int $idAccion): void
     {
+        // Validación de pertenencia de la acción
+        if (!$this->accionPerteneceProyecto($idAccion)) {
+            throw new \RuntimeException('Acción no pertenece al proyecto activo.');
+        }
         $this->db->execute(
             "UPDATE sag_fprog_participantes
              SET activo = 0
@@ -154,14 +178,18 @@ class AccionFortalecimientoModel extends Model
 
     private function actualizarContador(int $idAccion): void
     {
+        $pid = Database::proyectoId();
+        // Aislamiento por proyecto activo. El COUNT también se restringe
+        // para que un participante de otro proyecto (defensa en profundidad)
+        // no pueda inflar el contador.
         $this->db->execute(
             "UPDATE sag_acciones_fortalecimiento
              SET num_participantes = (
                  SELECT COUNT(*) FROM sag_fprog_participantes
-                 WHERE id_accion = ? AND activo = 1
+                 WHERE id_accion = ? AND id_proyecto = ? AND activo = 1
              )
-             WHERE id_accion = ?",
-            [$idAccion, $idAccion]
+             WHERE id_accion = ? AND id_proyecto = ?",
+            [$idAccion, $pid, $idAccion, $pid]
         );
     }
 

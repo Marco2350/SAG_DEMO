@@ -68,14 +68,31 @@ define('PROGRAMAS', [
     'fprog' => [
         'id'          => 'fprog',
         'id_proyecto' => 4,
-        'nombre'      => 'Fortalecimiento de Programas SAG',
+        // Identidad oficial (perfil de programa SAG · ejercicio fiscal 2026)
+        'nombre'      => 'Fortalecimiento de Programas y Proyectos SAG 2026',
+        'nombre_largo'=> 'Fortalecimiento de Programas y Proyectos de la Secretaría de Estado en los Despachos de Agricultura y Ganadería',
         'sigla'       => 'FPROG',
         'icono'       => 'fa-chart-line',
         'color'       => '#7c3aed',
         'gradient'    => 'linear-gradient(180deg, #a78bfa 0%, #5b21b6 100%)',
         'color_light' => '#f5f3ff',
-        'descripcion' => 'Fortalecimiento institucional y seguimiento de programas SAG',
+        'descripcion' => 'Programa marco SAG 2026: 7 componentes de inversión productiva (riego, semilla, frutales, ganadería) con 5,500 beneficiarios directos.',
         'trazaragro_rubro' => '',
+        // Marco institucional del programa (ver PPTX perfil 2026)
+        'ejecutor'              => 'Secretaría de Agricultura y Ganadería (SAG)',
+        'administrador_fondos'  => 'IICA (RCI 5%)',
+        'marco_politica'        => 'Política de Estado del Sector Agroalimentario de Honduras 2023–2043 (PESAH)',
+        'marco_legal'           => 'Decreto Legislativo No. 04-2025 — Eje: Seguridad Alimentaria y Soberanía Nacional',
+        'responsable_tecnico'   => 'Sub-Coordinador de Programas',
+        // Indicadores macro del programa
+        'presupuesto_total'     => 116423410.97,           // Lempiras
+        'pct_inversion_directa' => 0.85,                   // 85% en los 7 componentes
+        'pct_recursos_humanos'  => 0.10,                   // 10% RH
+        'pct_rci_iica'          => 0.05,                   // 5% RCI IICA
+        'beneficiarios_meta'    => 5500,
+        'periodo_inicio'        => '2026-06-01',
+        'periodo_fin'           => '2026-12-31',
+        'num_componentes'       => 7,
     ],
 ]);
 

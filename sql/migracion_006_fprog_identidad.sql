@@ -1,0 +1,11 @@
+-- =====================================================
+--  RENUMERADA: este archivo fue movido a:
+--      sql/migracion_012_fprog_identidad.sql
+--
+--  Motivo: la numeración 006 ya estaba ocupada por
+--  migracion_006_evidencias.sql en el repositorio.
+--  Se renumeró para mantener el orden cronológico de
+--  las migraciones.
+--
+--  NO EJECUTAR ESTE ARCHIVO.
+-- =====================================================

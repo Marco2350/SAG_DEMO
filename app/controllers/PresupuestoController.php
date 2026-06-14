@@ -241,13 +241,20 @@ class PresupuestoController extends Controller
 
     public function getPresupuesto(): void
     {
-        $id = (int) $this->getPost('id', 0);
-        $db = Database::programa();
-        $p  = $db->fetchOne("SELECT * FROM sag_presupuestos WHERE id_presupuesto=?", [$id]);
+        $id  = (int) $this->getPost('id', 0);
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        // Aislamiento: sólo presupuestos del proyecto activo
+        $p   = $db->fetchOne(
+            "SELECT * FROM sag_presupuestos WHERE id_presupuesto=? AND id_proyecto=?",
+            [$id, $pid]
+        );
         if (!$p) { $this->error('No encontrado.'); return; }
         $lineas = $db->fetchAll(
-            "SELECT * FROM sag_lineas_presupuestarias WHERE id_presupuesto=? AND activo=1 ORDER BY orden, nombre",
-            [$id]
+            "SELECT * FROM sag_lineas_presupuestarias
+             WHERE id_presupuesto=? AND id_proyecto=? AND activo=1
+             ORDER BY orden, nombre",
+            [$id, $pid]
         );
         $this->success('OK', ['presupuesto' => $p, 'lineas' => $lineas]);
     }
@@ -278,8 +285,13 @@ class PresupuestoController extends Controller
 
         try {
             if ($id) {
-                // Guardar auditoría del cambio de monto
-                $anterior = $db->fetchOne("SELECT monto_aprobado FROM sag_lineas_presupuestarias WHERE id_linea=?", [$id]);
+                // Guardar auditoría del cambio de monto — aislado por proyecto
+                $anterior = $db->fetchOne(
+                    "SELECT monto_aprobado FROM sag_lineas_presupuestarias
+                     WHERE id_linea=? AND id_proyecto=?",
+                    [$id, Database::proyectoId()]
+                );
+                if (!$anterior) { $this->error('Línea no encontrada en su proyecto.'); return; }
                 if ($anterior && (float)$anterior['monto_aprobado'] !== $monto) {
                     $tipo = $monto > (float)$anterior['monto_aprobado'] ? 'ampliacion' : 'reduccion';
                     $db->execute(
@@ -296,10 +308,17 @@ class PresupuestoController extends Controller
                 $db->execute("INSERT INTO sag_lineas_presupuestarias ($keys) VALUES ($vals)", array_values($data));
                 $id = $db->lastInsertId();
             }
-            // Actualizar monto_total del presupuesto
+            // Actualizar monto_total del presupuesto — aislado por proyecto
+            $proyId = Database::proyectoId();
             $db->execute(
-                "UPDATE sag_presupuestos SET monto_total=(SELECT COALESCE(SUM(monto_aprobado),0) FROM sag_lineas_presupuestarias WHERE id_presupuesto=? AND activo=1) WHERE id_presupuesto=?",
-                [$pid, $pid]
+                "UPDATE sag_presupuestos
+                    SET monto_total=(
+                        SELECT COALESCE(SUM(monto_aprobado),0)
+                          FROM sag_lineas_presupuestarias
+                         WHERE id_presupuesto=? AND id_proyecto=? AND activo=1
+                    )
+                  WHERE id_presupuesto=? AND id_proyecto=?",
+                [$pid, $proyId, $pid, $proyId]
             );
             $this->success($id ? 'Línea guardada.' : 'Línea creada.', ['id' => $id]);
         } catch (Exception $e) {
@@ -311,9 +330,19 @@ class PresupuestoController extends Controller
     public function deleteLinea(): void
     {
         if (!$this->esAdmin()) { $this->error('Sin permisos.'); return; }
-        $id = (int) $this->getPost('id', 0);
-        $db = Database::programa();
-        $db->execute("UPDATE sag_lineas_presupuestarias SET activo=0 WHERE id_linea=?", [$id]);
+        $id  = (int) $this->getPost('id', 0);
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        // Soft-delete aislado por proyecto. Si la línea no pertenece al
+        // proyecto activo, el UPDATE afecta 0 filas y devolvemos error.
+        $afect = $db->execute(
+            "UPDATE sag_lineas_presupuestarias
+                SET activo=0
+              WHERE id_linea=? AND id_proyecto=?",
+            [$id, $pid]
+        );
+        if ($afect === 0) { $this->error('Línea no encontrada en su proyecto.'); return; }
+        $this->logAction('DELETE_LINEA_PRESUP', 'presupuesto', "id_linea={$id}");
         $this->success('Línea eliminada.');
     }
 
@@ -440,24 +469,44 @@ class PresupuestoController extends Controller
         if (!$this->esJefeOSuperior()) { $this->error('Sin permisos.'); return; }
         $id     = (int) $this->getPost('id', 0);
         $estado = $this->getPost('estado', '');
+        $obs    = (string) $this->getPost('observacion_estado', '');
         $estados = ['borrador','solicitada','cotizando','aprobada','ejecutada','anulada'];
-        if (!in_array($estado, $estados)) { $this->error('Estado no válido.'); return; }
+        if (!in_array($estado, $estados, true)) { $this->error('Estado no válido.'); return; }
 
-        $db = Database::programa();
-        $extra = '';
-        $params = [$estado];
-        if (in_array($estado, ['aprobada']) && $this->esAdmin()) {
-            $extra = ', id_usuario_aprueba=?, fecha_aprobacion=NOW()';
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+
+        // Validar que la compra pertenece al proyecto activo (defensa explícita)
+        $compra = $db->fetchOne(
+            "SELECT id_compra FROM sag_compras WHERE id_compra=? AND id_proyecto=?",
+            [$id, $pid]
+        );
+        if (!$compra) { $this->error('Compra no encontrada en su proyecto.'); return; }
+
+        // Armado de SET dinámico controlado por lista cerrada
+        $sets   = ['estado=?',
+                   "observaciones=CONCAT(COALESCE(observaciones,''),' | " . date('d/m/Y') . ": ',?)"];
+        $params = [$estado, $obs];
+
+        if ($estado === 'aprobada' && $this->esAdmin()) {
+            $sets[]   = 'id_usuario_aprueba=?';
+            $sets[]   = 'fecha_aprobacion=NOW()';
             $params[] = $this->userId();
         }
         if ($estado === 'ejecutada') {
-            $monto_adj = (float) str_replace(',', '', $this->getPost('monto_adjudicado', '0'));
-            $extra .= ', monto_adjudicado=?, fecha_ejecucion=NOW()';
-            $params[] = $monto_adj;
+            $monto_adj = (float) str_replace(',', '', (string)$this->getPost('monto_adjudicado', '0'));
+            $sets[]    = 'monto_adjudicado=?';
+            $sets[]    = 'fecha_ejecucion=NOW()';
+            $params[]  = $monto_adj;
         }
         $params[] = $id;
-        $db->execute("UPDATE sag_compras SET estado=?, observaciones=CONCAT(COALESCE(observaciones,''),' | ".date('d/m/Y').": ',?) $extra WHERE id_compra=?",
-            array_merge([$estado, $this->getPost('observacion_estado','')], array_slice($params,1)));
+        $params[] = $pid;
+
+        $db->execute(
+            "UPDATE sag_compras SET " . implode(', ', $sets) .
+            " WHERE id_compra=? AND id_proyecto=?",
+            $params
+        );
         $this->logAction('COMPRA_ESTADO', 'compras', "ID:$id → $estado");
         $this->success("Estado actualizado a: $estado");
     }
@@ -570,13 +619,20 @@ class PresupuestoController extends Controller
     {
         // Nivel 1: jefe inmediato
         if (!$this->esJefeOSuperior()) { $this->error('Sin permisos para dar visto bueno.'); return; }
-        $id = (int) $this->getPost('id', 0);
-        $db = Database::programa();
-        $v  = $db->fetchOne("SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=?", [$id]);
+        $id  = (int) $this->getPost('id', 0);
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        // Aislamiento: la solicitud debe pertenecer al proyecto activo
+        $v   = $db->fetchOne(
+            "SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=? AND id_proyecto=?",
+            [$id, $pid]
+        );
         if (!$v || $v['estado'] !== 'pendiente') { $this->error('Solicitud no válida o ya procesada.'); return; }
         $db->execute(
-            "UPDATE sag_solicitudes_viaticos SET estado='visto_bueno', id_jefe=?, fecha_visto_bueno=NOW(), observacion_jefe=? WHERE id_solicitud=?",
-            [$this->userId(), $this->getPost('observacion'), $id]
+            "UPDATE sag_solicitudes_viaticos
+                SET estado='visto_bueno', id_jefe=?, fecha_visto_bueno=NOW(), observacion_jefe=?
+              WHERE id_solicitud=? AND id_proyecto=?",
+            [$this->userId(), $this->getPost('observacion'), $id, $pid]
         );
         $this->logAction('VISTO_BUENO', 'viaticos', "ID:$id");
         $this->success('Visto bueno otorgado.');
@@ -589,14 +645,21 @@ class PresupuestoController extends Controller
         $id     = (int) $this->getPost('id', 0);
         $accion = $this->getPost('accion', 'aprobar'); // aprobar | rechazar
         $db     = Database::programa();
-        $v      = $db->fetchOne("SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=?", [$id]);
-        if (!$v || !in_array($v['estado'], ['visto_bueno','pendiente'])) {
+        $pid    = Database::proyectoId();
+        // Aislamiento: la solicitud debe pertenecer al proyecto activo
+        $v = $db->fetchOne(
+            "SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=? AND id_proyecto=?",
+            [$id, $pid]
+        );
+        if (!$v || !in_array($v['estado'], ['visto_bueno','pendiente'], true)) {
             $this->error('Solicitud no válida o ya procesada.'); return;
         }
         $estado = $accion === 'aprobar' ? 'aprobada' : 'rechazada';
         $db->execute(
-            "UPDATE sag_solicitudes_viaticos SET estado=?, id_autoridad=?, fecha_aprobacion=NOW(), observacion_autoridad=? WHERE id_solicitud=?",
-            [$estado, $this->userId(), $this->getPost('observacion'), $id]
+            "UPDATE sag_solicitudes_viaticos
+                SET estado=?, id_autoridad=?, fecha_aprobacion=NOW(), observacion_autoridad=?
+              WHERE id_solicitud=? AND id_proyecto=?",
+            [$estado, $this->userId(), $this->getPost('observacion'), $id, $pid]
         );
         $this->logAction('APROBAR_VIATICO', 'viaticos', "ID:$id → $estado");
         $this->success('Solicitud ' . ($estado === 'aprobada' ? 'aprobada.' : 'rechazada.'));
@@ -604,9 +667,14 @@ class PresupuestoController extends Controller
 
     public function liquidarViatico(): void
     {
-        $id = (int) $this->getPost('id', 0);
-        $db = Database::programa();
-        $v  = $db->fetchOne("SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=?", [$id]);
+        $id  = (int) $this->getPost('id', 0);
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        // Aislamiento: la solicitud debe pertenecer al proyecto activo
+        $v   = $db->fetchOne(
+            "SELECT * FROM sag_solicitudes_viaticos WHERE id_solicitud=? AND id_proyecto=?",
+            [$id, $pid]
+        );
         if (!$v || $v['estado'] !== 'aprobada') { $this->error('Solo se liquidan solicitudes aprobadas.'); return; }
         if (!$this->esAdmin() && $v['id_solicitante'] != $this->userId()) { $this->error('Sin permisos.'); return; }
 
@@ -617,9 +685,13 @@ class PresupuestoController extends Controller
             }
             $monto_ej = (float) str_replace(',', '', $this->getPost('monto_ejecutado', '0'));
             $db->execute(
-                "UPDATE sag_solicitudes_viaticos SET estado='liquidada', monto_ejecutado=?, fecha_liquidacion=?, archivo_liquidacion=COALESCE(?,archivo_liquidacion) WHERE id_solicitud=?",
-                [$monto_ej, $this->getPost('fecha_liquidacion') ?: date('Y-m-d'), $archivo, $id]
+                "UPDATE sag_solicitudes_viaticos
+                    SET estado='liquidada', monto_ejecutado=?, fecha_liquidacion=?,
+                        archivo_liquidacion=COALESCE(?,archivo_liquidacion)
+                  WHERE id_solicitud=? AND id_proyecto=?",
+                [$monto_ej, $this->getPost('fecha_liquidacion') ?: date('Y-m-d'), $archivo, $id, $pid]
             );
+            $this->logAction('LIQUIDAR_VIATICO', 'viaticos', "ID:$id · monto=$monto_ej");
             $this->success('Viático liquidado correctamente.');
         } catch (Exception $e) {
             error_log('PresupuestoController::liquidarViatico — ' . $e->getMessage());
@@ -690,8 +762,14 @@ class PresupuestoController extends Controller
         if (!$this->esAdmin()) { $this->error('Sin permisos.'); return; }
         $id     = (int) $this->getPost('id', 0);
         $estado = $this->getPost('estado', '');
-        if (!in_array($estado, ['registrado','aprobado','rechazado'])) { $this->error('Estado inválido.'); return; }
-        Database::programa()->execute("UPDATE sag_gastos_varios SET estado=? WHERE id_gasto=?", [$estado, $id]);
+        if (!in_array($estado, ['registrado','aprobado','rechazado'], true)) { $this->error('Estado inválido.'); return; }
+        $pid    = Database::proyectoId();
+        $afect  = Database::programa()->execute(
+            "UPDATE sag_gastos_varios SET estado=? WHERE id_gasto=? AND id_proyecto=?",
+            [$estado, $id, $pid]
+        );
+        if ($afect === 0) { $this->error('Gasto no encontrado en su proyecto.'); return; }
+        $this->logAction('GASTO_ESTADO', 'gastos', "ID:$id → $estado");
         $this->success("Estado actualizado.");
     }
 
@@ -761,8 +839,14 @@ class PresupuestoController extends Controller
     public function deleteDocumento(): void
     {
         if (!$this->esAdmin()) { $this->error('Sin permisos.'); return; }
-        $id = (int) $this->getPost('id', 0);
-        Database::programa()->execute("UPDATE sag_documentos_programa SET activo=0 WHERE id_documento=?", [$id]);
+        $id  = (int) $this->getPost('id', 0);
+        $pid = Database::proyectoId();
+        $afect = Database::programa()->execute(
+            "UPDATE sag_documentos_programa SET activo=0 WHERE id_documento=? AND id_proyecto=?",
+            [$id, $pid]
+        );
+        if ($afect === 0) { $this->error('Documento no encontrado en su proyecto.'); return; }
+        $this->logAction('DOC_DELETE', 'documentos', "ID:$id");
         $this->success('Documento eliminado.');
     }
 
@@ -770,11 +854,18 @@ class PresupuestoController extends Controller
     {
         $id  = (int) $this->getQuery('id', 0);
         $db  = Database::programa();
-        $doc = $db->fetchOne("SELECT * FROM sag_documentos_programa WHERE id_documento=? AND activo=1", [$id]);
+        $pid = Database::proyectoId();
+        // Aislamiento crítico: previene leak de documentos de otro programa
+        $doc = $db->fetchOne(
+            "SELECT * FROM sag_documentos_programa
+              WHERE id_documento=? AND id_proyecto=? AND activo=1",
+            [$id, $pid]
+        );
         if (!$doc) { http_response_code(404); echo 'Documento no encontrado.'; exit; }
 
         $ruta = ROOT_PATH . '/public/uploads/' . $doc['archivo'];
         if (!file_exists($ruta)) { http_response_code(404); echo 'Archivo no encontrado.'; exit; }
+        $this->logAction('DOC_DESCARGAR', 'documentos', "ID:$id");
 
         $ext  = strtolower(pathinfo($ruta, PATHINFO_EXTENSION));
         $mime = match($ext) {
