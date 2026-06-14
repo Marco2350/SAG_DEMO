@@ -1,6 +1,9 @@
 Options -Indexes
 RewriteEngine On
-RewriteBase /SAG_DEMO/
+# RewriteBase fijo deshabilitado: rompe el ruteo cuando el proyecto no está
+# directamente bajo htdocs/SAG_DEMO/ (aquí vive en /PROYECTOS-PHP/SAG_DEMO/).
+# Sin esta línea, mod_rewrite detecta la carpeta real automáticamente.
+# RewriteBase /SAG_DEMO/
 
 # ── Bloquear archivos sensibles (credenciales, dotfiles) ──
 # Esto debe ir ANTES de las reglas de rewrite para que aplique siempre.
