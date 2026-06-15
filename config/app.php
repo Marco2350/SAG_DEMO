@@ -73,9 +73,9 @@ define('PROGRAMAS', [
         'nombre_largo'=> 'Fortalecimiento de Programas y Proyectos de la Secretaría de Estado en los Despachos de Agricultura y Ganadería',
         'sigla'       => 'FPROG',
         'icono'       => 'fa-chart-line',
-        'color'       => '#7c3aed',
-        'gradient'    => 'linear-gradient(180deg, #a78bfa 0%, #5b21b6 100%)',
-        'color_light' => '#f5f3ff',
+        'color'       => '#0284c7',
+        'gradient'    => 'linear-gradient(180deg, #7dd3fc 0%, #0369a1 100%)',
+        'color_light' => '#f0f9ff',
         'descripcion' => 'Programa marco SAG 2026: 7 componentes de inversión productiva (riego, semilla, frutales, ganadería) con 5,500 beneficiarios directos.',
         'trazaragro_rubro' => '',
         // Marco institucional del programa (ver PPTX perfil 2026)

@@ -152,9 +152,105 @@ $(function () {
     });
 
     // ── MÁSCARA DNI participante ──────────────────────
+    let participanteDniTimer;
     $('#pDni').on('input', function () {
+        clearTimeout(participanteDniTimer);
         this.value = SAG.formatDNI(this.value);
+        const dni = this.value.replace(/\D/g, '');
+        if (dni !== participanteDniConsultado) bloquearDatosParticipante();
+        if (dni.length === 13) {
+            participanteDniTimer = setTimeout(buscarParticipantePorDni, 350);
+        }
     });
+
+    let participanteDniConsultado = '';
+
+    $('#btnBuscarPartDni').on('click', buscarParticipantePorDni);
+    $('#pDni').on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buscarParticipantePorDni();
+        }
+    });
+
+    function bloquearDatosParticipante() {
+        participanteDniConsultado = '';
+        $('#pIdentidadFuente').val('');
+        $('#pNombre, #pApellido, #pEdad, #pSexo, #pOrg, #btnAgregarPart').prop('disabled', true);
+        $('#pDniEstado').hide();
+    }
+
+    function habilitarDatosParticipante() {
+        $('#pNombre, #pApellido, #pEdad, #pSexo, #pOrg, #btnAgregarPart').prop('disabled', false);
+    }
+
+    function estadoDniParticipante(tipo, html) {
+        const estilos = {
+            buscando: ['#eef2ff', '#3730a3', '#6366f1'],
+            encontrado: ['#dcfce7', '#166534', '#16a34a'],
+            manual: ['#fefce8', '#854d0e', '#ca8a04'],
+            error: ['#fef2f2', '#991b1b', '#dc2626'],
+        };
+        const e = estilos[tipo];
+        $('#pDniEstado').show().css({
+            background: e[0], color: e[1], borderLeft: '4px solid ' + e[2],
+            padding: '8px 10px', borderRadius: '7px'
+        }).html(html);
+    }
+
+    function buscarParticipantePorDni() {
+        const dni = ($('#pDni').val() || '').replace(/\D/g, '');
+        if (dni.length !== 13) {
+            estadoDniParticipante('error', '<i class="fas fa-circle-xmark"></i> Ingrese los 13 dígitos de la identidad.');
+            return;
+        }
+
+        estadoDniParticipante('buscando', '<i class="fas fa-spinner fa-spin"></i> Buscando en productores registrados, entregas y CENSO...');
+        $('#btnBuscarPartDni').prop('disabled', true);
+        SAG.ajax({
+            url: '/api/productores/buscar-dni',
+            data: { dni },
+            success: function (res) {
+                $('#btnBuscarPartDni').prop('disabled', false);
+                if (!res.success) {
+                    estadoDniParticipante('error', '<i class="fas fa-circle-xmark"></i> ' + res.message);
+                    return;
+                }
+
+                participanteDniConsultado = dni;
+                const resultado = res.data || {};
+                const p = resultado.persona;
+                $('#pIdentidadFuente').val(resultado.source || 'ninguno');
+                habilitarDatosParticipante();
+
+                if (p) {
+                    $('#pNombre').val(p.nombre || p.nombres || '');
+                    $('#pApellido').val(p.apellido || p.apellidos || '');
+                    $('#pEdad').val(p.edad || '');
+                    $('#pSexo').val(p.sexo || '');
+                    if (p.id_organizacion) $('#pOrg').val(p.id_organizacion).trigger('change');
+                    const faltantes = [];
+                    if (!(p.apellido || p.apellidos)) faltantes.push('apellido');
+                    if (!p.edad) faltantes.push('edad');
+                    if (!p.sexo) faltantes.push('sexo');
+                    if (!p.id_organizacion) faltantes.push('organización');
+                    const aviso = faltantes.length
+                        ? ' Complete manualmente: <strong>' + faltantes.join(', ') + '</strong>.'
+                        : ' Todos los datos disponibles fueron precargados.';
+                    estadoDniParticipante('encontrado', '<i class="fas fa-circle-check"></i> ' + res.message + aviso);
+                } else {
+                    $('#pNombre, #pApellido, #pEdad').val('');
+                    $('#pSexo, #pOrg').val('');
+                    estadoDniParticipante('manual', '<i class="fas fa-user-plus"></i> ' + res.message);
+                    $('#pNombre').focus();
+                }
+            },
+            error: function () {
+                $('#btnBuscarPartDni').prop('disabled', false);
+                estadoDniParticipante('error', '<i class="fas fa-triangle-exclamation"></i> No fue posible consultar la identidad.');
+            },
+        });
+    }
 
     // ── ACTIVAR CAPACITACIÓN (para tab participantes) ─
     function activarCapacitacion(id) {
@@ -348,7 +444,17 @@ $(function () {
     // ── PARTICIPANTES — AGREGAR ───────────────────────
     $('#btnAgregarPart').on('click', function () {
         const nombre = $('#pNombre').val().trim();
+        const apellido = $('#pApellido').val().trim();
+        const edad = $('#pEdad').val();
+        const sexo = $('#pSexo').val();
+        const dni = ($('#pDni').val() || '').replace(/\D/g, '');
+        if (dni.length !== 13 || dni !== participanteDniConsultado) {
+            SAG.toast('Busque primero la identidad del participante.', 'warning'); return;
+        }
         if (!nombre)      { SAG.toast('El nombre del participante es obligatorio.', 'warning'); return; }
+        if (!apellido)    { SAG.toast('El apellido del participante es obligatorio.', 'warning'); return; }
+        if (!edad)        { SAG.toast('Ingrese la edad del participante.', 'warning'); return; }
+        if (!sexo)        { SAG.toast('Seleccione el sexo del participante.', 'warning'); return; }
         if (!capActivaId) { SAG.toast('Primero guarde una capacitación.',           'warning'); return; }
 
         SAG.btnLoading('#btnAgregarPart', true);
@@ -389,6 +495,8 @@ $(function () {
     function limpiarFormPart() {
         document.getElementById('formParticipante').reset();
         $('#pCapId').val(capActivaId);
+        bloquearDatosParticipante();
+        $('#pDni').focus();
     }
 
     // ── VER DETALLE DESDE TABLA ───────────────────────

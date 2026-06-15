@@ -1310,14 +1310,14 @@ body.theme-pipa {
   --tema-light:        #EDF3EC;
 }
 
-/* FPROG : Fortalecimiento (violeta) */
+/* FPROG : Fortalecimiento (azul celeste) */
 body.theme-fprog {
-  --primario:          #7c3aed;
-  --primario-oscuro:   #5b21b6;
-  --primario-claro:    #a78bfa;
-  --acento:            #8b5cf6;
-  --acento-claro:      #c4b5fd;
-  --tema-light:        #f5f3ff;
+  --primario:          #0284c7;
+  --primario-oscuro:   #0369a1;
+  --primario-claro:    #38bdf8;
+  --acento:            #0ea5e9;
+  --acento-claro:      #7dd3fc;
+  --tema-light:        #f0f9ff;
 }
 
 /* Badge "en ejecución" — azul */

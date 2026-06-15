@@ -90,7 +90,7 @@ $(function () {
         }).html('<i class="fas fa-spinner fa-spin me-1"></i> Buscando…');
 
         SAG.ajax({
-            url: '/beneficiarios/buscarPorDNI',
+            url: '/api/productores/buscar-dni',
             data: { dni: dni },
             success: function (res) {
                 if (!res.success) {
@@ -110,6 +110,14 @@ $(function () {
                     const prog = (p.programa_sigla || 'otro programa');
                     $('#bDniEstado').css({ background: '#dbeafe', color: '#1e40af', borderLeft: '4px solid #2563eb' })
                         .html('<i class="fas fa-shuffle me-1"></i> Registrado en <strong>' + prog + '</strong>. Datos pre-cargados. Puede agregarlo a este programa.');
+                } else if (src === 'entrega') {
+                    autocompletar(p, 'entrega');
+                    $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-box me-1"></i> Productor encontrado en los registros de entregas. Datos pre-cargados.');
+                } else if (src === 'capacitacion' || src === 'asistencia') {
+                    autocompletar(p, src);
+                    $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-circle-check me-1"></i> Productor encontrado en registros internos del sistema. Datos pre-cargados.');
                 } else if (src === 'censo') {
                     autocompletar(p, 'censo');
                     $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })

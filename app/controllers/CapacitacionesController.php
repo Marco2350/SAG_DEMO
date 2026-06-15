@@ -179,17 +179,37 @@ class CapacitacionesController extends Controller
         if (!$this->model->getDetalle($idCap)) {
             $this->error('Capacitación no encontrada.', 404); return;
         }
+        $dni = preg_replace('/\D/', '', (string) $this->getPost('dni', ''));
+        if (strlen($dni) !== 13) {
+            $this->error('Debe ingresar y buscar un DNI válido de 13 dígitos.'); return;
+        }
+        if ($this->model->existeParticipanteDni($idCap, $dni)) {
+            $this->error('Esta identidad ya está registrada en la capacitación.'); return;
+        }
+        try {
+            $identidad = ProductorLookup::buscar($dni);
+            $persona   = $identidad['persona'] ?? null;
+            if ($persona) {
+                $nombre = trim((string) ($persona['nombre'] ?? $persona['nombres'] ?? $nombre));
+                $_POST['apellido'] = trim((string) ($persona['apellido'] ?? $persona['apellidos'] ?? $this->getPost('apellido', '')));
+                if (!empty($persona['edad'])) $_POST['edad'] = (string) $persona['edad'];
+                if (!empty($persona['sexo'])) $_POST['sexo'] = (string) $persona['sexo'];
+                $edad = (string) $this->getPost('edad', '');
+                $sexo = (string) $this->getPost('sexo', '');
+            }
+        } catch (Throwable $e) {
+            error_log('CapacitacionesController identidad - ' . $e->getMessage());
+            $this->error('No fue posible verificar la identidad. Intente nuevamente.'); return;
+        }
         if ($nombre === '') { $this->error('El nombre del participante es obligatorio.'); return; }
         if (mb_strlen($nombre) > 100) { $this->error('El nombre no puede exceder 100 caracteres.'); return; }
-        if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
-            $this->error('Sexo no válido.'); return;
+        $apellido = trim((string) $this->getPost('apellido', ''));
+        if ($apellido === '') { $this->error('El apellido del participante es obligatorio.'); return; }
+        if (!in_array($sexo, ['M', 'F'], true)) {
+            $this->error('Seleccione el sexo del participante.'); return;
         }
-        if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
+        if ($edad === '' || !ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120) {
             $this->error('La edad debe ser un número entre 1 y 120.'); return;
-        }
-        $dni = preg_replace('/\D/', '', (string) $this->getPost('dni', ''));
-        if ($dni !== '' && strlen($dni) !== 13) {
-            $this->error('El DNI debe tener 13 dígitos.'); return;
         }
         $telefono = preg_replace('/\D/', '', (string) $this->getPost('telefono', ''));
         if ($telefono !== '' && strlen($telefono) !== 8) {
@@ -202,7 +222,7 @@ class CapacitacionesController extends Controller
         $data = [
             'id_capacitacion' => $idCap,
             'nombre'          => $nombre,
-            'apellido'        => trim((string) $this->getPost('apellido', '')),
+            'apellido'        => $apellido,
             'dni'             => $dni ?: null,
             'edad'            => ($edad !== '' ? (int) $edad : null),
             'sexo'            => $sexo ?: null,

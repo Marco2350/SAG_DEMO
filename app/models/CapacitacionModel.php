@@ -108,6 +108,18 @@ class CapacitacionModel extends Model
         return $newId;
     }
 
+    public function existeParticipanteDni(int $idCap, string $dni): bool
+    {
+        return (bool) $this->db->fetchOne(
+            "SELECT id_participante
+               FROM sag_cap_participantes
+              WHERE id_capacitacion = ?
+                AND REPLACE(dni, '-', '') = ?
+              LIMIT 1",
+            [$idCap, $dni]
+        );
+    }
+
     public function eliminarParticipante(int $idPart): bool
     {
         $p = $this->db->fetchOne(

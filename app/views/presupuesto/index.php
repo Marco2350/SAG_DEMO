@@ -99,7 +99,10 @@ $cssExtra = '<style>
 ?>
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/presupuesto.js"></script>'; ?>
+<?php
+$presupuestoJs = ROOT_PATH . '/public/assets/js/modules/presupuesto.js';
+$jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/presupuesto.js?v=' . filemtime($presupuestoJs) . '"></script>';
+?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <?php

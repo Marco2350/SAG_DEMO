@@ -68,9 +68,62 @@ $(function () {
     });
 
     // ── MÁSCARAS DE ENTRADA ───────────────────────────
+    let atDniConsultado = '';
+
+    let atDniTimer;
     $('#atPDni').on('input', function () {
+        clearTimeout(atDniTimer);
         this.value = SAG.formatDNI(this.value);
+        if (this.value.replace(/\D/g, '') !== atDniConsultado) {
+            atDniConsultado = '';
+            $('#atDniEstado').hide();
+        }
+        if (this.value.replace(/\D/g, '').length === 13) {
+            atDniTimer = setTimeout(buscarProductorAt, 350);
+        }
     });
+    $('#btnBuscarAtDni').on('click', buscarProductorAt);
+
+    function buscarProductorAt() {
+        const dni = ($('#atPDni').val() || '').replace(/\D/g, '');
+        if (dni.length !== 13) {
+            SAG.toast('Ingrese los 13 dígitos de la identidad.', 'warning'); return;
+        }
+        $('#atDniEstado').show().css({ background: '#eef2ff', color: '#3730a3', borderLeft: '4px solid #6366f1' })
+            .html('<i class="fas fa-spinner fa-spin"></i> Buscando en productores registrados, entregas y CENSO...');
+        $('#btnBuscarAtDni').prop('disabled', true);
+        SAG.ajax({
+            url: '/api/productores/buscar-dni',
+            data: { dni },
+            success: function (res) {
+                $('#btnBuscarAtDni').prop('disabled', false);
+                if (!res.success) {
+                    $('#atDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' }).text(res.message);
+                    return;
+                }
+                atDniConsultado = dni;
+                const p = res.data?.persona;
+                if (p) {
+                    $('#atPNombre').val(p.nombre || p.nombres || '');
+                    $('#atPApellido').val(p.apellido || p.apellidos || '');
+                    $('#atPEdad').val(p.edad || '');
+                    $('#atPSexo').val(p.sexo || '');
+                    $('#atPTel').val(SAG.formatTel(p.telefono || ''));
+                    if (p.id_organizacion) $('#atOrg').val(p.id_organizacion).trigger('change');
+                    $('#atDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-circle-check"></i> ' + res.message + ' Datos precargados.');
+                } else {
+                    $('#atDniEstado').css({ background: '#fefce8', color: '#854d0e', borderLeft: '4px solid #ca8a04' })
+                        .html('<i class="fas fa-user-plus"></i> ' + res.message);
+                    $('#atPNombre').focus();
+                }
+            },
+            error: function () {
+                $('#btnBuscarAtDni').prop('disabled', false);
+                $('#atDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' }).text('No fue posible consultar la identidad.');
+            },
+        });
+    }
     $('#atPTel').on('input', function () {
         this.value = SAG.formatTel(this.value);
     });
@@ -84,6 +137,8 @@ $(function () {
         const tec    = $('#atTecnico').val();
         const fecha  = $('#atFecha').val();
         const nombre = $('#atPNombre').val().trim();
+        const dni = ($('#atPDni').val() || '').replace(/\D/g, '');
+        const esIndividual = $('#atBloqueIndividual').is(':visible');
 
         if (!tipo)   { SAG.toast('Seleccione el tipo de asistencia.',       'warning'); return; }
         if (!dep)    { SAG.toast('Seleccione un departamento.',             'warning'); return; }
@@ -91,7 +146,10 @@ $(function () {
         if (!tema)   { SAG.toast('Seleccione el tema técnico.',            'warning'); return; }
         if (!tec)    { SAG.toast('Seleccione el técnico responsable.',     'warning'); return; }
         if (!fecha)  { SAG.toast('Ingrese la fecha de la visita.',         'warning'); return; }
-        if (!nombre) { SAG.toast('El nombre del productor es obligatorio.','warning'); return; }
+        if (esIndividual && !nombre) { SAG.toast('El nombre del productor es obligatorio.','warning'); return; }
+        if (esIndividual && (dni.length !== 13 || dni !== atDniConsultado)) {
+            SAG.toast('Busque primero la identidad del productor.', 'warning'); return;
+        }
 
         SAG.btnLoading('#btnGuardarAT', true);
         SAG.ajax({
@@ -112,6 +170,8 @@ $(function () {
     function limpiarFormAT() {
         document.getElementById('formAT').reset();
         $('#atId').val(0);
+        atDniConsultado = '';
+        $('#atDniEstado').hide();
         $('#atMun').html('<option value="">— Seleccione departamento primero —</option>');
         $('#atSubtema').html('<option value="">— Seleccione tema primero —</option>');
         // Resetear bloque de Ficha Técnica al estado "visita nueva"
@@ -317,6 +377,7 @@ $(function () {
                 $('#atPNombre').val(a.productor_nombre);
                 $('#atPApellido').val(a.productor_apellido);
                 $('#atPDni').val(SAG.formatDNI(a.productor_dni || ''));
+                atDniConsultado = (a.productor_dni || '').replace(/\D/g, '');
                 $('#atPEdad').val(a.productor_edad);
                 $('#atPSexo').val(a.productor_sexo);
                 $('#atPTel').val(SAG.formatTel(a.productor_telefono || ''));

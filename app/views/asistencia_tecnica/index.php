@@ -1,6 +1,6 @@
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/asistencia_tecnica.js"></script>'; ?>
+<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/asistencia_tecnica.js?v=' . filemtime(ROOT_PATH . '/public/assets/js/modules/asistencia_tecnica.js') . '"></script>'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <div class="content">
@@ -197,8 +197,11 @@
                 <input type="text" class="fc" id="atPApellido" name="productor_apellido" maxlength="200"/>
               </div>
               <div class="col-md-3">
-                <label class="form-label-b">DNI</label>
-                <input type="text" class="fc input-dni" id="atPDni" name="productor_dni" maxlength="15" placeholder="0000-0000-00000" inputmode="numeric"/>
+                <label class="form-label-b">DNI <span class="req">*</span></label>
+                <div style="display:flex;gap:6px;">
+                  <input type="text" class="fc input-dni" id="atPDni" name="productor_dni" maxlength="15" placeholder="0000-0000-00000" inputmode="numeric"/>
+                  <button type="button" class="btn-outline" id="btnBuscarAtDni" title="Buscar identidad"><i class="fas fa-magnifying-glass"></i></button>
+                </div>
               </div>
               <div class="col-md-1">
                 <label class="form-label-b">Edad</label>
@@ -228,6 +231,9 @@
               <div class="col-md-4">
                 <label class="form-label-b">Área Productiva (mz)</label>
                 <input type="number" class="fc" id="atArea" name="area_productiva" step="0.1" min="0"/>
+              </div>
+              <div class="col-12">
+                <div id="atDniEstado" style="display:none;font-size:.78rem;padding:8px 10px;border-radius:7px;"></div>
               </div>
             </div>
           </div>

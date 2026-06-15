@@ -173,6 +173,23 @@ class AsistenciaTecnicaController extends Controller
             $idOrg = $idOrgGrupo ?: 0;
         } else {
             // ── Validación INDIVIDUAL ──
+            $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
+            if (strlen($dni) !== 13) {
+                $this->error('Debe ingresar y buscar el DNI del productor.'); return;
+            }
+            try {
+                $identidad = ProductorLookup::buscar($dni);
+                $persona   = $identidad['persona'] ?? null;
+                if ($persona) {
+                    $productor = trim((string) ($persona['nombre'] ?? $persona['nombres'] ?? $productor));
+                    $_POST['productor_apellido'] = trim((string) ($persona['apellido'] ?? $persona['apellidos'] ?? $this->getPost('productor_apellido', '')));
+                    if (!empty($persona['edad'])) $edad = (string) $persona['edad'];
+                    if (!empty($persona['sexo'])) $sexo = (string) $persona['sexo'];
+                }
+            } catch (Throwable $e) {
+                error_log('AsistenciaTecnicaController identidad - ' . $e->getMessage());
+                $this->error('No fue posible verificar la identidad. Intente nuevamente.'); return;
+            }
             if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
             if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
             if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
@@ -180,10 +197,6 @@ class AsistenciaTecnicaController extends Controller
             }
             if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
                 $this->error('La edad debe ser un número entre 1 y 120.'); return;
-            }
-            $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
-            if ($dni !== '' && strlen($dni) !== 13) {
-                $this->error('El DNI del productor debe tener 13 dígitos.'); return;
             }
             $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
             if ($telefono !== '' && strlen($telefono) !== 8) {

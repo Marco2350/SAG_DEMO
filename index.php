@@ -22,6 +22,12 @@ spl_autoload_register(function (string $class): void {
 session_name(SESSION_NAME);
 session_start();
 
+// Mantener la identidad visual del programa activo sincronizada con la configuración.
+$programaActivoId = $_SESSION['programa']['id'] ?? '';
+if ($programaActivoId && isset(PROGRAMAS[$programaActivoId])) {
+    $_SESSION['programa'] = PROGRAMAS[$programaActivoId];
+}
+
 // Protección session fixation
 if (!isset($_SESSION['_last_regen'])) {
     $_SESSION['_last_regen'] = time();
@@ -311,6 +317,7 @@ $router->post('/presupuesto/documentos/save',    'PresupuestoController', 'saveD
 $router->post('/presupuesto/documentos/delete',  'PresupuestoController', 'deleteDocumento');
 $router->get('/presupuesto/documentos/ver',      'PresupuestoController', 'descargarDocumento');
 $router->get('/presupuesto/api/lineas',          'PresupuestoController', 'apiLineas');
+$router->post('/presupuesto/api/lineas',         'PresupuestoController', 'apiLineas');
 
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
@@ -368,14 +375,6 @@ $router->post('/componentes_fp/delete',                  'ComponentesFPControlle
 $router->post('/componentes_fp/estado',                  'ComponentesFPController', 'estado');
 $router->post('/componentes_fp/apiLista',                'ComponentesFPController', 'apiLista');
 
-// ── Riesgos FPROG 2026 (matriz prob×impacto + mitigación) ──
-$router->get( '/riesgos_fp',                             'RiesgosFPController', 'index');
-$router->post('/riesgos_fp/listar',                      'RiesgosFPController', 'listar');
-$router->post('/riesgos_fp/get',                         'RiesgosFPController', 'get');
-$router->post('/riesgos_fp/save',                        'RiesgosFPController', 'save');
-$router->post('/riesgos_fp/delete',                      'RiesgosFPController', 'delete');
-$router->post('/riesgos_fp/estado',                      'RiesgosFPController', 'estado');
-
 // ── Equipo FPROG 2026 (estructura técnica) ──
 $router->get( '/equipo_fp',                              'EquipoFPController', 'index');
 $router->post('/equipo_fp/listar',                       'EquipoFPController', 'listar');
@@ -399,5 +398,6 @@ $router->get('/api/tecnicos',                'ApiController', 'tecnicos');
 $router->get('/api/organizaciones',          'ApiController', 'organizaciones');
 $router->get('/api/departamentos',           'ApiController', 'departamentos');
 $router->get('/api/aldeas',                  'ApiController', 'aldeas');
+$router->post('/api/productores/buscar-dni', 'ApiController', 'buscarProductorPorDni');
 
 $router->dispatch();

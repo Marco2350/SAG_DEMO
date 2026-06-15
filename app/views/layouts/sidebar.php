@@ -75,10 +75,6 @@ function navGroupOpen(array $segments): string {
     <i class="fas fa-users-gear"></i>
     <span class="nav-label">Equipo Técnico</span>
   </a>
-  <a class="nav-item-s <?= navActive('/riesgos_fp') ?>" href="<?= BASE_URL ?>/riesgos_fp">
-    <i class="fas fa-triangle-exclamation"></i>
-    <span class="nav-label">Riesgos</span>
-  </a>
   <a class="nav-item-s <?= navActive('/fortalecimiento') ?>" href="<?= BASE_URL ?>/fortalecimiento">
     <i class="fas fa-chart-line"></i>
     <span class="nav-label">Acciones de Fortalecimiento</span>

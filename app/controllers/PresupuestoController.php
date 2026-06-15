@@ -15,6 +15,8 @@ class PresupuestoController extends Controller
     private const ROLES_ADMIN = ['admin', 'coordinador'];
     // Roles que pueden dar visto bueno (nivel 1 viáticos)
     private const ROLES_JEFE  = ['admin', 'coordinador', 'jefe'];
+    // Formatos admitidos por los formularios de respaldo y autorización.
+    private const TIPOS_DOCUMENTO_PRESUPUESTO = ['pdf', 'doc', 'docx'];
 
     public function __construct()
     {
@@ -49,10 +51,12 @@ class PresupuestoController extends Controller
         $file    = $_FILES[$campo];
         $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, $tiposPermitidos)) {
-            throw new Exception("Tipo de archivo no permitido: .$ext");
+            throw new InvalidArgumentException(
+                'Tipo de archivo no permitido. Formatos aceptados: ' . strtoupper(implode(', ', $tiposPermitidos)) . '.'
+            );
         }
         if ($file['size'] > 10 * 1024 * 1024) { // 10 MB max
-            throw new Exception('El archivo supera el tamaño máximo de 10 MB.');
+            throw new InvalidArgumentException('El archivo supera el tamaño máximo de 10 MB.');
         }
         $nombre  = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
         $destDir = ROOT_PATH . '/public/uploads/' . $carpeta . '/';
@@ -151,6 +155,7 @@ class PresupuestoController extends Controller
     {
         if (!$this->esAdmin()) { $this->error('Sin permisos para esta acción.'); return; }
         $id     = (int) $this->getPost('id_presupuesto', 0);
+        $esNuevo = $id === 0;
         $nombre = trim($this->getPost('nombre'));
         $anio   = (int) $this->getPost('anio', date('Y'));
         $monto  = (float) str_replace(',', '', $this->getPost('monto_total', '0'));
@@ -173,7 +178,11 @@ class PresupuestoController extends Controller
         try {
             // Archivo de respaldo
             if (!empty($_FILES['doc_respaldo']['name'])) {
-                $data['documento_respaldo'] = $this->subirArchivo('doc_respaldo', 'presupuesto');
+                $data['documento_respaldo'] = $this->subirArchivo(
+                    'doc_respaldo',
+                    'presupuesto',
+                    self::TIPOS_DOCUMENTO_PRESUPUESTO
+                );
             }
 
             if ($id) {
@@ -202,8 +211,10 @@ class PresupuestoController extends Controller
                 );
             }
 
-            $this->logAction($id ? 'EDITAR' : 'CREAR', 'presupuesto', "ID:$id — $nombre estado:{$data['estado']}");
-            $this->success($id ? 'Presupuesto actualizado.' : 'Presupuesto creado.', ['id' => $id, 'estado' => $data['estado']]);
+            $this->logAction($esNuevo ? 'CREAR' : 'EDITAR', 'presupuesto', "ID:$id — $nombre estado:{$data['estado']}");
+            $this->success($esNuevo ? 'Presupuesto creado.' : 'Presupuesto actualizado.', ['id' => $id, 'estado' => $data['estado']]);
+        } catch (InvalidArgumentException $e) {
+            $this->error($e->getMessage());
         } catch (Exception $e) {
             error_log('PresupuestoController::savePresupuesto — ' . $e->getMessage());
             $this->error('Error al guardar el presupuesto. Revise los datos e intente de nuevo.');
@@ -219,7 +230,11 @@ class PresupuestoController extends Controller
         try {
             $archivo = null;
             if (!empty($_FILES['doc_autorizacion']['name'])) {
-                $archivo = $this->subirArchivo('doc_autorizacion', 'presupuesto');
+                $archivo = $this->subirArchivo(
+                    'doc_autorizacion',
+                    'presupuesto',
+                    self::TIPOS_DOCUMENTO_PRESUPUESTO
+                );
             }
             $db->execute(
                 "UPDATE sag_presupuestos SET estado='activo', id_usuario_autoriza=?, fecha_autorizacion=NOW(),
@@ -233,6 +248,8 @@ class PresupuestoController extends Controller
             );
             $this->logAction('AUTORIZAR', 'presupuesto', "ID:$id");
             $this->success('Presupuesto autorizado y activado.');
+        } catch (InvalidArgumentException $e) {
+            $this->error($e->getMessage());
         } catch (Exception $e) {
             error_log('PresupuestoController::autorizarPresupuesto — ' . $e->getMessage());
             $this->error('Error al autorizar el presupuesto.');
@@ -893,8 +910,10 @@ class PresupuestoController extends Controller
             "SELECT l.id_linea, CONCAT(COALESCE(l.codigo,''),' - ',l.nombre) AS label, l.monto_aprobado
              FROM sag_lineas_presupuestarias l
              INNER JOIN sag_presupuestos p ON p.id_presupuesto=l.id_presupuesto
-             WHERE p.estado='activo' AND l.activo=1 AND p.id_proyecto=? ORDER BY l.orden, l.nombre",
-            [Database::proyectoId()]
+             WHERE p.estado='activo' AND l.activo=1
+               AND p.id_proyecto=? AND l.id_proyecto=?
+             ORDER BY l.orden, l.nombre",
+            [Database::proyectoId(), Database::proyectoId()]
         );
         $this->json($rows);
     }

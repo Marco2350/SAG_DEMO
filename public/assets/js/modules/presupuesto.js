@@ -172,6 +172,7 @@ $(function () {
         document.getElementById('formPresupuesto').reset();
         $('#fPresId').val(0);
         $('#rowTipoCambio').hide();
+        $('#docRespaldoActual').html('');
         abrirModal('modalPresupuesto');
     });
 
@@ -213,8 +214,8 @@ $(function () {
         if (p.tipo_cambio) $('#fPresTipoCambio').val(p.tipo_cambio);
         $('#rowTipoCambio').toggle(p.moneda === 'USD');
         // Mostrar doc actual si existe
-        if (p.doc_respaldo) {
-            $('#docRespaldoActual').html('<i class="fas fa-file-pdf me-1" style="color:#dc2626;"></i>Archivo actual: ' + p.doc_respaldo + ' <em style="color:#aaa;">(suba uno nuevo para reemplazar)</em>');
+        if (p.documento_respaldo) {
+            $('#docRespaldoActual').html('<i class="fas fa-file me-1" style="color:#dc2626;"></i>Archivo actual: ' + p.documento_respaldo + ' <em style="color:#aaa;">(suba uno nuevo para reemplazar)</em>');
         } else {
             $('#docRespaldoActual').html('');
         }
@@ -313,11 +314,37 @@ $(function () {
 
     // ─── HELPER: cargar líneas en selects de modales ──────────
     function cargarLineasEnSelect(selector) {
-        SAG.ajax({ url: '/presupuesto/api/lineas', data: {}, success: rows => {
+        const selects = document.querySelectorAll(selector);
+        selects.forEach(s => {
+            s.disabled = true;
+            s.innerHTML = '<option value="">Cargando líneas presupuestarias...</option>';
+        });
+
+        SAG.ajaxGet('/presupuesto/api/lineas', {}, rows => {
+            if (!Array.isArray(rows)) {
+                selects.forEach(s => {
+                    s.disabled = false;
+                    s.innerHTML = '<option value="">No fue posible cargar las líneas</option>';
+                });
+                return;
+            }
+
+            if (!rows.length) {
+                selects.forEach(s => {
+                    s.disabled = false;
+                    s.innerHTML = '<option value="">No hay líneas en el presupuesto activo</option>';
+                });
+                SAG.toast('No hay líneas disponibles en el presupuesto activo.', 'warning');
+                return;
+            }
+
             const opts = '<option value="">— Sin asignar —</option>' +
                 rows.map(r => `<option value="${r.id_linea}">${r.label} (${fmt(r.monto_aprobado)})</option>`).join('');
-            document.querySelectorAll(selector).forEach(s => s.innerHTML = opts);
-        }});
+            selects.forEach(s => {
+                s.disabled = false;
+                s.innerHTML = opts;
+            });
+        });
     }
 
     // ─── COMPRAS ──────────────────────────────────────────────

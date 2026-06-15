@@ -1,6 +1,6 @@
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/beneficiarios.js"></script>'; ?>
+<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/beneficiarios.js?v=' . filemtime(ROOT_PATH . '/public/assets/js/modules/beneficiarios.js') . '"></script>'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <div class="content">

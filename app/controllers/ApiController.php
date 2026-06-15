@@ -5,6 +5,21 @@
  */
 class ApiController extends Controller
 {
+    /** POST /api/productores/buscar-dni */
+    public function buscarProductorPorDni(): void
+    {
+        $this->requirePrograma();
+        try {
+            $resultado = ProductorLookup::buscar((string) $this->getPost('dni', ''));
+            $this->success($resultado['message'], $resultado);
+        } catch (InvalidArgumentException $e) {
+            $this->error($e->getMessage());
+        } catch (Throwable $e) {
+            error_log('ApiController::buscarProductorPorDni - ' . $e->getMessage());
+            $this->error('No fue posible consultar la identidad.');
+        }
+    }
+
     /** GET /api/municipios?depto_id=N */
     public function municipios(): void
     {

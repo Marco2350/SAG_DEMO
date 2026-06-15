@@ -28,7 +28,7 @@
 <?php endif; ?>
 
 <!-- Main JS -->
-<script src="<?= BASE_URL ?>/public/assets/js/main.js"></script>
+<script src="<?= BASE_URL ?>/public/assets/js/main.js?v=<?= filemtime(ROOT_PATH . '/public/assets/js/main.js') ?>"></script>
 
 <?php if (!empty($jsExtra)): ?>
 <?= $jsExtra ?>
@@ -130,6 +130,89 @@ $(function () {
 //   - <select class="form-select sag-search"> → con search
 //   - <select class="form-select"> dentro de modal → con search si >=10 options
 // Para forzar exclusión, agregar class="form-select sag-no-search".
+// Autoguardado global para formularios sin una clave manual.
+$(function () {
+  const context = <?= json_encode(
+      ($_SESSION['user']['id_usuario'] ?? 'anon') . ':' .
+      ($_SESSION['programa']['id'] ?? 'sin-programa'),
+      JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+  ) ?>;
+  let lastEditedForm = null;
+
+  function eligible($form) {
+    if (!$form.length || $form.data('sag-autosave') === 'off') return false;
+    if ($form.is('#loginForm, #formExportar')) return false;
+    return $form.find(':input:not([type="password"]):not([type="file"]):not([type="hidden"])').length > 0;
+  }
+
+  function ensureAttached($form) {
+    if (!eligible($form)) return '';
+    if ($form.data('sag-autosave-key')) return $form.data('sag-autosave-key');
+    if ($form.data('sag-autosave-attached')) return '';
+    const id = $form.attr('id') || $form.attr('name');
+    if (!id) return '';
+    const key = context + ':' + location.pathname + ':' + id;
+    $form.data('sag-autosave-attached', true);
+    $form.data('sag-autosave-key', key);
+    SAG.autosaveAttach($form, key);
+    $form.on('input change', function () { lastEditedForm = $form; });
+    return key;
+  }
+
+  function restoreForm($form) {
+    const key = ensureAttached($form);
+    if (!key) return;
+    const restored = SAG.autosaveRestore($form, key, antigMs => antigMs < 7 * 24 * 60 * 60 * 1000);
+    if (!restored || $form.children('.sag-draft-banner').length) return;
+    const $banner = $('<div class="sag-draft-banner" style="background:#fef3c7;color:#854d0e;border-left:4px solid #ca8a04;padding:6px 10px;margin-bottom:10px;font-size:.78rem;border-radius:6px;"><i class="fas fa-clock-rotate-left me-1"></i>Borrador anterior restaurado. <a href="#" class="sag-clear-draft" style="font-weight:700;color:#7c2d12;">Descartar</a></div>');
+    $form.prepend($banner);
+    $banner.on('click', '.sag-clear-draft', function (e) {
+      e.preventDefault();
+      SAG.autosaveClear(key);
+      $form[0].reset();
+      $banner.remove();
+    });
+  }
+
+  $('form:not([data-sag-autosave])').each(function () {
+    const $form = $(this);
+    ensureAttached($form);
+    if (!$form.closest('.modal, .modal-overlay').length) restoreForm($form);
+  });
+  $('form[data-sag-autosave]').each(function () {
+    const $form = $(this);
+    $form.data('sag-autosave-key', $form.data('sag-autosave'));
+    $form.on('input change', function () { lastEditedForm = $form; });
+  });
+
+  $(document).on('shown.bs.modal', '.modal', function () {
+    $(this).find('form:not([data-sag-autosave])').each(function () { restoreForm($(this)); });
+  });
+
+  const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+      const $modal = $(mutation.target);
+      if ($modal.hasClass('modal-overlay') && $modal.hasClass('show')) {
+        $modal.find('form:not([data-sag-autosave])').each(function () { restoreForm($(this)); });
+      }
+    });
+  });
+  $('.modal-overlay').each(function () {
+    observer.observe(this, { attributes: true, attributeFilter: ['class'] });
+  });
+
+  $(document).ajaxSuccess(function (_event, xhr, settings) {
+    if (!lastEditedForm) return;
+    const res = xhr.responseJSON;
+    if (/\/(?:save|add)[^/?]*(?:$|\?)/i.test(settings.url || '') && res && res.success === true) {
+      const key = lastEditedForm.data('sag-autosave-key');
+      if (key) SAG.autosaveClear(key);
+      lastEditedForm.children('.sag-draft-banner').remove();
+      lastEditedForm = null;
+    }
+  });
+});
+
 $(function () {
   if (typeof $.fn.select2 === 'undefined') return;
 

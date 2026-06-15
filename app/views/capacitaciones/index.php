@@ -1,6 +1,6 @@
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/capacitaciones.js"></script>'; ?>
+<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/capacitaciones.js?v=' . filemtime(ROOT_PATH . '/public/assets/js/modules/capacitaciones.js') . '"></script>'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <div class="content">
@@ -139,32 +139,37 @@
             <div class="card-box-body">
               <form id="formParticipante" novalidate>
                 <input type="hidden" id="pCapId" name="id_capacitacion" value="0"/>
+                <input type="hidden" id="pIdentidadFuente" name="identidad_fuente" value=""/>
                 <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label-b">DNI <span class="req">*</span></label>
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="Ingrese la identidad para buscar" inputmode="numeric"/>
+                      <button type="button" class="btn-outline" id="btnBuscarPartDni" style="white-space:nowrap;"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+                    </div>
+                    <div id="pDniEstado" style="display:none;margin-top:8px;font-size:.78rem;"></div>
+                  </div>
                   <div class="col-6">
                     <label class="form-label-b">Nombre <span class="req">*</span></label>
-                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Primer nombre" maxlength="100"/>
+                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Busque primero por DNI" maxlength="100" disabled/>
                   </div>
                   <div class="col-6">
-                    <label class="form-label-b">Apellido</label>
-                    <input type="text" class="fc" id="pApellido" name="apellido" maxlength="100"/>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label-b">DNI</label>
-                    <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="0000-0000-00000" inputmode="numeric"/>
+                    <label class="form-label-b">Apellido <span class="req">*</span></label>
+                    <input type="text" class="fc" id="pApellido" name="apellido" maxlength="100" disabled/>
                   </div>
                   <div class="col-3">
-                    <label class="form-label-b">Edad</label>
-                    <input type="number" class="fc" id="pEdad" name="edad" min="1" max="120"/>
+                    <label class="form-label-b">Edad <span class="req">*</span></label>
+                    <input type="number" class="fc" id="pEdad" name="edad" min="1" max="120" disabled/>
                   </div>
                   <div class="col-3">
-                    <label class="form-label-b">Sexo</label>
-                    <select class="fs" id="pSexo" name="sexo">
+                    <label class="form-label-b">Sexo <span class="req">*</span></label>
+                    <select class="fs" id="pSexo" name="sexo" disabled>
                       <option value="">—</option><option value="M">M</option><option value="F">F</option>
                     </select>
                   </div>
                   <div class="col-12">
                     <label class="form-label-b">Organización</label>
-                    <select class="fs" id="pOrg" name="id_organizacion">
+                    <select class="fs" id="pOrg" name="id_organizacion" disabled>
                       <option value="">— Sin organización —</option>
                       <?php foreach ($organizaciones as $org): ?>
                       <option value="<?= $org['id_organizacion'] ?>"><?= htmlspecialchars($org['nombre']) ?></option>
@@ -176,7 +181,7 @@
             </div>
             <div style="padding:14px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0f0f0;">
               <button type="button" class="btn-gris" id="btnLimpiarPart"><i class="fas fa-rotate-left"></i></button>
-              <button type="button" class="btn-primario" id="btnAgregarPart"><i class="fas fa-user-plus"></i> Agregar</button>
+              <button type="button" class="btn-primario" id="btnAgregarPart" disabled><i class="fas fa-user-plus"></i> Agregar</button>
             </div>
           </div>
         </div>

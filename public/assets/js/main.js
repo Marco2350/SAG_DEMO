@@ -124,6 +124,17 @@ const SAG = (function () {
     ajax(url, data, callback, 'GET');
   }
 
+  function post(url, data, callback) {
+    if (BASE && url.indexOf(BASE) === 0) url = url.slice(BASE.length);
+    ajax(url, data, callback, 'POST');
+  }
+
+  function formData(selector) {
+    const form = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!form) return {};
+    return Object.fromEntries(new FormData(form).entries());
+  }
+
   // ──────────────────────────────────────────────────
   //  TOAST
   //  Éxitos se ocultan rápido; errores y advertencias dan
@@ -406,6 +417,8 @@ const SAG = (function () {
   return {
     ajax: ajax,
     ajaxGet: ajaxGet,
+    post: post,
+    formData: formData,
     toast: toast,
     confirm: confirm,
     btnLoading: btnLoading,
@@ -449,27 +462,40 @@ const SAG = (function () {
     const $form = (typeof $ !== 'undefined') ? $(selector) : null;
     if (!$form || !$form.length) return;
     let t;
+
+    function guardarBorrador() {
+      try {
+        const data = {};
+        let tieneContenido = false;
+        $form.find(':input').each(function () {
+          const name = this.name || this.id;
+          if (!name || name === '_csrf') return;
+          const tipo = (this.type || '').toLowerCase();
+          if (['password', 'file', 'hidden', 'submit', 'button'].includes(tipo)) return;
+          if (tipo === 'checkbox' || tipo === 'radio') {
+            if (this.checked) {
+              data[name] = this.value;
+              tieneContenido = true;
+            }
+          } else {
+            data[name] = this.value;
+            if (String(this.value || '').trim() !== '') tieneContenido = true;
+          }
+        });
+        if (!tieneContenido) {
+          autosaveClear(key);
+          return;
+        }
+        data.__ts = Date.now();
+        localStorage.setItem('sag_draft_' + key, JSON.stringify(data));
+      } catch (e) { /* localStorage lleno / modo privado */ }
+    }
+
     $form.on('input change', function () {
       clearTimeout(t);
-      t = setTimeout(() => {
-        try {
-          const data = {};
-          $form.find(':input').each(function () {
-            const name = this.name || this.id;
-            if (!name) return;
-            const tipo = (this.type || '').toLowerCase();
-            if (tipo === 'password' || tipo === 'file') return;
-            if (tipo === 'checkbox' || tipo === 'radio') {
-              if (this.checked) data[name] = this.value;
-            } else {
-              data[name] = this.value;
-            }
-          });
-          data.__ts = Date.now();
-          localStorage.setItem('sag_draft_' + key, JSON.stringify(data));
-        } catch (e) { /* localStorage full / privado */ }
-      }, 2500);
+      t = setTimeout(guardarBorrador, 700);
     });
+    window.addEventListener('beforeunload', guardarBorrador);
   }
 
   function autosaveClear(key) {
@@ -499,13 +525,14 @@ const SAG = (function () {
       const name = this.name || this.id;
       if (!name || !(name in data)) return;
       const tipo = (this.type || '').toLowerCase();
-      if (tipo === 'password' || tipo === 'file') return;
+      if (tipo === 'password' || tipo === 'file' || tipo === 'hidden') return;
       if (tipo === 'checkbox' || tipo === 'radio') {
         this.checked = (this.value === data[name]);
       } else {
         this.value = data[name];
       }
     });
+    $form.find('select').trigger('change');
     return true;
   }
 })();

@@ -14,16 +14,22 @@ Solicitud concreta:
 Contexto obligatorio del sistema:
 - Es una aplicacion PHP 8.2 con MVC propio, PDO, MySQL, Bootstrap 5,
   DataTables y JavaScript modular.
-- Todos los programas comparten una base. El aislamiento se realiza con
-  id_proyecto: PIPC=1, PIPG=2, PIPA=3 y FPROG=4.
+- La arquitectura oficial es SINGLE-DB: todos los programas comparten
+  exclusivamente la base configurada en DB_NAME, actualmente mddesarr_sag.
+- No se deben crear ni usar bases separadas por programa como sag_main,
+  sag_pipc, sag_pipg, sag_pipa o sag_fpsag. Esas bases y los scripts que usan
+  PROGRAMAS[*]['db'] son legado pendiente de retiro.
+- El aislamiento dentro de la base unica se realiza con id_proyecto:
+  PIPC=1, PIPG=2, PIPA=3 y FPROG=4.
 - El programa activo se obtiene con Database::proyectoId().
 - La aplicacion administra dinero publico y datos personales; trazabilidad,
   autorizacion e integridad son requisitos funcionales, no opcionales.
 - PRODUCT.md define la experiencia y personalidad del producto.
 
 Proceso obligatorio antes de editar:
-1. Lee README.md, PRODUCT.md, AUDITORIA_SAG_DEMO.md y los archivos relacionados
-   con la solicitud.
+1. Lee README.md, PRODUCT.md, AUDITORIA_SAG_DEMO.md,
+   DIAGNOSTICO_ARQUITECTURA_DATOS.md y los archivos relacionados con la
+   solicitud.
 2. Revisa git status y conserva todos los cambios existentes que no sean tuyos.
 3. Identifica el patron ya usado en el modulo equivalente y reutilizalo.
 4. Explica brevemente el plan y los riesgos antes de editar.
@@ -31,6 +37,8 @@ Proceso obligatorio antes de editar:
 Reglas innegociables de implementacion:
 - Toda consulta, actualizacion o eliminacion de datos pertenecientes a un
   programa debe filtrar por id_proyecto = Database::proyectoId().
+- Usa Database::main() o Database::programa(), que actualmente resuelven a la
+  misma DB unica. Nunca abras una conexion usando PROGRAMAS[*]['db'].
 - Todo INSERT de una entidad de programa debe sellar id_proyecto en servidor.
 - Valida tambien que IDs relacionados recibidos por GET/POST pertenezcan al
   proyecto activo; nunca confies en IDs enviados por el navegador.
@@ -54,6 +62,9 @@ Reglas innegociables de implementacion:
 - Haz cambios pequenos y enfocados; no refactorices areas no relacionadas.
 
 Base de datos y migraciones:
+- Toda migracion nueva debe apuntar a la base unica configurada en DB_NAME y
+  usar id_proyecto para separar programas.
+- No uses sag_main ni sag_pip* como destino de migraciones nuevas.
 - No modifiques una migracion ya aplicada para cambiar produccion.
 - Crea una nueva migracion SQL incremental, idempotente cuando sea razonable.
 - Incluye indices para filtros frecuentes y llaves/constraints que refuercen
