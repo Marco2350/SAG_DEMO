@@ -84,4 +84,53 @@ class CatalogosController extends Controller
         $pageTitle = 'Tipos de Asistencia — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
         $this->view('catalogos/tiposat', compact('tiposAt', 'pageTitle'));
     }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Catálogos de inventario (proveedores, productos, bodegas)
+    //  Necesarios antes de crear cronogramas de incentivos.
+    // ──────────────────────────────────────────────────────────────
+
+    public function proveedores(): void
+    {
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        $proveedores = $db->fetchAll(
+            "SELECT * FROM sag_proveedores WHERE id_proyecto=? ORDER BY activo DESC, nombre",
+            [$pid]
+        );
+        $pageTitle = 'Proveedores — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
+        $this->view('catalogos/proveedores', compact('proveedores', 'pageTitle'));
+    }
+
+    public function productos(): void
+    {
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        $productos = $db->fetchAll(
+            "SELECT * FROM sag_inventario_productos WHERE id_proyecto=? ORDER BY activo DESC, categoria, nombre",
+            [$pid]
+        );
+        $pageTitle = 'Productos de Inventario — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
+        $this->view('catalogos/productos', compact('productos', 'pageTitle'));
+    }
+
+    public function bodegas(): void
+    {
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        $bodegas = $db->fetchAll(
+            "SELECT b.*, d.nombre AS departamento, m.nombre AS municipio
+               FROM sag_bodegas b
+               LEFT JOIN sag_departamentos d ON d.id_departamento = b.id_departamento
+               LEFT JOIN sag_municipios    m ON m.id_municipio    = b.id_municipio
+              WHERE b.id_proyecto=? ORDER BY b.activo DESC, b.nombre",
+            [$pid]
+        );
+        $departamentos = $db->fetchAll(
+            "SELECT id_departamento, nombre FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre",
+            [$pid]
+        );
+        $pageTitle = 'Bodegas — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
+        $this->view('catalogos/bodegas', compact('bodegas', 'departamentos', 'pageTitle'));
+    }
 }

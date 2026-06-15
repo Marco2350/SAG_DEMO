@@ -157,8 +157,10 @@ function navGroupOpen(array $segments): string {
   <!-- Parametrización y Sistema (solo roles con acceso a catálogos — ver MantenimientoController::ROLES_CATALOGOS) -->
   <?php $rolSlug = $_SESSION['user']['rol_slug'] ?? '';
         if (in_array($rolSlug, ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'], true)): ?>
-  <div class="nav-group <?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ?>" data-nav-group="parametrizacion">
-    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ? 'true' : 'false' ?>">
+  <?php $catRutas = ['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat',
+                     '/catalogos/proveedores', '/catalogos/productos', '/catalogos/bodegas']; ?>
+  <div class="nav-group <?= navGroupOpen($catRutas) ?>" data-nav-group="parametrizacion">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen($catRutas) ? 'true' : 'false' ?>">
       <span>Parametrización</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
     </button>
@@ -178,6 +180,19 @@ function navGroupOpen(array $segments): string {
       <a class="nav-item-s <?= navActive('/catalogos/tiposat') ?>" href="<?= BASE_URL ?>/catalogos/tiposat">
         <i class="fas fa-list-check"></i>
         <span class="nav-label">Tipos de Asistencia</span>
+      </a>
+      <!-- Catálogos de inventario (proveedores, productos, bodegas) -->
+      <a class="nav-item-s <?= navActive('/catalogos/proveedores') ?>" href="<?= BASE_URL ?>/catalogos/proveedores">
+        <i class="fas fa-truck"></i>
+        <span class="nav-label">Proveedores</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/catalogos/productos') ?>" href="<?= BASE_URL ?>/catalogos/productos">
+        <i class="fas fa-boxes-stacked"></i>
+        <span class="nav-label">Productos</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/catalogos/bodegas') ?>" href="<?= BASE_URL ?>/catalogos/bodegas">
+        <i class="fas fa-warehouse"></i>
+        <span class="nav-label">Bodegas</span>
       </a>
     </div>
   </div>

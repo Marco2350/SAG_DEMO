@@ -1,9 +1,7 @@
 /**
  * catalogos.js — Parametrización (catálogos del programa)
- * Maneja las páginas: /catalogos/tecnicos, /catalogos/temas,
- * /catalogos/cultivos y /catalogos/tiposat.
- * Tablas renderizadas en servidor + DataTables cliente + modales Bootstrap.
- * Endpoints de guardado/eliminación: /mantenimiento/<catalogo>/save|delete.
+ * Páginas: /catalogos/tecnicos, /temas, /cultivos, /tiposat,
+ *          /proveedores, /productos, /bodegas
  */
 $(function () {
 
@@ -17,14 +15,36 @@ $(function () {
         setTimeout(() => location.reload(), 700);
     }
 
-    // ══════════════════════════════════════════════════
-    //  PÁGINAS DE CATÁLOGO SIMPLE (técnicos, cultivos, tipos AT)
-    //  Comparten #modalCatalogo / #formCatalogo / #btnGuardarCat
-    // ══════════════════════════════════════════════════
+    // ═══ CATÁLOGOS SIMPLES (modal #modalCatalogo) ═══
     const $modalCat = $('#modalCatalogo');
     if ($modalCat.length) {
-        const catalogo = $modalCat.data('catalogo'); // tecnicos | cultivos | tiposat
+        const catalogo = $modalCat.data('catalogo');
         const modal    = new bootstrap.Modal('#modalCatalogo');
+
+        function cargarMunicipios(idDep, idMuniSel) {
+            const $muni = $('#catMuni');
+            if (!$muni.length) return;
+            $muni.html('<option value="">— Cargando… —</option>');
+            if (!idDep) { $muni.html('<option value="">— Seleccione un depto. primero —</option>'); return; }
+            SAG.ajax({
+                url:  '/mantenimiento/municipios',
+                type: 'GET',
+                data: { id_departamento: idDep },
+                success: function (res) {
+                    let opts = '<option value="">— Seleccione municipio —</option>';
+                    (res.data || []).forEach(m => {
+                        opts += '<option value="' + m.id_municipio + '">' + m.nombre + '</option>';
+                    });
+                    $muni.html(opts);
+                    if (idMuniSel) $muni.val(idMuniSel);
+                },
+                error: function () { $muni.html('<option value="">— Error al cargar —</option>'); },
+            });
+        }
+
+        $(document).on('change', '#catDep', function () {
+            if ($modalCat.data('catalogo') === 'bodegas') cargarMunicipios(this.value, null);
+        });
 
         const CONFIG = {
             tecnicos: {
@@ -66,26 +86,80 @@ $(function () {
                     $('#catActivo').val(r.activo);
                 },
             },
+            proveedores: {
+                tabla:    '#tablaProveedores',
+                saveUrl:  '/mantenimiento/proveedores/save',
+                delUrl:   '/mantenimiento/proveedores/delete',
+                tituloNuevo:  '<i class="fas fa-truck me-2"></i>Nuevo Proveedor',
+                tituloEditar: '<i class="fas fa-pen me-2"></i>Editar Proveedor',
+                fill: function (r) {
+                    $('#catNombre').val(r.nombre);
+                    $('#catRtn').val(r.rtn);
+                    $('#catContacto').val(r.contacto);
+                    $('#catTelefono').val(SAG.formatTel(r.telefono || ''));
+                    $('#catEmail').val(r.email);
+                    $('#catDireccion').val(r.direccion);
+                    $('#catActivo').val(r.activo);
+                },
+            },
+            productos: {
+                tabla:    '#tablaProductos',
+                saveUrl:  '/mantenimiento/productos/save',
+                delUrl:   '/mantenimiento/productos/delete',
+                tituloNuevo:  '<i class="fas fa-boxes-stacked me-2"></i>Nuevo Producto',
+                tituloEditar: '<i class="fas fa-pen me-2"></i>Editar Producto',
+                fill: function (r) {
+                    $('#catCodigo').val(r.codigo);
+                    $('#catNombre').val(r.nombre);
+                    $('#catDescripcion').val(r.descripcion);
+                    $('#catUnidad').val(r.unidad || 'unidad');
+                    $('#catPresentacion').val(r.presentacion);
+                    $('#catCategoria').val(r.categoria);
+                    $('#catPrecio').val(r.precio_unitario);
+                    $('#catActivo').val(r.activo);
+                },
+            },
+            bodegas: {
+                tabla:    '#tablaBodegas',
+                saveUrl:  '/mantenimiento/bodegas/save',
+                delUrl:   '/mantenimiento/bodegas/delete',
+                tituloNuevo:  '<i class="fas fa-warehouse me-2"></i>Nueva Bodega',
+                tituloEditar: '<i class="fas fa-pen me-2"></i>Editar Bodega',
+                fill: function (r) {
+                    $('#catCodigo').val(r.codigo);
+                    $('#catNombre').val(r.nombre);
+                    $('#catDep').val(r.id_departamento || '');
+                    cargarMunicipios(r.id_departamento, r.id_municipio);
+                    $('#catDireccion').val(r.direccion);
+                    $('#catResponsable').val(r.responsable);
+                    $('#catTelefono').val(SAG.formatTel(r.telefono || ''));
+                    $('#catCapacidad').val(r.capacidad);
+                    $('#catCoordenadas').val(r.coordenadas);
+                    $('#catActivo').val(r.activo);
+                },
+            },
         };
+
         const cfg = CONFIG[catalogo];
 
         if (cfg) {
             $(cfg.tabla).DataTable(DT_OPTS);
 
-            // Máscara de teléfono (solo técnicos)
             $('#catTelefono').on('input', function () {
                 this.value = SAG.formatTel(this.value);
             });
 
-            // Nuevo
-            $('#btnNuevoTec, #btnNuevoCultivo, #btnNuevoTipoAt').on('click', function () {
+            $('#btnNuevoTec, #btnNuevoCultivo, #btnNuevoTipoAt, #btnNuevoProveedor, #btnNuevoProducto, #btnNuevaBodega').on('click', function () {
                 document.getElementById('formCatalogo').reset();
                 $('#catId').val(0);
+                $('#catActivo').val(1);
+                if (catalogo === 'bodegas') {
+                    $('#catMuni').html('<option value="">— Seleccione un depto. primero —</option>');
+                }
                 $('#modalCatTitulo').html(cfg.tituloNuevo);
                 modal.show();
             });
 
-            // Editar
             $(document).on('click', '.btn-editar-cat', function () {
                 const r = $(this).data('row');
                 document.getElementById('formCatalogo').reset();
@@ -95,7 +169,6 @@ $(function () {
                 modal.show();
             });
 
-            // Guardar
             $('#btnGuardarCat').on('click', function () {
                 const nombre = ($('#catNombre').val() || '').trim();
                 if (!nombre) { SAG.toast('El nombre es obligatorio.', 'warning'); return; }
@@ -118,7 +191,6 @@ $(function () {
                 });
             });
 
-            // Desactivar
             $(document).on('click', '.btn-desactivar-cat', function () {
                 const id     = $(this).data('id');
                 const nombre = $(this).data('nombre') || 'este registro';
@@ -137,9 +209,7 @@ $(function () {
         }
     }
 
-    // ══════════════════════════════════════════════════
-    //  PÁGINA TEMAS Y SUBTEMAS (dos tablas + dos modales)
-    // ══════════════════════════════════════════════════
+    // ═══ PÁGINA TEMAS Y SUBTEMAS ═══
     if ($('#tablaTemas').length) {
         const modalTema = new bootstrap.Modal('#modalTema');
         const modalSub  = new bootstrap.Modal('#modalSubtema');
@@ -148,7 +218,6 @@ $(function () {
         $('#tablaTemas').DataTable(optsCompact);
         $('#tablaSubtemas').DataTable(optsCompact);
 
-        // ── TEMAS ──
         $('#btnNuevoTema').on('click', function () {
             document.getElementById('formTema').reset();
             $('#temaId').val(0);
@@ -200,7 +269,6 @@ $(function () {
             });
         });
 
-        // ── SUBTEMAS ──
         $('#btnNuevoSubtema').on('click', function () {
             document.getElementById('formSubtema').reset();
             $('#subId').val(0);

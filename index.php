@@ -278,6 +278,14 @@ $router->post('/mantenimiento/cultivos/save','MantenimientoController', 'saveCul
 $router->post('/mantenimiento/cultivos/delete','MantenimientoController','deleteCultivo');
 $router->post('/mantenimiento/tipoat/save',  'MantenimientoController', 'saveTipoAT');
 $router->post('/mantenimiento/tipoat/delete','MantenimientoController', 'deleteTipoAT');
+// Catálogos de inventario (proveedores, productos, bodegas)
+$router->post('/mantenimiento/proveedores/save',   'MantenimientoController', 'saveProveedor');
+$router->post('/mantenimiento/proveedores/delete', 'MantenimientoController', 'deleteProveedor');
+$router->post('/mantenimiento/productos/save',     'MantenimientoController', 'saveProductoInv');
+$router->post('/mantenimiento/productos/delete',   'MantenimientoController', 'deleteProductoInv');
+$router->post('/mantenimiento/bodegas/save',       'MantenimientoController', 'saveBodega');
+$router->post('/mantenimiento/bodegas/delete',     'MantenimientoController', 'deleteBodega');
+$router->get ('/mantenimiento/municipios',         'MantenimientoController', 'municipios');
 
 // ── Auditoría (bitácora del sistema) ─────────────
 $router->get('/auditoria',                   'AuditoriaController', 'index');
@@ -288,6 +296,9 @@ $router->get('/catalogos/tecnicos',          'CatalogosController', 'tecnicos');
 $router->get('/catalogos/temas',             'CatalogosController', 'temas');
 $router->get('/catalogos/cultivos',          'CatalogosController', 'cultivos');
 $router->get('/catalogos/tiposat',           'CatalogosController', 'tiposat');
+$router->get('/catalogos/proveedores',       'CatalogosController', 'proveedores');
+$router->get('/catalogos/productos',         'CatalogosController', 'productos');
+$router->get('/catalogos/bodegas',           'CatalogosController', 'bodegas');
 
 // ── Presupuesto / Ejecución Financiera ───────────
 $router->get('/presupuesto',                     'PresupuestoController', 'index');
