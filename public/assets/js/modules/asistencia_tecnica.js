@@ -253,9 +253,9 @@ $(function () {
                     : '<span class="badge-pendiente">Borrador</span>';
 
                 const sexoHtml = a.productor_sexo === 'M'
-                    ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>'
+                    ? 'Masculino'
                     : (a.productor_sexo === 'F'
-                        ? '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>'
+                        ? 'Femenino'
                         : '—');
 
                 let resultadosHtml = '';

@@ -57,10 +57,6 @@ class AsistenciaTecnicaController extends Controller
             $estadoBadge = $a['estado'] === 'finalizado'
                 ? '<span class="badge-activo">Finalizado</span>'
                 : '<span class="badge-pendiente">Borrador</span>';
-            $sexoIcon = $a['productor_sexo'] === 'M'
-                ? '<i class="fas fa-mars" style="color:#2563eb;" title="Masculino"></i>'
-                : ($a['productor_sexo'] === 'F'
-                    ? '<i class="fas fa-venus" style="color:#db2777;" title="Femenino"></i>' : '');
             $productor = htmlspecialchars(trim($a['productor_nombre'] . ' ' . ($a['productor_apellido'] ?? '')));
             $acciones = '
                 <button class="btn-outline btn-sm-icon btn-ver-at" data-id="' . $a['id_at'] . '" title="Ver">
@@ -73,7 +69,7 @@ class AsistenciaTecnicaController extends Controller
                 'id_at'       => $a['id_at'],
                 'fecha'       => $a['fecha_visita'],
                 'tipo_at'     => '<i class="fas ' . htmlspecialchars($a['tipo_icono'] ?? 'fa-handshake') . ' me-1" style="color:var(--primario);"></i>' . htmlspecialchars($a['tipo_at']),
-                'productor'   => $productor . ' ' . $sexoIcon,
+                'productor'   => $productor,
                 'tema'        => htmlspecialchars($a['tema']),
                 'subtema'     => htmlspecialchars($a['subtema'] ?? '—'),
                 'tecnico'     => htmlspecialchars($a['tecnico']),

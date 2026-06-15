@@ -163,7 +163,7 @@ $cssExtra = '<style>
           </div>
           <div class="col-md-5">
             <div style="margin-bottom:10px;font-size:.85rem;font-weight:700;color:#333;">
-              <i class="fas fa-venus-mars me-1" style="color:var(--primario);"></i> Beneficiarios por sexo
+              Beneficiarios por sexo
             </div>
             <div class="chart-container" style="height:240px;">
               <canvas id="chartSexoResumen"></canvas>
@@ -221,7 +221,7 @@ $cssExtra = '<style>
           </div>
           <div class="col-md-4">
             <div style="font-size:.85rem;font-weight:700;color:#333;margin-bottom:10px;">
-              <i class="fas fa-venus-mars me-1" style="color:var(--primario);"></i> Por sexo
+              Por sexo
             </div>
             <div class="chart-container" style="height:280px;">
               <canvas id="chartBeneSexo"></canvas>

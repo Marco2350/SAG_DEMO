@@ -57,7 +57,7 @@ class BeneficiariosController extends Controller
             $rows      = $this->model->getListado($filtros, $start, $length, $orden);
 
             $data = array_map(function ($b) {
-                $sexoIcon = match ($b['sexo']) {
+                $sexoTexto = match ($b['sexo']) {
                     'M'     => '<span style="color:#2563eb;font-weight:600;">Masculino</span>',
                     'F'     => '<span style="color:#db2777;font-weight:600;">Femenino</span>',
                     default => '—',
@@ -76,7 +76,7 @@ class BeneficiariosController extends Controller
                     'nombre_completo' => htmlspecialchars($b['nombre_completo']),
                     'dni'             => htmlspecialchars($b['dni'] ?: '—'),
                     'edad'            => $b['edad'] ?? '—',
-                    'sexo'            => $sexoIcon,
+                    'sexo'            => $sexoTexto,
                     'organizacion'    => htmlspecialchars($b['organizacion'] ?: '—'),
                     'ubicacion'       => htmlspecialchars($b['departamento'] . ' / ' . $b['municipio']),
                     'telefono'        => htmlspecialchars($b['telefono'] ?: '—'),

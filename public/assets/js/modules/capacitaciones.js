@@ -416,17 +416,13 @@ $(function () {
             return;
         }
         lista.forEach(function (p, i) {
-            const sexoIcon = p.sexo === 'M'
-                ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i></span>'
-                : (p.sexo === 'F'
-                    ? '<span style="color:#db2777;"><i class="fas fa-venus"></i></span>'
-                    : '—');
+            const sexoTexto = p.sexo === 'M' ? 'Masculino' : (p.sexo === 'F' ? 'Femenino' : '—');
             const fila = `<tr>
                 <td>${i + 1}</td>
                 <td>${escHtml(p.nombre)} ${escHtml(p.apellido || '')}</td>
                 <td>${p.dni || '—'}</td>
                 <td style="text-align:center;">${p.edad || '—'}</td>
-                <td style="text-align:center;">${sexoIcon}</td>
+                <td style="text-align:center;">${sexoTexto}</td>
                 <td>${escHtml(p.organizacion || '—')}</td>
                 <td style="text-align:center;">
                     <button class="btn-danger-sm btn-del-part" data-id="${p.id_participante}" title="Eliminar">

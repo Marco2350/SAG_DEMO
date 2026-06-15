@@ -43,13 +43,13 @@
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
         <div class="ms-val"><?= $resumen['hombres'] ?></div>
-        <div class="ms-lbl"><i class="fas fa-user" style="color:#3b82f6;margin-right:4px;"></i>Productores hombres</div>
+        <div class="ms-lbl">Productores hombres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#db2777;">
         <div class="ms-val"><?= $resumen['mujeres'] ?></div>
-        <div class="ms-lbl"><i class="fas fa-user" style="color:#db2777;margin-right:4px;"></i>Productoras mujeres</div>
+        <div class="ms-lbl">Productoras mujeres</div>
       </div>
     </div>
   </div>

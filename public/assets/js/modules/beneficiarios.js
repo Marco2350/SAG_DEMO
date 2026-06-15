@@ -254,9 +254,9 @@ $(function () {
             success: function (res) {
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 const b = res.data;
-                const sexoIcon = b.sexo === 'M'
-                    ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>'
-                    : '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>';
+                const sexoTexto = b.sexo === 'M'
+                    ? 'Masculino'
+                    : 'Femenino';
 
                 const edad = b.fecha_nacimiento
                     ? calcularEdad(b.fecha_nacimiento) + ' años'
@@ -282,7 +282,7 @@ $(function () {
                       </div>
                       <div class="col-md-4">
                         <label class="form-label-b">Sexo</label>
-                        <p>${sexoIcon}</p>
+                        <p>${sexoTexto}</p>
                       </div>
                       <div class="col-md-6">
                         <label class="form-label-b">Teléfono</label>

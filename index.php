@@ -335,6 +335,8 @@ $router->get('/inventarios',                         'InventariosController', 'i
 $router->post('/inventarios/listarCronogramas',      'InventariosController', 'listarCronogramas');
 $router->post('/inventarios/getCronograma',          'InventariosController', 'getCronograma');
 $router->post('/inventarios/saveCronograma',         'InventariosController', 'saveCronograma');
+$router->post('/inventarios/deleteCronograma',       'InventariosController', 'deleteCronograma');
+$router->post('/inventarios/importarExcel',          'InventariosController', 'importarExcel');
 $router->post('/inventarios/recibirLinea',           'InventariosController', 'recibirLinea');
 $router->post('/inventarios/kardex',                 'InventariosController', 'kardex');
 $router->post('/inventarios/stockPorBodega',         'InventariosController', 'stockPorBodega');
