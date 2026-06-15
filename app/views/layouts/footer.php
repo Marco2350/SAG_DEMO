@@ -52,23 +52,49 @@ toggleBtn.addEventListener('click', () => {
 
 // ── GRUPOS DESPLEGABLES DEL SIDEBAR ──
 const navGroups = sidebar?.querySelectorAll('.nav-group') ?? [];
+const navGroupStorageKey = 'sag_nav_group:<?= htmlspecialchars((string)($_SESSION['programa']['id'] ?? 'sin-programa'), ENT_QUOTES) ?>';
+
+function setOpenNavGroup(groupToOpen) {
+  navGroups.forEach((group) => {
+    const isOpen = group === groupToOpen;
+    group.classList.toggle('open', isOpen);
+    group.querySelector('.nav-group-toggle')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+
+  if (groupToOpen?.dataset.navGroup) {
+    localStorage.setItem(navGroupStorageKey, groupToOpen.dataset.navGroup);
+  } else {
+    localStorage.removeItem(navGroupStorageKey);
+  }
+}
+
+// La ruta activa manda; si no pertenece a un grupo, se restaura el último abierto.
+const activeNavGroup = Array.from(navGroups).find((group) => group.querySelector('.nav-item-s.active'));
+const storedNavGroup = localStorage.getItem(navGroupStorageKey);
+const restoredNavGroup = storedNavGroup
+  ? Array.from(navGroups).find((group) => group.dataset.navGroup === storedNavGroup)
+  : null;
+setOpenNavGroup(activeNavGroup || restoredNavGroup || null);
+
 navGroups.forEach((group) => {
   const button = group.querySelector('.nav-group-toggle');
   if (!button) return;
 
   button.addEventListener('click', () => {
-    const shouldOpen = !group.classList.contains('open');
-
-    navGroups.forEach((otherGroup) => {
-      otherGroup.classList.remove('open');
-      otherGroup.querySelector('.nav-group-toggle')?.setAttribute('aria-expanded', 'false');
-    });
-
-    if (shouldOpen) {
-      group.classList.add('open');
-      button.setAttribute('aria-expanded', 'true');
-    }
+    // El grupo de la página actual permanece abierto hasta cambiar de área.
+    if (group.querySelector('.nav-item-s.active')) return;
+    setOpenNavGroup(group.classList.contains('open') ? null : group);
   });
+
+  group.querySelectorAll('.nav-item-s').forEach((link) => {
+    link.addEventListener('click', () => setOpenNavGroup(group));
+  });
+});
+
+// Al cambiar a Menú Principal, los grupos dejan de ser el área activa.
+sidebar?.querySelectorAll('.nav-item-s').forEach((link) => {
+  if (link.closest('.nav-group')) return;
+  link.addEventListener('click', () => setOpenNavGroup(null));
 });
 
 // ── USER DROPDOWN ──

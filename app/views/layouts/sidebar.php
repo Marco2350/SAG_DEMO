@@ -100,7 +100,7 @@ function navGroupOpen(array $segments): string {
   </a>
 
   <!-- Entregas e Inventarios (solo PIPs) -->
-  <div class="nav-group <?= navGroupOpen(['/entregas', '/inventarios']) ?>">
+  <div class="nav-group <?= navGroupOpen(['/entregas', '/inventarios']) ?>" data-nav-group="entregas-inventarios">
     <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/entregas', '/inventarios']) ? 'true' : 'false' ?>">
       <span>Entregas e Inventarios</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
@@ -123,7 +123,7 @@ function navGroupOpen(array $segments): string {
   <?php endif; ?>
 
   <!-- Reportes -->
-  <div class="nav-group <?= navGroupOpen(['/estadisticas', '/exportar']) ?>">
+  <div class="nav-group <?= navGroupOpen(['/estadisticas', '/exportar']) ?>" data-nav-group="reportes">
     <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/estadisticas', '/exportar']) ? 'true' : 'false' ?>">
       <span>Reportes</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
@@ -141,7 +141,7 @@ function navGroupOpen(array $segments): string {
   </div>
 
   <!-- Administración Financiera -->
-  <div class="nav-group <?= navGroupOpen(['/presupuesto']) ?>">
+  <div class="nav-group <?= navGroupOpen(['/presupuesto']) ?>" data-nav-group="administracion">
     <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/presupuesto']) ? 'true' : 'false' ?>">
       <span>Administración</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
@@ -157,7 +157,7 @@ function navGroupOpen(array $segments): string {
   <!-- Parametrización y Sistema (solo roles con acceso a catálogos — ver MantenimientoController::ROLES_CATALOGOS) -->
   <?php $rolSlug = $_SESSION['user']['rol_slug'] ?? '';
         if (in_array($rolSlug, ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'], true)): ?>
-  <div class="nav-group <?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ?>">
+  <div class="nav-group <?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ?>" data-nav-group="parametrizacion">
     <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/catalogos/tecnicos', '/catalogos/temas', '/catalogos/cultivos', '/catalogos/tiposat']) ? 'true' : 'false' ?>">
       <span>Parametrización</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
@@ -182,7 +182,7 @@ function navGroupOpen(array $segments): string {
     </div>
   </div>
 
-  <div class="nav-group <?= navGroupOpen(['/mantenimiento', '/auditoria']) ?>">
+  <div class="nav-group <?= navGroupOpen(['/mantenimiento', '/auditoria']) ?>" data-nav-group="sistema">
     <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/mantenimiento', '/auditoria']) ? 'true' : 'false' ?>">
       <span>Sistema</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
