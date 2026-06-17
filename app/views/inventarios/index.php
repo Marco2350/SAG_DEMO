@@ -170,6 +170,16 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
   </div>
 
   <!-- Toolbar + tabs -->
+  <?php if ($esAdmin && (empty($proveedores) || empty($productos) || empty($bodegas))): ?>
+  <div style="background:#fef3c7;color:#854d0e;border-left:4px solid #ca8a04;padding:12px 14px;border-radius:8px;margin-bottom:16px;font-size:.84rem;">
+    <strong>Inventarios requiere catálogos reales antes de cargar cronogramas.</strong>
+    Faltan: <?= implode(', ', array_filter([
+      empty($proveedores) ? 'proveedores' : null,
+      empty($productos) ? 'productos' : null,
+      empty($bodegas) ? 'bodegas' : null,
+    ])) ?>.
+  </div>
+  <?php endif; ?>
   <div class="inv-toolbar">
     <div class="inv-tabs">
       <button class="inv-tab active" data-tab="cronogramas">
@@ -183,7 +193,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
       </button>
     </div>
     <?php if ($esAdmin): ?>
-    <button class="btn-primario" id="btnNuevoCronograma">
+    <button class="btn-primario" id="btnNuevoCronograma" <?= (empty($proveedores) || empty($productos) || empty($bodegas)) ? 'disabled title="Configure primero proveedores, productos y bodegas"' : '' ?>>
       <i class="fas fa-plus"></i> Nuevo cronograma
     </button>
     <?php endif; ?>
@@ -233,6 +243,12 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
           <button class="btn-outline" style="padding:6px 12px;font-size:.78rem;" onclick="event.stopPropagation();verCronograma(<?= $c['id_cronograma'] ?>)">
             <i class="fas fa-eye"></i> Ver
           </button>
+          <?php if ($esAdmin): ?>
+          <button class="btn-danger-sm" style="margin-left:5px;" title="Eliminar cronograma"
+            onclick="event.stopPropagation();eliminarCronograma(<?= $c['id_cronograma'] ?>, '<?= htmlspecialchars(addslashes($c['codigo'])) ?>')">
+            <i class="fas fa-trash"></i>
+          </button>
+          <?php endif; ?>
         </div>
       </div>
       <div class="cron-body">
@@ -450,6 +466,21 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
             (Fechas + productos + cantidades + bodega destino)
           </span>
         </div>
+        <div style="background:var(--superficie-soft);border:1px solid var(--borde-suave);padding:12px 14px;border-radius:10px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <input type="file" id="archivoInventarioExcel" accept=".xlsx,.csv" style="display:none;">
+            <button type="button" class="btn-outline" id="btnImportarInventarioExcel">
+              <i class="fas fa-file-excel"></i> Importar líneas desde Excel
+            </button>
+            <button type="button" class="btn-outline" id="btnPlantillaInventario">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <span style="font-size:.76rem;color:var(--texto-sec);">
+              Columnas: <strong>codigo_producto, codigo_bodega, fecha_programada, cantidad</strong>
+            </span>
+          </div>
+          <div id="resultadoImportInventario" style="display:none;margin-top:8px;font-size:.78rem;"></div>
+        </div>
         <div style="overflow-x:auto;">
         <table class="lineas-table" id="lineasTable">
           <thead>
@@ -536,6 +567,6 @@ window.INV_CAT = <?= json_encode($catalogosJs, JSON_UNESCAPED_UNICODE) ?>;
 const BASE_URL = '<?= BASE_URL ?>';
 const CSRF_TOKEN = '<?= csrf_token() ?>';
 </script>
-<script src="<?= asset('public/assets/js/modules/inventarios.js') ?>"></script>
+<script src="<?= asset('public/assets/js/modules/inventarios.js') ?>?v=<?= filemtime(ROOT_PATH . '/public/assets/js/modules/inventarios.js') ?>"></script>
 
 <?php require ROOT_PATH . '/app/views/layouts/footer.php'; ?>

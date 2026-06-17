@@ -57,10 +57,6 @@ class AsistenciaTecnicaController extends Controller
             $estadoBadge = $a['estado'] === 'finalizado'
                 ? '<span class="badge-activo">Finalizado</span>'
                 : '<span class="badge-pendiente">Borrador</span>';
-            $sexoIcon = $a['productor_sexo'] === 'M'
-                ? '<i class="fas fa-mars" style="color:#2563eb;" title="Masculino"></i>'
-                : ($a['productor_sexo'] === 'F'
-                    ? '<i class="fas fa-venus" style="color:#db2777;" title="Femenino"></i>' : '');
             $productor = htmlspecialchars(trim($a['productor_nombre'] . ' ' . ($a['productor_apellido'] ?? '')));
             $acciones = '
                 <button class="btn-outline btn-sm-icon btn-ver-at" data-id="' . $a['id_at'] . '" title="Ver">
@@ -73,7 +69,7 @@ class AsistenciaTecnicaController extends Controller
                 'id_at'       => $a['id_at'],
                 'fecha'       => $a['fecha_visita'],
                 'tipo_at'     => '<i class="fas ' . htmlspecialchars($a['tipo_icono'] ?? 'fa-handshake') . ' me-1" style="color:var(--primario);"></i>' . htmlspecialchars($a['tipo_at']),
-                'productor'   => $productor . ' ' . $sexoIcon,
+                'productor'   => $productor,
                 'tema'        => htmlspecialchars($a['tema']),
                 'subtema'     => htmlspecialchars($a['subtema'] ?? '—'),
                 'tecnico'     => htmlspecialchars($a['tecnico']),
@@ -148,28 +144,66 @@ class AsistenciaTecnicaController extends Controller
             }
         }
 
-        // ── Productor ──
-        if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
-        if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
-        if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
-            $this->error('Sexo no válido.'); return;
-        }
-        if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
-            $this->error('La edad debe ser un número entre 1 y 120.'); return;
-        }
-        $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
-        if ($dni !== '' && strlen($dni) !== 13) {
-            $this->error('El DNI del productor debe tener 13 dígitos.'); return;
-        }
-        $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
-        if ($telefono !== '' && strlen($telefono) !== 8) {
-            $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
-        }
-        if ($area !== '' && (!is_numeric($area) || (float) $area < 0)) {
-            $this->error('El área productiva debe ser un número positivo.'); return;
-        }
-        if ($idOrg && !$this->model->organizacionValida($idOrg)) {
-            $this->error('La organización seleccionada no es válida.'); return;
+        // ── Detectar modalidad: individual vs grupal ──
+        // Lo decide el cliente con los campos enviados, pero validamos en server.
+        $grupoTotal   = (int) $this->getPost('grupo_total', 0);
+        $grupoHombres = (int) $this->getPost('grupo_hombres', 0);
+        $grupoMujeres = (int) $this->getPost('grupo_mujeres', 0);
+        $idOrgGrupo   = (int) $this->getPost('id_organizacion_grupal', 0);
+        $esGrupal     = ($grupoTotal > 0 || $grupoHombres > 0 || $grupoMujeres > 0);
+
+        if ($esGrupal) {
+            // ── Validación GRUPAL ──
+            if ($grupoTotal < 1 || $grupoTotal > 500) {
+                $this->error('El total de asistentes debe estar entre 1 y 500.'); return;
+            }
+            if ($grupoHombres + $grupoMujeres > $grupoTotal) {
+                $this->error('La suma de hombres y mujeres no puede superar el total.'); return;
+            }
+            if ($idOrgGrupo && !$this->model->organizacionValida($idOrgGrupo)) {
+                $this->error('La organización seleccionada no es válida.'); return;
+            }
+            // En grupal, los campos individuales se ignoran
+            $productor = 'Atención grupal · ' . $grupoTotal . ' asistentes';
+            $sexo = ''; $edad = ''; $dni = ''; $telefono = ''; $area = '';
+            $idOrg = $idOrgGrupo ?: 0;
+        } else {
+            // ── Validación INDIVIDUAL ──
+            $dni = preg_replace('/\D/', '', (string) $this->getPost('productor_dni', ''));
+            if (strlen($dni) !== 13) {
+                $this->error('Debe ingresar y buscar el DNI del productor.'); return;
+            }
+            try {
+                $identidad = ProductorLookup::buscar($dni);
+                $persona   = $identidad['persona'] ?? null;
+                if ($persona) {
+                    $productor = trim((string) ($persona['nombre'] ?? $persona['nombres'] ?? $productor));
+                    $_POST['productor_apellido'] = trim((string) ($persona['apellido'] ?? $persona['apellidos'] ?? $this->getPost('productor_apellido', '')));
+                    if (!empty($persona['edad'])) $edad = (string) $persona['edad'];
+                    if (!empty($persona['sexo'])) $sexo = (string) $persona['sexo'];
+                }
+            } catch (Throwable $e) {
+                error_log('AsistenciaTecnicaController identidad - ' . $e->getMessage());
+                $this->error('No fue posible verificar la identidad. Intente nuevamente.'); return;
+            }
+            if ($productor === '') { $this->error('El nombre del productor es obligatorio.'); return; }
+            if (mb_strlen($productor) > 200) { $this->error('El nombre del productor no puede exceder 200 caracteres.'); return; }
+            if ($sexo !== '' && !in_array($sexo, ['M', 'F'], true)) {
+                $this->error('Sexo no válido.'); return;
+            }
+            if ($edad !== '' && (!ctype_digit($edad) || (int) $edad < 1 || (int) $edad > 120)) {
+                $this->error('La edad debe ser un número entre 1 y 120.'); return;
+            }
+            $telefono = preg_replace('/\D/', '', (string) $this->getPost('productor_telefono', ''));
+            if ($telefono !== '' && strlen($telefono) !== 8) {
+                $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
+            }
+            if ($area !== '' && (!is_numeric($area) || (float) $area < 0)) {
+                $this->error('El área productiva debe ser un número positivo.'); return;
+            }
+            if ($idOrg && !$this->model->organizacionValida($idOrg)) {
+                $this->error('La organización seleccionada no es válida.'); return;
+            }
         }
 
         $data = [

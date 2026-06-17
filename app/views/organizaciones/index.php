@@ -83,7 +83,7 @@
       </div>
     </div>
     <div style="padding:16px;overflow-x:auto;">
-      <table id="tablaOrganizaciones" class="sag-table" style="width:100%;">
+      <table id="tablaOrganizaciones" class="sag-table table-fit-content" style="width:100%;">
         <thead>
           <tr>
             <th>#</th><th>Nombre</th><th>Tipo</th><th>Ubicación</th>

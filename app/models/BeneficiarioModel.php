@@ -126,6 +126,20 @@ class BeneficiarioModel extends Model
                 if ($dni !== '' && $this->existeDNI($dni)) {
                     $errores[] = "Fila {$fila}: DNI {$dni} ya está registrado."; continue;
                 }
+                // Etnia: validar contra catálogo si viene, si no NULL
+                $etniaRaw = trim((string)($r['etnia'] ?? ''));
+                $etnia    = null;
+                if ($etniaRaw !== '' && defined('ETNIAS_HONDURAS')) {
+                    $etniaKey = strtolower($etniaRaw);
+                    if (array_key_exists($etniaKey, ETNIAS_HONDURAS)) {
+                        $etnia = $etniaKey;
+                    } else {
+                        // Acepta también el nombre de etiqueta (ej. "Garífuna")
+                        $reverso = array_change_key_case(array_flip(ETNIAS_HONDURAS), CASE_LOWER);
+                        $etnia   = $reverso[$etniaKey] ?? null;
+                    }
+                }
+
                 $this->insert([
                     'id_departamento' => $idDep,
                     'id_municipio'    => $idMun,
@@ -135,6 +149,7 @@ class BeneficiarioModel extends Model
                     'dni'             => $dni ?: null,
                     'fecha_nacimiento'=> ($r['fecha_nacimiento'] ?? '') ?: null,
                     'sexo'            => $sexo,
+                    'etnia'           => $etnia,
                     'telefono'        => $r['telefono']         ?? null,
                     'aldea'           => $r['aldea']            ?? null,
                     'estado'          => 'activo',

@@ -18,6 +18,7 @@ $(function () {
         tabla = $('#tablaBeneficiarios').DataTable({
             processing: true,
             serverSide: true,
+            autoWidth:  false,
             ajax: {
                 url:    SAG.BASE_URL + '/beneficiarios/listar',
                 type:   'POST',
@@ -29,15 +30,15 @@ $(function () {
                 },
             },
             columns: [
-                { data: 'id_beneficiario', width: '40px', orderable: false },
-                { data: 'nombre_completo' },
-                { data: 'dni' },
-                { data: 'edad',       className: 'text-center' },
-                { data: 'sexo',         orderable: false },
-                { data: 'organizacion', orderable: false },
-                { data: 'ubicacion',    orderable: false },
-                { data: 'telefono',     orderable: false },
-                { data: 'acciones',     orderable: false, className: 'text-center' },
+                { data: 'id_beneficiario', width: '40px', orderable: false, className: 'cell-nowrap' },
+                { data: 'nombre_completo', className: 'cell-primary' },
+                { data: 'dni',             className: 'cell-nowrap' },
+                { data: 'edad',            className: 'text-center cell-nowrap' },
+                { data: 'sexo',            orderable: false, className: 'cell-nowrap' },
+                { data: 'organizacion',    orderable: false, className: 'cell-description' },
+                { data: 'ubicacion',       orderable: false, className: 'cell-description' },
+                { data: 'telefono',        orderable: false, className: 'cell-nowrap' },
+                { data: 'acciones',        orderable: false, className: 'text-center cell-nowrap' },
             ],
             language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
             order:      [[1, 'asc']],
@@ -62,9 +63,93 @@ $(function () {
     // ── ABRIR MODAL NUEVO ─────────────────────────────
     $('#btnNuevoBene').on('click', function () {
         limpiarForm();
+        $('#bDniEstado').hide();
         $('#modalBeneTitulo').html('<i class="fas fa-user-plus me-2"></i>Nuevo Productor');
         modalBene.show();
+        // Focus al DNI tras abrir (Bootstrap autofocus no funciona en modal sin esto)
+        setTimeout(() => { $('#bDni').focus(); }, 200);
     });
+
+    // ── DNI primero: buscar en beneficiarios y censo al perder foco / debounce ──
+    let dniTimer;
+    $(document).on('input', '#bDni', function () {
+        clearTimeout(dniTimer);
+        const dni = ($(this).val() || '').replace(/\D/g, '');
+        if (dni.length !== 13) {
+            $('#bDniEstado').hide().removeClass();
+            return;
+        }
+        // Debounce 400ms
+        dniTimer = setTimeout(() => buscarDni(dni), 400);
+    });
+
+    function buscarDni(dni) {
+        $('#bDniEstado').show().css({
+            background: '#eef2ff', color: '#3730a3', borderLeft: '4px solid #6366f1',
+            padding: '8px 12px', borderRadius: '8px'
+        }).html('<i class="fas fa-spinner fa-spin me-1"></i> Buscando…');
+
+        SAG.ajax({
+            url: '/api/productores/buscar-dni',
+            data: { dni: dni },
+            success: function (res) {
+                if (!res.success) {
+                    $('#bDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' })
+                        .html('<i class="fas fa-circle-xmark me-1"></i> ' + res.message);
+                    return;
+                }
+                const src = res.data?.source;
+                const p   = res.data?.persona;
+
+                if (src === 'beneficiario_actual') {
+                    // Ya está en mis beneficiarios — NO permitir duplicar
+                    $('#bDniEstado').css({ background: '#fef3c7', color: '#854d0e', borderLeft: '4px solid #ca8a04' })
+                        .html('<i class="fas fa-circle-info me-1"></i> Esta persona ya está registrada en su programa. Cierre el modal y use Ver/Editar en la tabla.');
+                } else if (src === 'beneficiario_otro_pip') {
+                    autocompletar(p, 'beneficiario');
+                    const prog = (p.programa_sigla || 'otro programa');
+                    $('#bDniEstado').css({ background: '#dbeafe', color: '#1e40af', borderLeft: '4px solid #2563eb' })
+                        .html('<i class="fas fa-shuffle me-1"></i> Registrado en <strong>' + prog + '</strong>. Datos pre-cargados. Puede agregarlo a este programa.');
+                } else if (src === 'entrega') {
+                    autocompletar(p, 'entrega');
+                    $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-box me-1"></i> Productor encontrado en los registros de entregas. Datos pre-cargados.');
+                } else if (src === 'capacitacion' || src === 'asistencia') {
+                    autocompletar(p, src);
+                    $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-circle-check me-1"></i> Productor encontrado en registros internos del sistema. Datos pre-cargados.');
+                } else if (src === 'censo') {
+                    autocompletar(p, 'censo');
+                    $('#bDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-check-circle me-1"></i> Encontrado en el censo nacional. Datos pre-cargados — verifique y complete los faltantes.');
+                } else {
+                    $('#bDniEstado').css({ background: '#fefce8', color: '#854d0e', borderLeft: '4px solid #ca8a04' })
+                        .html('<i class="fas fa-user-plus me-1"></i> No encontrado. Continúe como productor nuevo (completar manualmente).');
+                }
+            },
+            error: function () {
+                $('#bDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' })
+                    .html('<i class="fas fa-triangle-exclamation me-1"></i> Error de conexión.');
+            }
+        });
+    }
+
+    function autocompletar(p, fuente) {
+        if (!p) return;
+        // Beneficiarios de otro PIP devuelven 'nombre/apellido'; censo devuelve 'nombres/apellidos'
+        $('#bNombre').val(p.nombre || p.nombres || '');
+        $('#bApellido').val(p.apellido || p.apellidos || '');
+        if (p.fecha_nacimiento) $('#bFechaNac').val(p.fecha_nacimiento);
+        if (p.sexo && (p.sexo === 'M' || p.sexo === 'F')) $('#bSexo').val(p.sexo);
+        if (p.telefono) $('#bTelefono').val(p.telefono);
+        if (p.etnia)    $('#bEtnia').val(p.etnia);
+        // Ubicación solo de beneficiarios (los del censo aún no enlazan a id_departamento de SAG)
+        if (fuente === 'beneficiario') {
+            if (p.id_departamento) $('#bDep').val(p.id_departamento).trigger('change');
+            if (p.id_municipio)    setTimeout(() => $('#bMun').val(p.id_municipio), 400);
+            if (p.aldea)           $('#bAldea').val(p.aldea);
+        }
+    }
 
     // ── GUARDAR (crear / editar) ──────────────────────
     $('#btnGuardarBene').on('click', function () {
@@ -117,6 +202,29 @@ $(function () {
     // ── CHANGE DEPTO (modal) ──────────────────────────
     $('#bDep').on('change', function () {
         SAG.loadMunicipios($(this).val(), '#bMun');
+        // Resetear aldea al cambiar departamento
+        $('#bAldeaSelect').hide().html('<option value="">— Seleccione municipio primero —</option>');
+        $('#bAldea').val('');
+    });
+
+    // ── CHANGE MUNICIPIO → cargar aldeas oficiales ────
+    $('#bMun').on('change', function () {
+        const codMuni = $(this).find('option:selected').data('codigo') || '';
+        if (codMuni) {
+            // Catálogo disponible → mostrar select
+            $('#bAldeaSelect').show();
+            SAG.loadAldeas(codMuni, '#bAldeaSelect');
+        } else {
+            // Municipio sin código (catálogo no migrado o municipio fuera del oficial)
+            // → ocultar select y dejar solo el input libre
+            $('#bAldeaSelect').hide().html('<option value="">— Catálogo no disponible —</option>');
+        }
+    });
+
+    // ── SELECCIÓN DE ALDEA EN SELECT → reflejar en input libre ──
+    $(document).on('change', '#bAldeaSelect', function () {
+        const v = $(this).val();
+        if (v) $('#bAldea').val(v);
     });
 
     // ── MÁSCARAS DE ENTRADA ───────────────────────────
@@ -146,9 +254,9 @@ $(function () {
             success: function (res) {
                 if (!res.success) { SAG.toast(res.message, 'error'); return; }
                 const b = res.data;
-                const sexoIcon = b.sexo === 'M'
-                    ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>'
-                    : '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>';
+                const sexoTexto = b.sexo === 'M'
+                    ? 'Masculino'
+                    : 'Femenino';
 
                 const edad = b.fecha_nacimiento
                     ? calcularEdad(b.fecha_nacimiento) + ' años'
@@ -174,7 +282,7 @@ $(function () {
                       </div>
                       <div class="col-md-4">
                         <label class="form-label-b">Sexo</label>
-                        <p>${sexoIcon}</p>
+                        <p>${sexoTexto}</p>
                       </div>
                       <div class="col-md-6">
                         <label class="form-label-b">Teléfono</label>

@@ -1,6 +1,9 @@
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/fortalecimiento.js?v=' . APP_VERSION . '"></script>'; ?>
+<?php
+$fortalecimientoJs = ROOT_PATH . '/public/assets/js/modules/fortalecimiento.js';
+$jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/fortalecimiento.js?v=' . filemtime($fortalecimientoJs) . '"></script>';
+?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <div class="content">

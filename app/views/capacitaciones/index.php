@@ -1,6 +1,6 @@
 <?php require ROOT_PATH . '/app/views/layouts/header.php'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
-<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/capacitaciones.js"></script>'; ?>
+<?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/capacitaciones.js?v=' . filemtime(ROOT_PATH . '/public/assets/js/modules/capacitaciones.js') . '"></script>'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
 
 <div class="content">
@@ -139,32 +139,37 @@
             <div class="card-box-body">
               <form id="formParticipante" novalidate>
                 <input type="hidden" id="pCapId" name="id_capacitacion" value="0"/>
+                <input type="hidden" id="pIdentidadFuente" name="identidad_fuente" value=""/>
                 <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label-b">DNI <span class="req">*</span></label>
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="Ingrese la identidad para buscar" inputmode="numeric"/>
+                      <button type="button" class="btn-outline" id="btnBuscarPartDni" style="white-space:nowrap;"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+                    </div>
+                    <div id="pDniEstado" style="display:none;margin-top:8px;font-size:.78rem;"></div>
+                  </div>
                   <div class="col-6">
                     <label class="form-label-b">Nombre <span class="req">*</span></label>
-                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Primer nombre" maxlength="100"/>
+                    <input type="text" class="fc" id="pNombre" name="nombre" placeholder="Busque primero por DNI" maxlength="100" disabled/>
                   </div>
                   <div class="col-6">
-                    <label class="form-label-b">Apellido</label>
-                    <input type="text" class="fc" id="pApellido" name="apellido" maxlength="100"/>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label-b">DNI</label>
-                    <input type="text" class="fc input-dni" id="pDni" name="dni" maxlength="15" placeholder="0000-0000-00000" inputmode="numeric"/>
+                    <label class="form-label-b">Apellido <span class="req">*</span></label>
+                    <input type="text" class="fc" id="pApellido" name="apellido" maxlength="100" disabled/>
                   </div>
                   <div class="col-3">
-                    <label class="form-label-b">Edad</label>
-                    <input type="number" class="fc" id="pEdad" name="edad" min="1" max="120"/>
+                    <label class="form-label-b">Edad <span class="req">*</span></label>
+                    <input type="number" class="fc" id="pEdad" name="edad" min="1" max="120" disabled/>
                   </div>
                   <div class="col-3">
-                    <label class="form-label-b">Sexo</label>
-                    <select class="fs" id="pSexo" name="sexo">
+                    <label class="form-label-b">Sexo <span class="req">*</span></label>
+                    <select class="fs" id="pSexo" name="sexo" disabled>
                       <option value="">—</option><option value="M">M</option><option value="F">F</option>
                     </select>
                   </div>
                   <div class="col-12">
                     <label class="form-label-b">Organización</label>
-                    <select class="fs" id="pOrg" name="id_organizacion">
+                    <select class="fs" id="pOrg" name="id_organizacion" disabled>
                       <option value="">— Sin organización —</option>
                       <?php foreach ($organizaciones as $org): ?>
                       <option value="<?= $org['id_organizacion'] ?>"><?= htmlspecialchars($org['nombre']) ?></option>
@@ -176,7 +181,7 @@
             </div>
             <div style="padding:14px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0f0f0;">
               <button type="button" class="btn-gris" id="btnLimpiarPart"><i class="fas fa-rotate-left"></i></button>
-              <button type="button" class="btn-primario" id="btnAgregarPart"><i class="fas fa-user-plus"></i> Agregar</button>
+              <button type="button" class="btn-primario" id="btnAgregarPart" disabled><i class="fas fa-user-plus"></i> Agregar</button>
             </div>
           </div>
         </div>
@@ -209,7 +214,7 @@
       <!-- ══ R-028: EVIDENCIA DOCUMENTAL ══ -->
       <div class="card-box mt-3" id="bloqueEvidencia">
         <div class="card-box-header">
-          <h6><i class="fas fa-paperclip"></i> Evidencia / Listado de Asistencia
+          <h6><i class="fas fa-paperclip"></i> Listado de Participantes
             <span id="evCapEstadoBadge" style="margin-left:8px;font-size:.7rem;padding:3px 10px;border-radius:12px;font-weight:700;background:#f1f5f9;color:#6b7280;">PENDIENTE</span>
           </h6>
           <small style="color:#888;font-size:.74rem;">PDF, Excel (.xls/.xlsx) o imágenes (.jpg/.png) — máx 10 MB</small>
@@ -222,13 +227,13 @@
               <input type="hidden" id="evCapIdCap" name="id_capacitacion" value="0"/>
               <div class="row g-3 align-items-end">
                 <div class="col-md-7">
-                  <label class="form-label-b">Archivo de evidencia</label>
+                  <label class="form-label-b">Archivo del listado de participantes</label>
                   <input type="file" class="fc" id="evCapArchivo" name="archivo"
                          accept=".pdf,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png" required/>
                 </div>
                 <div class="col-md-5">
                   <label class="form-label-b">Observaciones (opcional)</label>
-                  <input type="text" class="fc" id="evCapObs" name="observaciones" placeholder="Ej. Listado escaneado del taller"/>
+                  <input type="text" class="fc" id="evCapObs" name="observaciones" placeholder="Ej. Listado firmado por participantes"/>
                 </div>
               </div>
               <div style="margin-top:12px;">
@@ -288,7 +293,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <form id="formCapacitacion" novalidate>
+        <form id="formCapacitacion" data-sag-autosave="form-cap" novalidate>
           <input type="hidden" id="capId" name="id_capacitacion" value="0"/>
 
           <div class="form-section-title" style="background:#eff6ff;padding:8px 12px;border-left:4px solid #1e40af;border-radius:4px;margin-bottom:14px;">
@@ -312,7 +317,11 @@
             </div>
             <div class="col-md-4">
               <label class="form-label-b">Aldea</label>
+              <select class="fs sag-search" id="cAldeaSelect" style="margin-bottom:4px;display:none;">
+                <option value="">— Seleccione municipio primero —</option>
+              </select>
               <input type="text" class="fc" id="cAldea" name="aldea" placeholder="Ej. El Porvenir" maxlength="200"/>
+              <small style="color:#6b7280;font-size:.7rem;">Elija del catálogo o escriba directamente.</small>
             </div>
             <div class="col-md-8">
               <label class="form-label-b">Lugar Específico</label>
@@ -338,17 +347,13 @@
                 <?php endforeach; ?>
               </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-8">
               <label class="form-label-b">Subtema</label>
               <select class="fs" id="cSubtema" name="id_subtema">
                 <option value="">— Seleccione tema primero —</option>
               </select>
             </div>
-            <div class="col-md-4">
-              <label class="form-label-b">Duración (horas)</label>
-              <input type="number" class="fc" id="cDuracion" name="duracion_horas"
-                     placeholder="Ej. 2.5" step="0.5" min="0.5" max="24"/>
-            </div>
+            <!-- Duración (horas) removida -->
             <div class="col-12">
               <label class="form-label-b">Descripción / Observaciones</label>
               <textarea class="fc" id="cDescripcion" name="descripcion" rows="3"

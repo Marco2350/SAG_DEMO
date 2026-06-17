@@ -7,6 +7,8 @@ test_oirsa_prod.php
 # Subidas de usuarios
 /public/uploads/*
 !/public/uploads/.gitkeep
+/uploads/*
+!/uploads/.gitkeep
 
 # Dev / temporales
 _test_*.php

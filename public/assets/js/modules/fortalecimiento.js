@@ -243,11 +243,18 @@ $(function () {
         if (!data.tipo_accion) { SAG.toast('Seleccione el tipo de acción.', 'warn'); return; }
         if (!data.titulo?.trim()) { SAG.toast('El título es obligatorio.', 'warn'); return; }
         if (!data.fecha_inicio) { SAG.toast('Ingrese la fecha de inicio.', 'warn'); return; }
+        if (data.fecha_fin && data.fecha_fin < data.fecha_inicio) {
+            SAG.toast('La fecha de fin no puede ser anterior a la fecha de inicio.', 'warning');
+            $('#aFechaFin').trigger('focus');
+            return;
+        }
         if (data.alcance === 'departamental' && !data.id_departamento) {
             SAG.toast('Seleccione el departamento.', 'warn'); return;
         }
 
+        SAG.btnLoading('#btnGuardarAccion', true);
         SAG.post(BASE + '/fortalecimiento/save', data, res => {
+            SAG.btnLoading('#btnGuardarAccion', false);
             if (!res.success) { SAG.toast(res.message, 'error'); return; }
             SAG.toast(res.message, 'success');
             modalAccion.hide();
@@ -299,11 +306,16 @@ $(function () {
         if (!isDept) $('#aDepartamento').val('');
     });
 
+    $('#aFechaInicio').on('change', function () {
+        $('#aFechaFin').attr('min', this.value || '');
+    });
+
     // ── LIMPIAR / LLENAR FORMULARIO ───────────────────────────────
     function limpiarFormAccion() {
         document.getElementById('formAccion').reset();
         $('#aId').val(0);
         $('#wrapDepartamento').hide();
+        $('#aFechaFin').attr('min', '');
     }
 
     function llenarFormAccion(a) {
@@ -317,6 +329,7 @@ $(function () {
         if (a.alcance === 'departamental') $('#aDepartamento').val(a.id_departamento ?? '');
         $('#aFechaInicio').val(a.fecha_inicio ?? '');
         $('#aFechaFin').val(a.fecha_fin ?? '');
+        $('#aFechaFin').attr('min', a.fecha_inicio ?? '');
         $('#aResponsable').val(a.id_responsable ?? '');
         $('#aInstitucion').val(a.institucion_ejecutora ?? '');
         $('#aIndicador').val(a.indicador ?? '');

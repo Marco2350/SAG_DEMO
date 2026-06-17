@@ -24,7 +24,24 @@ class MetasController extends Controller
     public function __construct()
     {
         $this->requirePrograma();
+        $this->requireFprog();
         $this->model = new MetaModel();
+    }
+
+    /**
+     * Metas son exclusivas del programa FPROG.
+     * Bloquea acceso por URL desde PIPs (defensa en profundidad — el sidebar
+     * tampoco las muestra, pero un usuario con la URL no debe poder entrar).
+     */
+    private function requireFprog(): void
+    {
+        if (($_SESSION['programa']['id'] ?? '') !== 'fprog') {
+            if ($this->isAjax()) {
+                $this->error('Metas sólo aplica al programa FPROG.', 403);
+            }
+            http_response_code(403);
+            $this->redirect('/dashboard');
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -32,6 +49,18 @@ class MetasController extends Controller
     // ──────────────────────────────────────────────────────────────
     public function index(): void
     {
+        // Si la migración 011 no fue aplicada, mostrar mensaje amigable
+        // en vez de propagar excepción PDO al navegador.
+        if (!Database::main()->tablaExiste('sag_metas')) {
+            $tituloModulo = 'Metas';
+            $tablasFalta  = ['sag_metas'];
+            $migraciones  = ['migracion_011_metas_indicadores.sql'];
+            $pageTitle    = 'Metas — inicialización pendiente · ' . APP_NAME;
+            $this->view('_partial/migracion_pendiente',
+                compact('tituloModulo', 'tablasFalta', 'migraciones', 'pageTitle'));
+            return;
+        }
+
         $resumen = $this->model->getResumen();
         // Componentes del proyecto activo, para llenar select del modal y filtro
         // (sólo aplica a FPROG; para PIPs viene vacío y la columna se oculta)
@@ -62,6 +91,10 @@ class MetasController extends Controller
     public function listar(): void
     {
         try {
+            if (!Database::main()->tablaExiste('sag_metas')) {
+                $this->json(['data' => [], 'error' => 'Módulo no inicializado.']);
+                return;
+            }
             $filtros = [
                 'estado'        => (string)$this->getPost('estado', ''),
                 'periodo'       => (string)$this->getPost('periodo', ''),

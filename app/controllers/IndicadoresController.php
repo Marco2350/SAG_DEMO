@@ -17,7 +17,23 @@ class IndicadoresController extends Controller
     public function __construct()
     {
         $this->requirePrograma();
+        $this->requireFprog();
         $this->model = new IndicadorModel();
+    }
+
+    /**
+     * Indicadores son exclusivos del programa FPROG.
+     * Defensa en profundidad: además del sidebar, bloquea URL directa.
+     */
+    private function requireFprog(): void
+    {
+        if (($_SESSION['programa']['id'] ?? '') !== 'fprog') {
+            if ($this->isAjax()) {
+                $this->error('Indicadores sólo aplica al programa FPROG.', 403);
+            }
+            http_response_code(403);
+            $this->redirect('/dashboard');
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -25,10 +41,23 @@ class IndicadoresController extends Controller
     // ──────────────────────────────────────────────────────────────
     public function index(): void
     {
+        // Si la migración 011 no fue aplicada, mostrar mensaje amigable
+        if (!Database::main()->tablaExiste('sag_indicadores')) {
+            $tituloModulo = 'Indicadores';
+            $tablasFalta  = ['sag_indicadores'];
+            $migraciones  = ['migracion_011_metas_indicadores.sql'];
+            $pageTitle    = 'Indicadores — inicialización pendiente · ' . APP_NAME;
+            $this->view('_partial/migracion_pendiente',
+                compact('tituloModulo', 'tablasFalta', 'migraciones', 'pageTitle'));
+            return;
+        }
+
         $resumen   = $this->model->getResumen();
         // Metas para el select (filtra por proyecto activo dentro del modelo)
         $metaModel = new MetaModel();
-        $metas     = $metaModel->getListado([]);
+        $metas     = (Database::main()->tablaExiste('sag_metas'))
+            ? $metaModel->getListado([])
+            : [];
         // Componentes del proyecto (sólo FPROG los tiene)
         $componentes = [];
         try {
@@ -56,6 +85,10 @@ class IndicadoresController extends Controller
     public function listar(): void
     {
         try {
+            if (!Database::main()->tablaExiste('sag_indicadores')) {
+                $this->json(['data' => [], 'error' => 'Módulo no inicializado.']);
+                return;
+            }
             $filtros = [
                 'tipo'          => (string)$this->getPost('tipo', ''),
                 'estado'        => (string)$this->getPost('estado', ''),

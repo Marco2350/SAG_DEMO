@@ -17,6 +17,7 @@ $(function () {
         tabla = $('#tablaOrganizaciones').DataTable({
             processing:  true,
             serverSide:  false,
+            autoWidth:   false,
             ajax: {
                 url:    SAG.BASE_URL + '/organizaciones/listar',
                 type:   'POST',
@@ -29,15 +30,15 @@ $(function () {
                 dataSrc: 'data',
             },
             columns: [
-                { data: 'id_organizacion', width: '40px' },
-                { data: 'nombre' },
-                { data: 'tipo_organizacion' },
-                { data: 'ubicacion' },
-                { data: 'representante' },
-                { data: 'telefono' },
-                { data: 'num_beneficiarios', className: 'text-center' },
-                { data: 'estado',   orderable: false },
-                { data: 'acciones', orderable: false, className: 'text-center' },
+                { data: 'id_organizacion', width: '40px', className: 'cell-nowrap' },
+                { data: 'nombre',            className: 'cell-primary' },
+                { data: 'tipo_organizacion', className: 'cell-description' },
+                { data: 'ubicacion',         className: 'cell-description' },
+                { data: 'representante',     className: 'cell-description' },
+                { data: 'telefono',          className: 'cell-nowrap' },
+                { data: 'num_beneficiarios', className: 'text-center cell-nowrap' },
+                { data: 'estado',            orderable: false, className: 'cell-nowrap' },
+                { data: 'acciones',          orderable: false, className: 'text-center cell-nowrap' },
             ],
             language: {
                 url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json',

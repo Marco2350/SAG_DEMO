@@ -59,18 +59,18 @@
         <div class="card-box-header">
           <h6><i class="fas fa-coins"></i> Presupuesto del Programa (L.)</h6>
         </div>
-        <div class="card-box-body" style="padding:18px;">
+        <div class="card-box-body" style="padding:12px 14px;">
           <div style="display:flex;justify-content:space-between;">
             <div>
-              <div style="font-size:.75rem;color:#6b7280;">Asignado</div>
-              <div style="font-size:1.5rem;font-weight:700;">L. <?= number_format((float)$resumen['presupuesto_total'], 2) ?></div>
+              <div style="font-size:.7rem;color:#6b7280;">Asignado</div>
+              <div style="font-size:1.1rem;font-weight:700;">L. <?= number_format((float)$resumen['presupuesto_total'], 2) ?></div>
             </div>
             <div>
-              <div style="font-size:.75rem;color:#6b7280;">Ejecutado</div>
-              <div style="font-size:1.5rem;font-weight:700;color:#16a34a;">L. <?= number_format((float)$resumen['ejecutado_total'], 2) ?></div>
+              <div style="font-size:.7rem;color:#6b7280;">Ejecutado</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#16a34a;">L. <?= number_format((float)$resumen['ejecutado_total'], 2) ?></div>
             </div>
           </div>
-          <div style="margin-top:12px;background:#f3f4f6;border-radius:6px;height:12px;overflow:hidden;">
+          <div style="margin-top:8px;background:#f3f4f6;border-radius:5px;height:8px;overflow:hidden;">
             <div style="background:#16a34a;height:100%;width:<?= min(100, (float)$resumen['pct_ejecucion']) ?>%;"></div>
           </div>
         </div>
@@ -81,8 +81,8 @@
         <div class="card-box-header">
           <h6><i class="fas fa-list-check"></i> Estado de Componentes</h6>
         </div>
-        <div class="card-box-body" style="padding:18px;">
-          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <div class="card-box-body" style="padding:12px 14px;font-size:.82rem;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
             <div><span style="color:#f59e0b;">●</span> Planificados: <strong><?= (int)$resumen['planificados'] ?></strong></div>
             <div><span style="color:#3b82f6;">●</span> En ejecución: <strong><?= (int)$resumen['en_ejecucion'] ?></strong></div>
             <div><span style="color:#16a34a;">●</span> Completados: <strong><?= (int)$resumen['completados'] ?></strong></div>
@@ -118,7 +118,7 @@
       </div>
     </div>
     <div class="card-box-body">
-      <table id="tablaComponentes" class="table table-striped table-hover" style="width:100%;">
+      <table id="tablaComponentes" class="table sag-table" style="width:100%;">
         <thead>
           <tr>
             <th>#</th>

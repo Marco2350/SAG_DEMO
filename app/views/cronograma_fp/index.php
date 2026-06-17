@@ -76,7 +76,7 @@
       </div>
     </div>
     <div class="card-box-body">
-      <table id="tablaCronograma" class="table table-striped table-hover" style="width:100%;font-size:.85rem;">
+      <table id="tablaCronograma" class="table sag-table" style="width:100%;">
         <thead>
           <tr>
             <th>#</th>

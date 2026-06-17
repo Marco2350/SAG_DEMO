@@ -57,9 +57,9 @@ class BeneficiariosController extends Controller
             $rows      = $this->model->getListado($filtros, $start, $length, $orden);
 
             $data = array_map(function ($b) {
-                $sexoIcon = match ($b['sexo']) {
-                    'M'     => '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>',
-                    'F'     => '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>',
+                $sexoTexto = match ($b['sexo']) {
+                    'M'     => '<span style="color:#2563eb;font-weight:600;">Masculino</span>',
+                    'F'     => '<span style="color:#db2777;font-weight:600;">Femenino</span>',
                     default => '—',
                 };
 
@@ -76,7 +76,7 @@ class BeneficiariosController extends Controller
                     'nombre_completo' => htmlspecialchars($b['nombre_completo']),
                     'dni'             => htmlspecialchars($b['dni'] ?: '—'),
                     'edad'            => $b['edad'] ?? '—',
-                    'sexo'            => $sexoIcon,
+                    'sexo'            => $sexoTexto,
                     'organizacion'    => htmlspecialchars($b['organizacion'] ?: '—'),
                     'ubicacion'       => htmlspecialchars($b['departamento'] . ' / ' . $b['municipio']),
                     'telefono'        => htmlspecialchars($b['telefono'] ?: '—'),
@@ -108,6 +108,99 @@ class BeneficiariosController extends Controller
         $b  = $this->model->getDetalle($id);
         if (!$b) { $this->error('Beneficiario no encontrado.', 404); return; }
         $this->success('OK', $b);
+    }
+
+    /**
+     * Búsqueda por DNI para autocompletar el formulario de Beneficiarios.
+     * Orden de búsqueda:
+     *   1. Beneficiarios del PROYECTO ACTIVO  → 'beneficiario_actual'
+     *   2. Beneficiarios de OTRO proyecto      → 'beneficiario_otro_pip'
+     *   3. Censo nacional (compartido)         → 'censo'
+     *   4. No encontrado                       → 'ninguno'
+     *
+     * NO expone datos de censo de personas que NO sean el DNI buscado.
+     */
+    public function buscarPorDNI(): void
+    {
+        try {
+            $dniRaw = (string) $this->getPost('dni', '');
+            $dni    = preg_replace('/\D/', '', $dniRaw);
+            if ($dni === '' || strlen($dni) !== 13) {
+                $this->error('Formato de DNI inválido (debe tener 13 dígitos).');
+                return;
+            }
+
+            $db  = Database::main();
+            $pid = Database::proyectoId();
+
+            // 1) Beneficiario en el proyecto activo
+            $bAct = $db->fetchOne(
+                "SELECT id_beneficiario, nombre, apellido, dni, fecha_nacimiento, sexo,
+                        id_departamento, id_municipio, id_organizacion, aldea, telefono, estado
+                   FROM sag_beneficiarios
+                  WHERE REPLACE(dni,'-','') = ? AND id_proyecto = ?
+                  LIMIT 1",
+                [$dni, $pid]
+            );
+            if ($bAct) {
+                $this->success('Beneficiario ya registrado en este programa.', [
+                    'source'  => 'beneficiario_actual',
+                    'persona' => $bAct,
+                ]);
+                return;
+            }
+
+            // 2) Beneficiario en OTRO proyecto (sólo se expone datos básicos)
+            $bOtr = $db->fetchOne(
+                "SELECT b.nombre, b.apellido, b.dni, b.fecha_nacimiento, b.sexo,
+                        b.id_departamento, b.id_municipio, b.aldea, b.telefono,
+                        p.sigla AS programa_sigla, p.nombre AS programa_nombre
+                   FROM sag_beneficiarios b
+                   JOIN sag_proyectos p ON p.id_proyecto = b.id_proyecto
+                  WHERE REPLACE(b.dni,'-','') = ? AND b.id_proyecto <> ?
+                  LIMIT 1",
+                [$dni, $pid]
+            );
+            if ($bOtr) {
+                $this->success('Esta persona ya está registrada en otro programa SAG.', [
+                    'source'  => 'beneficiario_otro_pip',
+                    'persona' => $bOtr,
+                ]);
+                return;
+            }
+
+            // 3) Censo nacional (tabla puede no existir aún si la migración 018 no se aplicó)
+            try {
+                if ($db->tablaExiste('sag_censo_nacional')) {
+                    $c = $db->fetchOne(
+                        "SELECT dni, nombres, apellidos, fecha_nacimiento, sexo,
+                                codigo_departamento, codigo_municipio, codigo_aldea, etnia
+                           FROM sag_censo_nacional
+                          WHERE dni = ?
+                          LIMIT 1",
+                        [$dni]
+                    );
+                    if ($c) {
+                        $this->success('Persona encontrada en el censo nacional.', [
+                            'source'  => 'censo',
+                            'persona' => $c,
+                        ]);
+                        return;
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('buscarPorDNI censo — ' . $e->getMessage());
+            }
+
+            // 4) Nada
+            $this->success('Persona no encontrada. Puede registrarse como productor nuevo.', [
+                'source'  => 'ninguno',
+                'persona' => null,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('BeneficiariosController::buscarPorDNI — ' . $e->getMessage());
+            $this->error('Error interno al buscar el DNI.');
+        }
     }
 
     public function save(): void
@@ -204,31 +297,31 @@ class BeneficiariosController extends Controller
         if (empty($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
             $this->error('No se recibió archivo o hubo un error en la subida.'); return;
         }
-        $ext = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
-        if ($ext !== 'csv') { $this->error('Solo se permiten archivos CSV.'); return; }
-
-        $handle = fopen($_FILES['archivo']['tmp_name'], 'r');
-        if (!$handle) { $this->error('No se pudo leer el archivo.'); return; }
-
-        $header = fgetcsv($handle, 1000, ',');
-        if (!$header) { fclose($handle); $this->error('El archivo no tiene encabezado.'); return; }
-        $header = array_map('trim', $header);
+        $ext  = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
+        $tmp  = $_FILES['archivo']['tmp_name'];
 
         $registros = [];
-        while (($row = fgetcsv($handle, 1000, ',')) !== false) {
-            if (count($row) < 2) continue;
-            // Normalizar filas con menos/más columnas que el encabezado
-            $row = array_pad(array_slice($row, 0, count($header)), count($header), '');
-            $registros[] = array_combine($header, array_map('trim', $row));
+        try {
+            if ($ext === 'csv') {
+                $registros = $this->parsearCsv($tmp);
+            } elseif ($ext === 'xlsx') {
+                $registros = $this->parsearXlsx($tmp);
+            } elseif ($ext === 'xls') {
+                $this->error('Formato .xls (Excel 97-2003) no soportado. Convierta a .xlsx o .csv.'); return;
+            } else {
+                $this->error('Formato no soportado. Use .csv o .xlsx.'); return;
+            }
+        } catch (\Throwable $e) {
+            error_log('BeneficiariosController::masivo parse — ' . $e->getMessage());
+            $this->error('No se pudo leer el archivo. Verifique el formato.'); return;
         }
-        fclose($handle);
 
         if (empty($registros)) { $this->error('El archivo no contiene registros válidos.'); return; }
 
         try {
             $result = $this->model->insertarMasivo($registros, $_SESSION['user']['id_usuario']);
             $this->logAction('CARGA_MASIVA', 'beneficiarios',
-                "Insertados:{$result['ok']}, Errores:" . count($result['errores']));
+                "Formato:{$ext} Insertados:{$result['ok']}, Errores:" . count($result['errores']));
             $this->success(
                 "Carga completada: {$result['ok']} registros insertados.",
                 ['ok' => $result['ok'], 'errores' => $result['errores']]
@@ -237,6 +330,100 @@ class BeneficiariosController extends Controller
             error_log('BeneficiariosController::masivo — ' . $e->getMessage());
             $this->error('Error durante la carga masiva.');
         }
+    }
+
+    /** Parser CSV (primera fila = encabezado, separador coma) */
+    private function parsearCsv(string $path): array
+    {
+        $h = fopen($path, 'r');
+        if (!$h) throw new \RuntimeException('No se pudo abrir el CSV.');
+        $header = fgetcsv($h, 1000, ',');
+        if (!$header) { fclose($h); throw new \RuntimeException('CSV sin encabezado.'); }
+        $header = array_map(fn($c) => strtolower(trim((string)$c)), $header);
+        $regs = [];
+        while (($row = fgetcsv($h, 1000, ',')) !== false) {
+            if (count($row) < 2) continue;
+            $row = array_pad(array_slice($row, 0, count($header)), count($header), '');
+            $regs[] = array_combine($header, array_map('trim', $row));
+        }
+        fclose($h);
+        return $regs;
+    }
+
+    /**
+     * Parser XLSX sin dependencias (ZipArchive + SimpleXML).
+     * Lee la primera hoja, primera fila = encabezado.
+     * Soporta shared strings y valores in-line.
+     */
+    private function parsearXlsx(string $path): array
+    {
+        if (!class_exists('ZipArchive')) {
+            throw new \RuntimeException('La extensión zip de PHP no está disponible.');
+        }
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) throw new \RuntimeException('Archivo XLSX inválido.');
+
+        // 1. sharedStrings.xml (puede no existir si no hay textos)
+        $shared = [];
+        $ss = $zip->getFromName('xl/sharedStrings.xml');
+        if ($ss !== false) {
+            $xml = @simplexml_load_string($ss);
+            if ($xml) {
+                foreach ($xml->si as $si) {
+                    // Puede tener <t> directo o <r><t> múltiples (rich text)
+                    $val = '';
+                    if (isset($si->t)) $val = (string)$si->t;
+                    elseif (isset($si->r)) {
+                        foreach ($si->r as $r) $val .= (string)$r->t;
+                    }
+                    $shared[] = $val;
+                }
+            }
+        }
+
+        // 2. Primera hoja
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        if ($sheet === false) throw new \RuntimeException('No se encontró sheet1.xml en el XLSX.');
+
+        $xml = @simplexml_load_string($sheet);
+        if (!$xml) throw new \RuntimeException('XML de hoja malformado.');
+
+        // 3. Iterar filas
+        $filas = [];
+        foreach ($xml->sheetData->row as $rowXml) {
+            $fila = [];
+            foreach ($rowXml->c as $celdaXml) {
+                $ref  = (string)$celdaXml['r'];                          // 'A1'
+                $col  = preg_replace('/\d+/', '', $ref);                 // 'A'
+                $type = (string)$celdaXml['t'];                          // 's','str','inlineStr','b',''(numeric)
+                $val  = '';
+                if ($type === 's' && isset($celdaXml->v)) {              // shared string
+                    $idx = (int)(string)$celdaXml->v;
+                    $val = $shared[$idx] ?? '';
+                } elseif ($type === 'inlineStr' && isset($celdaXml->is->t)) {
+                    $val = (string)$celdaXml->is->t;
+                } elseif (isset($celdaXml->v)) {
+                    $val = (string)$celdaXml->v;
+                }
+                $fila[$col] = trim($val);
+            }
+            if (!empty(array_filter($fila, fn($v) => $v !== ''))) $filas[] = $fila;
+        }
+
+        if (empty($filas)) return [];
+
+        // 4. Primera fila como encabezado normalizado
+        $header  = array_values(array_map(fn($v) => strtolower((string)$v), $filas[0]));
+        $regs    = [];
+        $dataRows = array_slice($filas, 1);
+        foreach ($dataRows as $f) {
+            $vals = array_values($f);
+            // Normalizar tamaño con el encabezado
+            $vals = array_pad(array_slice($vals, 0, count($header)), count($header), '');
+            $regs[] = array_combine($header, $vals);
+        }
+        return $regs;
     }
 
     public function delete(): void

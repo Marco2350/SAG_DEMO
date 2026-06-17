@@ -68,9 +68,62 @@ $(function () {
     });
 
     // ── MÁSCARAS DE ENTRADA ───────────────────────────
+    let atDniConsultado = '';
+
+    let atDniTimer;
     $('#atPDni').on('input', function () {
+        clearTimeout(atDniTimer);
         this.value = SAG.formatDNI(this.value);
+        if (this.value.replace(/\D/g, '') !== atDniConsultado) {
+            atDniConsultado = '';
+            $('#atDniEstado').hide();
+        }
+        if (this.value.replace(/\D/g, '').length === 13) {
+            atDniTimer = setTimeout(buscarProductorAt, 350);
+        }
     });
+    $('#btnBuscarAtDni').on('click', buscarProductorAt);
+
+    function buscarProductorAt() {
+        const dni = ($('#atPDni').val() || '').replace(/\D/g, '');
+        if (dni.length !== 13) {
+            SAG.toast('Ingrese los 13 dígitos de la identidad.', 'warning'); return;
+        }
+        $('#atDniEstado').show().css({ background: '#eef2ff', color: '#3730a3', borderLeft: '4px solid #6366f1' })
+            .html('<i class="fas fa-spinner fa-spin"></i> Buscando en productores registrados, entregas y CENSO...');
+        $('#btnBuscarAtDni').prop('disabled', true);
+        SAG.ajax({
+            url: '/api/productores/buscar-dni',
+            data: { dni },
+            success: function (res) {
+                $('#btnBuscarAtDni').prop('disabled', false);
+                if (!res.success) {
+                    $('#atDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' }).text(res.message);
+                    return;
+                }
+                atDniConsultado = dni;
+                const p = res.data?.persona;
+                if (p) {
+                    $('#atPNombre').val(p.nombre || p.nombres || '');
+                    $('#atPApellido').val(p.apellido || p.apellidos || '');
+                    $('#atPEdad').val(p.edad || '');
+                    $('#atPSexo').val(p.sexo || '');
+                    $('#atPTel').val(SAG.formatTel(p.telefono || ''));
+                    if (p.id_organizacion) $('#atOrg').val(p.id_organizacion).trigger('change');
+                    $('#atDniEstado').css({ background: '#dcfce7', color: '#166534', borderLeft: '4px solid #16a34a' })
+                        .html('<i class="fas fa-circle-check"></i> ' + res.message + ' Datos precargados.');
+                } else {
+                    $('#atDniEstado').css({ background: '#fefce8', color: '#854d0e', borderLeft: '4px solid #ca8a04' })
+                        .html('<i class="fas fa-user-plus"></i> ' + res.message);
+                    $('#atPNombre').focus();
+                }
+            },
+            error: function () {
+                $('#btnBuscarAtDni').prop('disabled', false);
+                $('#atDniEstado').css({ background: '#fef2f2', color: '#991b1b', borderLeft: '4px solid #dc2626' }).text('No fue posible consultar la identidad.');
+            },
+        });
+    }
     $('#atPTel').on('input', function () {
         this.value = SAG.formatTel(this.value);
     });
@@ -84,6 +137,8 @@ $(function () {
         const tec    = $('#atTecnico').val();
         const fecha  = $('#atFecha').val();
         const nombre = $('#atPNombre').val().trim();
+        const dni = ($('#atPDni').val() || '').replace(/\D/g, '');
+        const esIndividual = $('#atBloqueIndividual').is(':visible');
 
         if (!tipo)   { SAG.toast('Seleccione el tipo de asistencia.',       'warning'); return; }
         if (!dep)    { SAG.toast('Seleccione un departamento.',             'warning'); return; }
@@ -91,7 +146,10 @@ $(function () {
         if (!tema)   { SAG.toast('Seleccione el tema técnico.',            'warning'); return; }
         if (!tec)    { SAG.toast('Seleccione el técnico responsable.',     'warning'); return; }
         if (!fecha)  { SAG.toast('Ingrese la fecha de la visita.',         'warning'); return; }
-        if (!nombre) { SAG.toast('El nombre del productor es obligatorio.','warning'); return; }
+        if (esIndividual && !nombre) { SAG.toast('El nombre del productor es obligatorio.','warning'); return; }
+        if (esIndividual && (dni.length !== 13 || dni !== atDniConsultado)) {
+            SAG.toast('Busque primero la identidad del productor.', 'warning'); return;
+        }
 
         SAG.btnLoading('#btnGuardarAT', true);
         SAG.ajax({
@@ -112,11 +170,14 @@ $(function () {
     function limpiarFormAT() {
         document.getElementById('formAT').reset();
         $('#atId').val(0);
+        atDniConsultado = '';
+        $('#atDniEstado').hide();
         $('#atMun').html('<option value="">— Seleccione departamento primero —</option>');
         $('#atSubtema').html('<option value="">— Seleccione tema primero —</option>');
-        // Resetear bloque de evidencia al estado "visita nueva"
+        // Resetear bloque de Ficha Técnica al estado "visita nueva"
+        // (Antes se deshabilitaba hasta guardar la visita; ahora siempre habilitado)
         $('#evATIdAt').val(0);
-        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', true);
+        $('#evATArchivo, #evATObs, #btnSubirEvAT').prop('disabled', false);
         $('#evATArchivo').val('');
         $('#evATAviso').show();
         $('#evATSinArchivo').show();
@@ -125,9 +186,51 @@ $(function () {
         SAG.refreshSelect2('#modalAT');
     }
 
+    // ── CHANGE TIPO → alternar individual vs grupal ────
+    $('#atTipo').on('change', function () {
+        const $opt = $(this).find('option:selected');
+        const esGrupal = $opt.data('grupal') == 1 || $opt.attr('data-grupal') === '1';
+        if (esGrupal) {
+            $('#atBloqueIndividual').hide();
+            $('#atBloqueGrupal').show();
+            // Limpiar campos individuales para que no manden datos huérfanos
+            $('#atPNombre, #atPApellido, #atPDni, #atPEdad, #atPTel, #atArea').val('');
+            $('#atPSexo').val('');
+        } else {
+            $('#atBloqueGrupal').hide();
+            $('#atBloqueIndividual').show();
+            $('#atGrTotal, #atGrHombres, #atGrMujeres, #atGrLista').val('');
+        }
+    });
+
+    // Recalcular total grupo cuando cambien hombres o mujeres
+    $('#atGrHombres, #atGrMujeres').on('input', function () {
+        const h = parseInt($('#atGrHombres').val()) || 0;
+        const m = parseInt($('#atGrMujeres').val()) || 0;
+        if (h || m) $('#atGrTotal').val(h + m);
+    });
+
     // ── CHANGE DEPTO ──────────────────────────────────
     $('#atDep').on('change', function () {
         SAG.loadMunicipios($(this).val(), '#atMun');
+        $('#atAldeaSelect').hide().html('<option value="">— Seleccione municipio primero —</option>');
+        $('#atAldea').val('');
+    });
+
+    // ── CHANGE MUNI → cargar aldeas oficiales ─────────
+    $('#atMun').on('change', function () {
+        const codMuni = $(this).find('option:selected').data('codigo') || '';
+        if (codMuni) {
+            $('#atAldeaSelect').show();
+            SAG.loadAldeas(codMuni, '#atAldeaSelect');
+        } else {
+            $('#atAldeaSelect').hide();
+        }
+    });
+
+    $(document).on('change', '#atAldeaSelect', function () {
+        const v = $(this).val();
+        if (v) $('#atAldea').val(v);
     });
 
     // ── CHANGE TEMA ───────────────────────────────────
@@ -150,9 +253,9 @@ $(function () {
                     : '<span class="badge-pendiente">Borrador</span>';
 
                 const sexoHtml = a.productor_sexo === 'M'
-                    ? '<span style="color:#2563eb;"><i class="fas fa-mars"></i> Masculino</span>'
+                    ? 'Masculino'
                     : (a.productor_sexo === 'F'
-                        ? '<span style="color:#db2777;"><i class="fas fa-venus"></i> Femenino</span>'
+                        ? 'Femenino'
                         : '—');
 
                 let resultadosHtml = '';
@@ -274,6 +377,7 @@ $(function () {
                 $('#atPNombre').val(a.productor_nombre);
                 $('#atPApellido').val(a.productor_apellido);
                 $('#atPDni').val(SAG.formatDNI(a.productor_dni || ''));
+                atDniConsultado = (a.productor_dni || '').replace(/\D/g, '');
                 $('#atPEdad').val(a.productor_edad);
                 $('#atPSexo').val(a.productor_sexo);
                 $('#atPTel').val(SAG.formatTel(a.productor_telefono || ''));
@@ -345,27 +449,53 @@ $(function () {
     $(document).on('click', '#btnSubirEvAT', function () {
         const file = $('#evATArchivo')[0].files[0];
         const id   = $('#evATIdAt').val();
-        if (!id || id == '0') { SAG.toast('Primero guarda la visita.', 'warning'); return; }
-        if (!file)            { SAG.toast('Seleccione un archivo.', 'warning'); return; }
+        if (!file) { SAG.toast('Seleccione un archivo.', 'warning'); return; }
 
-        const fd = new FormData();
-        fd.append('id_at', id);
-        fd.append('archivo', file);
-        fd.append('observaciones', $('#evATObs').val());
-        if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+        // Función real que sube el archivo
+        const subirArchivo = (idAt) => {
+            const fd = new FormData();
+            fd.append('id_at', idAt);
+            fd.append('archivo', file);
+            fd.append('observaciones', $('#evATObs').val());
+            if (window.SAG && SAG.CSRF) fd.append('_csrf', SAG.CSRF);
+            $.ajax({
+                url: SAG.BASE_URL + '/asistencia/evidencia/subir',
+                method: 'POST',
+                data: fd, processData: false, contentType: false,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                success: function (res) {
+                    if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                    SAG.toast(res.message, 'success');
+                    cargarParaEditar(idAt);
+                    tabla.ajax.reload(null, false);
+                },
+                error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
+            });
+        };
 
-        $.ajax({
-            url: SAG.BASE_URL + '/asistencia/evidencia/subir',
-            method: 'POST',
-            data: fd, processData: false, contentType: false,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            success: function (res) {
-                if (!res.success) { SAG.toast(res.message, 'error'); return; }
-                SAG.toast(res.message, 'success');
-                cargarParaEditar(id); // recarga con evidencia
-            },
-            error: function () { SAG.toast('Error al subir el archivo.', 'error'); }
-        });
+        // Si la visita aún no fue guardada, guardarla primero y luego subir
+        if (!id || id == '0') {
+            SAG.toast('Guardando visita y luego subiendo Ficha Técnica…', 'info');
+            SAG.ajax({
+                url:  '/asistencia/save',
+                data: $('#formAT').serialize(),
+                success: function (res) {
+                    if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                    const nuevoId = res.data && (res.data.id_at || res.data.id) ? (res.data.id_at || res.data.id) : null;
+                    if (!nuevoId) {
+                        SAG.toast('Visita guardada pero no se obtuvo el ID. Reintente subir la ficha.', 'warning');
+                        return;
+                    }
+                    $('#evATIdAt').val(nuevoId);
+                    subirArchivo(nuevoId);
+                },
+                error: function () { SAG.toast('Error al guardar la visita.', 'error'); }
+            });
+            return;
+        }
+
+        // Visita ya guardada → upload directo
+        subirArchivo(id);
     });
 
     $(document).on('click', '#btnReemplazarEvAT', function () {

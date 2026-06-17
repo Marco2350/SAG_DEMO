@@ -22,6 +22,12 @@ spl_autoload_register(function (string $class): void {
 session_name(SESSION_NAME);
 session_start();
 
+// Mantener la identidad visual del programa activo sincronizada con la configuración.
+$programaActivoId = $_SESSION['programa']['id'] ?? '';
+if ($programaActivoId && isset(PROGRAMAS[$programaActivoId])) {
+    $_SESSION['programa'] = PROGRAMAS[$programaActivoId];
+}
+
 // Protección session fixation
 if (!isset($_SESSION['_last_regen'])) {
     $_SESSION['_last_regen'] = time();
@@ -220,6 +226,7 @@ $router->get('/beneficiarios',               'BeneficiariosController', 'index')
 $router->post('/beneficiarios/listar',       'BeneficiariosController', 'listar');
 $router->post('/beneficiarios/get',          'BeneficiariosController', 'get');
 $router->post('/beneficiarios/save',         'BeneficiariosController', 'save');
+$router->post('/beneficiarios/buscarPorDNI', 'BeneficiariosController', 'buscarPorDNI');
 $router->post('/beneficiarios/masivo',       'BeneficiariosController', 'masivo');
 $router->post('/beneficiarios/delete',       'BeneficiariosController', 'delete');
 
@@ -271,6 +278,14 @@ $router->post('/mantenimiento/cultivos/save','MantenimientoController', 'saveCul
 $router->post('/mantenimiento/cultivos/delete','MantenimientoController','deleteCultivo');
 $router->post('/mantenimiento/tipoat/save',  'MantenimientoController', 'saveTipoAT');
 $router->post('/mantenimiento/tipoat/delete','MantenimientoController', 'deleteTipoAT');
+// Catálogos de inventario (proveedores, productos, bodegas)
+$router->post('/mantenimiento/proveedores/save',   'MantenimientoController', 'saveProveedor');
+$router->post('/mantenimiento/proveedores/delete', 'MantenimientoController', 'deleteProveedor');
+$router->post('/mantenimiento/productos/save',     'MantenimientoController', 'saveProductoInv');
+$router->post('/mantenimiento/productos/delete',   'MantenimientoController', 'deleteProductoInv');
+$router->post('/mantenimiento/bodegas/save',       'MantenimientoController', 'saveBodega');
+$router->post('/mantenimiento/bodegas/delete',     'MantenimientoController', 'deleteBodega');
+$router->get ('/mantenimiento/municipios',         'MantenimientoController', 'municipios');
 
 // ── Auditoría (bitácora del sistema) ─────────────
 $router->get('/auditoria',                   'AuditoriaController', 'index');
@@ -281,6 +296,9 @@ $router->get('/catalogos/tecnicos',          'CatalogosController', 'tecnicos');
 $router->get('/catalogos/temas',             'CatalogosController', 'temas');
 $router->get('/catalogos/cultivos',          'CatalogosController', 'cultivos');
 $router->get('/catalogos/tiposat',           'CatalogosController', 'tiposat');
+$router->get('/catalogos/proveedores',       'CatalogosController', 'proveedores');
+$router->get('/catalogos/productos',         'CatalogosController', 'productos');
+$router->get('/catalogos/bodegas',           'CatalogosController', 'bodegas');
 
 // ── Presupuesto / Ejecución Financiera ───────────
 $router->get('/presupuesto',                     'PresupuestoController', 'index');
@@ -310,6 +328,7 @@ $router->post('/presupuesto/documentos/save',    'PresupuestoController', 'saveD
 $router->post('/presupuesto/documentos/delete',  'PresupuestoController', 'deleteDocumento');
 $router->get('/presupuesto/documentos/ver',      'PresupuestoController', 'descargarDocumento');
 $router->get('/presupuesto/api/lineas',          'PresupuestoController', 'apiLineas');
+$router->post('/presupuesto/api/lineas',         'PresupuestoController', 'apiLineas');
 
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
@@ -327,6 +346,8 @@ $router->get('/inventarios',                         'InventariosController', 'i
 $router->post('/inventarios/listarCronogramas',      'InventariosController', 'listarCronogramas');
 $router->post('/inventarios/getCronograma',          'InventariosController', 'getCronograma');
 $router->post('/inventarios/saveCronograma',         'InventariosController', 'saveCronograma');
+$router->post('/inventarios/deleteCronograma',       'InventariosController', 'deleteCronograma');
+$router->post('/inventarios/importarExcel',          'InventariosController', 'importarExcel');
 $router->post('/inventarios/recibirLinea',           'InventariosController', 'recibirLinea');
 $router->post('/inventarios/kardex',                 'InventariosController', 'kardex');
 $router->post('/inventarios/stockPorBodega',         'InventariosController', 'stockPorBodega');
@@ -367,14 +388,6 @@ $router->post('/componentes_fp/delete',                  'ComponentesFPControlle
 $router->post('/componentes_fp/estado',                  'ComponentesFPController', 'estado');
 $router->post('/componentes_fp/apiLista',                'ComponentesFPController', 'apiLista');
 
-// ── Riesgos FPROG 2026 (matriz prob×impacto + mitigación) ──
-$router->get( '/riesgos_fp',                             'RiesgosFPController', 'index');
-$router->post('/riesgos_fp/listar',                      'RiesgosFPController', 'listar');
-$router->post('/riesgos_fp/get',                         'RiesgosFPController', 'get');
-$router->post('/riesgos_fp/save',                        'RiesgosFPController', 'save');
-$router->post('/riesgos_fp/delete',                      'RiesgosFPController', 'delete');
-$router->post('/riesgos_fp/estado',                      'RiesgosFPController', 'estado');
-
 // ── Equipo FPROG 2026 (estructura técnica) ──
 $router->get( '/equipo_fp',                              'EquipoFPController', 'index');
 $router->post('/equipo_fp/listar',                       'EquipoFPController', 'listar');
@@ -397,5 +410,7 @@ $router->get('/api/subtemas',                'ApiController', 'subtemas');
 $router->get('/api/tecnicos',                'ApiController', 'tecnicos');
 $router->get('/api/organizaciones',          'ApiController', 'organizaciones');
 $router->get('/api/departamentos',           'ApiController', 'departamentos');
+$router->get('/api/aldeas',                  'ApiController', 'aldeas');
+$router->post('/api/productores/buscar-dni', 'ApiController', 'buscarProductorPorDni');
 
 $router->dispatch();

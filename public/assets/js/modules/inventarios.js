@@ -74,6 +74,7 @@
     document.getElementById('formCronograma').reset();
     document.getElementById('lineasTBody').innerHTML = '';
     agregarLinea(); // arranca con 1 línea
+    document.getElementById('resultadoImportInventario').style.display = 'none';
     modalCron.classList.add('show');
   }
 
@@ -133,6 +134,78 @@
     const td = sel.closest('tr').querySelector('.unidad-cell');
     if (td) td.value = u || '—';
   };
+
+  // ── Importar líneas desde Excel/CSV ───────────────
+  const inputExcel = document.getElementById('archivoInventarioExcel');
+  const btnImportExcel = document.getElementById('btnImportarInventarioExcel');
+  const btnPlantilla = document.getElementById('btnPlantillaInventario');
+  if (btnImportExcel && inputExcel) {
+    btnImportExcel.addEventListener('click', () => inputExcel.click());
+    inputExcel.addEventListener('change', importarExcel);
+  }
+  if (btnPlantilla) btnPlantilla.addEventListener('click', descargarPlantilla);
+
+  function descargarPlantilla() {
+    const contenido = '\uFEFFcodigo_producto,codigo_bodega,fecha_programada,cantidad\r\n' +
+      'CODIGO_PRODUCTO,CODIGO_BODEGA,2026-07-01,100\r\n';
+    const url = URL.createObjectURL(new Blob([contenido], { type: 'text/csv;charset=utf-8;' }));
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = 'plantilla_inventario.csv';
+    enlace.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importarExcel() {
+    if (!inputExcel.files.length) return;
+    const fd = new FormData();
+    fd.append('_csrf', CSRF_TOKEN);
+    fd.append('archivo', inputExcel.files[0]);
+    btnImportExcel.disabled = true;
+    btnImportExcel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Leyendo archivo...';
+
+    fetch(BASE_URL + '/inventarios/importarExcel', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': CSRF_TOKEN },
+      body: fd,
+    })
+    .then(r => r.json())
+    .then(res => {
+      btnImportExcel.disabled = false;
+      btnImportExcel.innerHTML = '<i class="fas fa-file-excel"></i> Importar líneas desde Excel';
+      inputExcel.value = '';
+      const resultado = document.getElementById('resultadoImportInventario');
+      resultado.style.display = 'block';
+      if (!res.success) {
+        resultado.style.color = '#991b1b';
+        resultado.textContent = res.message || 'No fue posible importar el archivo.';
+        return;
+      }
+      document.getElementById('lineasTBody').innerHTML = '';
+      (res.data.lineas || []).forEach(agregarLineaImportada);
+      const errores = res.data.errores || [];
+      resultado.style.color = errores.length ? '#854d0e' : '#166534';
+      resultado.innerHTML = `<strong>${res.message}</strong>` +
+        (errores.length ? `<br>${errores.slice(0, 8).join('<br>')}${errores.length > 8 ? '<br>...' : ''}` : '');
+    })
+    .catch(() => {
+      btnImportExcel.disabled = false;
+      btnImportExcel.innerHTML = '<i class="fas fa-file-excel"></i> Importar líneas desde Excel';
+      toast('Error de conexión al importar.', 'error');
+    });
+  }
+
+  function agregarLineaImportada(linea) {
+    agregarLinea();
+    const tr = document.querySelector('#lineasTBody tr:last-child');
+    const sels = tr.querySelectorAll('select');
+    const inps = tr.querySelectorAll('input');
+    sels[0].value = String(linea.id_producto);
+    sels[1].value = String(linea.id_bodega);
+    inps[0].value = linea.fecha_programada;
+    inps[1].value = linea.cantidad_programada;
+    tr.querySelector('.unidad-cell').value = linea.unidad || '—';
+  }
 
   // ── Guardar cronograma ─────────────────────────────
   document.getElementById('btnGuardarCronograma').addEventListener('click', guardarCronograma);
