@@ -102,7 +102,7 @@ class FortalecimientoController extends Controller
                 ];
             }, $rows);
 
-            $this->json(['data' => $data]);
+            $this->json(['data' => $data, 'resumen' => $this->model->getResumen()]);
         } catch (\Exception $e) {
             error_log('FortalecimientoController::listar — ' . $e->getMessage());
             $this->json(['data' => []]);

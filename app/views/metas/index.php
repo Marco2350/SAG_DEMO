@@ -28,25 +28,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= (int)$resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= (int)$resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-list-check" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= (int)$resumen['en_progreso'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="en_progreso"><?= (int)$resumen['en_progreso'] ?></div>
         <div class="ms-lbl"><i class="fas fa-spinner" style="color:#3b82f6;margin-right:4px;"></i>En Progreso</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int)$resumen['cumplidas'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="cumplidas"><?= (int)$resumen['cumplidas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Cumplidas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#f59e0b;">
-        <div class="ms-val" style="color:#f59e0b;"><?= number_format((float)$resumen['avance_promedio'], 1) ?>%</div>
+        <div class="ms-val" style="color:#f59e0b;" data-stat="avance_promedio" data-stat-fmt="pct1"><?= number_format((float)$resumen['avance_promedio'], 1) ?>%</div>
         <div class="ms-lbl"><i class="fas fa-chart-line" style="color:#f59e0b;margin-right:4px;"></i>Avance Promedio</div>
       </div>
     </div>

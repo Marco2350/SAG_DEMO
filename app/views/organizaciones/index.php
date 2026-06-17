@@ -30,25 +30,25 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= $resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-building-wheat" style="color:var(--primario);margin-right:4px;"></i>Total registradas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= $resumen['activa'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="activa"><?= $resumen['activa'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Activas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat gold">
-        <div class="ms-val"><?= $resumen['pendiente'] ?></div>
+        <div class="ms-val" data-stat="pendiente"><?= $resumen['pendiente'] ?></div>
         <div class="ms-lbl"><i class="fas fa-clock" style="color:#f5a623;margin-right:4px;"></i>Pendientes</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#dc2626;">
-        <div class="ms-val" style="color:#dc2626;"><?= $resumen['inactiva'] ?></div>
+        <div class="ms-val" style="color:#dc2626;" data-stat="inactiva"><?= $resumen['inactiva'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-xmark" style="color:#dc2626;margin-right:4px;"></i>Inactivas</div>
       </div>
     </div>

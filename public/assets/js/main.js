@@ -413,6 +413,38 @@ const SAG = (function () {
     });
   }
 
+  // ── Cards de resumen (mini-stats) en vivo ──────────────────────
+  // Repinta los cards superiores de cada módulo a partir del objeto
+  // `resumen` que ahora devuelven los endpoints /listar. Cada card lleva
+  // data-stat="clave" (qué valor mostrar) y, opcionalmente, data-stat-fmt
+  // para el formato. El formateo replica number_format() de PHP (miles ','
+  // y decimal '.', estilo en-US).
+  function formatStat(v, fmt) {
+    var n = Number(v) || 0;
+    switch (fmt) {
+      case 'pct1':     return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+      case 'money2':   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'moneyL0':  return 'L. ' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      case 'intgroup': return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      case 'int':
+      default:         return String(Math.round(n));
+    }
+  }
+  function updateStats(resumen) {
+    if (!resumen || typeof resumen !== 'object') return;
+    document.querySelectorAll('[data-stat]').forEach(function (el) {
+      var key = el.getAttribute('data-stat');
+      if (!(key in resumen)) return;
+      el.textContent = formatStat(resumen[key], el.getAttribute('data-stat-fmt') || 'int');
+    });
+  }
+  // Listener global: el evento xhr.dt de DataTables propaga hasta document,
+  // así que un solo handler cubre todos los módulos. Cada vez que una tabla
+  // recarga su Ajax (tras agregar/editar/eliminar/filtrar) repinta los cards.
+  $(document).on('xhr.dt', function (e, settings, json) {
+    if (json && json.resumen) updateStats(json.resumen);
+  });
+
   // Exponer API pública
   return {
     ajax: ajax,
@@ -430,6 +462,7 @@ const SAG = (function () {
     dataTable: dataTable,
     initSelect2: initSelect2,
     refreshSelect2: refreshSelect2,
+    updateStats: updateStats,
     BASE: BASE,
     BASE_URL: BASE,
     CSRF: CSRF,

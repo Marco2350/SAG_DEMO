@@ -15,17 +15,23 @@ class AuditoriaController extends Controller
         $this->requireRole(self::ROLES_AUDITORIA);
     }
 
-    public function index(): void
+    /** Resumen para los cards superiores (compartido por index y listar). */
+    private function resumen(): array
     {
-        $db = Database::main();
-
-        $resumen = $db->fetchOne(
+        return Database::main()->fetchOne(
             "SELECT COUNT(*) AS total,
                     SUM(DATE(created_at) = CURDATE()) AS hoy,
                     SUM(accion = 'LOGIN'         AND DATE(created_at) = CURDATE()) AS logins_hoy,
                     SUM(accion = 'LOGIN_FALLIDO' AND DATE(created_at) = CURDATE()) AS fallidos_hoy
              FROM sag_logs"
-        );
+        ) ?: ['total' => 0, 'hoy' => 0, 'logins_hoy' => 0, 'fallidos_hoy' => 0];
+    }
+
+    public function index(): void
+    {
+        $db = Database::main();
+
+        $resumen  = $this->resumen();
         $usuarios = $db->fetchAll(
             "SELECT id_usuario, CONCAT(nombre, ' ', apellido) AS nombre FROM sag_usuarios ORDER BY nombre, apellido"
         );
@@ -109,6 +115,7 @@ class AuditoriaController extends Controller
                 'recordsTotal'    => $total,
                 'recordsFiltered' => $filtrados,
                 'data'            => $data,
+                'resumen'         => $this->resumen(),
             ]);
         } catch (Exception $e) {
             error_log('AuditoriaController::listar — ' . $e->getMessage());

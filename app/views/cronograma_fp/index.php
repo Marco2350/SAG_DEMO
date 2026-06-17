@@ -26,25 +26,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= (int)$resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= (int)$resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-list-check" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= (int)$resumen['en_curso'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="en_curso"><?= (int)$resumen['en_curso'] ?></div>
         <div class="ms-lbl"><i class="fas fa-spinner" style="color:#3b82f6;margin-right:4px;"></i>En Curso</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int)$resumen['completadas'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="completadas"><?= (int)$resumen['completadas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Completadas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#dc2626;">
-        <div class="ms-val" style="color:#dc2626;"><?= (int)$resumen['retrasadas'] ?></div>
+        <div class="ms-val" style="color:#dc2626;" data-stat="retrasadas"><?= (int)$resumen['retrasadas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-clock-rotate-left" style="color:#dc2626;margin-right:4px;"></i>Retrasadas</div>
       </div>
     </div>

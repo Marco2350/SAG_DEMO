@@ -26,25 +26,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= (int)$resumen['total_roles'] ?></div>
+        <div class="ms-val" data-stat="total_roles"><?= (int)$resumen['total_roles'] ?></div>
         <div class="ms-lbl"><i class="fas fa-id-badge" style="color:var(--primario);margin-right:4px;"></i>Roles</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= (int)$resumen['total_plazas'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="total_plazas"><?= (int)$resumen['total_plazas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-user-tie" style="color:#3b82f6;margin-right:4px;"></i>Plazas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int)$resumen['contratados'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="contratados"><?= (int)$resumen['contratados'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Contratados</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#f59e0b;">
-        <div class="ms-val" style="color:#f59e0b;">L. <?= number_format((float)$resumen['presupuesto_total'], 0) ?></div>
+        <div class="ms-val" style="color:#f59e0b;" data-stat="presupuesto_total" data-stat-fmt="moneyL0">L. <?= number_format((float)$resumen['presupuesto_total'], 0) ?></div>
         <div class="ms-lbl"><i class="fas fa-coins" style="color:#f59e0b;margin-right:4px;"></i>Presupuesto RH</div>
       </div>
     </div>

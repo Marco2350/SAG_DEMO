@@ -40,25 +40,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= $resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-graduation-cap" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= $resumen['finalizadas'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="finalizadas"><?= $resumen['finalizadas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Finalizadas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat gold">
-        <div class="ms-val"><?= $resumen['borrador'] ?></div>
+        <div class="ms-val" data-stat="borrador"><?= $resumen['borrador'] ?></div>
         <div class="ms-lbl"><i class="fas fa-pencil" style="color:#f5a623;margin-right:4px;"></i>En borrador</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
-        <div class="ms-val"><?= $resumen['participantes'] ?></div>
+        <div class="ms-val" data-stat="participantes"><?= $resumen['participantes'] ?></div>
         <div class="ms-lbl"><i class="fas fa-users" style="color:#3b82f6;margin-right:4px;"></i>Participantes</div>
       </div>
     </div>

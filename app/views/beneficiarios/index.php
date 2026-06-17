@@ -35,25 +35,25 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= $resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-users" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
-        <div class="ms-val"><?= $resumen['hombres'] ?></div>
+        <div class="ms-val" data-stat="hombres"><?= $resumen['hombres'] ?></div>
         <div class="ms-lbl">Hombres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#db2777;">
-        <div class="ms-val"><?= $resumen['mujeres'] ?></div>
+        <div class="ms-val" data-stat="mujeres"><?= $resumen['mujeres'] ?></div>
         <div class="ms-lbl">Mujeres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat gold">
-        <div class="ms-val"><?= $resumen['orgs'] ?></div>
+        <div class="ms-val" data-stat="orgs"><?= $resumen['orgs'] ?></div>
         <div class="ms-lbl"><i class="fas fa-building-wheat" style="color:#f5a623;margin-right:4px;"></i>Organizaciones</div>
       </div>
     </div>
