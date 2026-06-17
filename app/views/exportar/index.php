@@ -201,10 +201,9 @@ $cssExtra = '<style>
         <div class="fl-label">Estado</div>
         <select class="fc" id="expEstado">
           <option value="">Todos los estados</option>
-          <option value="activo">Activo</option>
-          <option value="inactivo">Inactivo</option>
-          <option value="finalizado">Finalizado</option>
-          <option value="borrador">Borrador</option>
+          <!-- Las opciones se cargan según el módulo seleccionado (ver exportar.js).
+               Cada módulo usa estados distintos: organizaciones 'activa/pendiente/inactiva',
+               beneficiarios 'activo/inactivo', capacitaciones/asistencias 'borrador/finalizado'. -->
         </select>
       </div>
       <div>
@@ -252,6 +251,7 @@ $cssExtra = '<style>
 
 <!-- Form oculto para descarga CSV -->
 <form id="formExportar" method="post" action="<?= BASE_URL ?>/exportar/generar" style="display:none;">
+  <input type="hidden" name="_csrf" id="fCsrf" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES) ?>"/>
   <input type="hidden" name="modulo"          id="fModulo"/>
   <input type="hidden" name="id_departamento" id="fDpto"/>
   <input type="hidden" name="estado"          id="fEstado"/>
