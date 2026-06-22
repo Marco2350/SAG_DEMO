@@ -67,11 +67,10 @@ define('PROGRAMAS', [
         'gradient'    => 'linear-gradient(180deg, #ab9a8a 0%, #4f2a09 100%)',
         'color_light' => '#f5ede5',
         'descripcion' => 'Incentivos y asistencia para productores de café en Honduras',
-        // Filtro OIRSA por texto (substringof sobre ProductActivityName).
-        // Los IDs numéricos (ProductActivityId) deben descubrirse vía
-        // EntregasController::descubrirRubrosOirsa() y persistirse en la BD,
-        // NUNCA hardcodearse: cambian entre ambientes (pruebas vs producción).
-        'trazaragro_rubro' => 'café',
+        // VALIDADO contra producción OIRSA 06/2026 vía descubrirRubrosOirsa
+        // (rubro 2371 = "Insumo/Incentivo de café").
+        'trazaragro_rubro_id' => 2371,
+        'trazaragro_rubro'    => 'café',
     ],
     'pipg' => [
         'id'          => 'pipg',

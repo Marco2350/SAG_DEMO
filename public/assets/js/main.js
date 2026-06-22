@@ -375,7 +375,7 @@ const SAG = (function () {
   function dataTable(selector, options) {
     const defaults = {
       language: {
-        url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
+        url: BASE + '/public/assets/js/datatables/es-MX.json'
       },
       pageLength: 10,
       dom: '<"row"<"col-sm-4"l><"col-sm-4"f><"col-sm-4 text-end"B>>rt<"row"<"col-sm-6"i><"col-sm-6"p>>',

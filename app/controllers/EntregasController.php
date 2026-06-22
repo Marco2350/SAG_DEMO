@@ -500,10 +500,10 @@ class EntregasController extends Controller
             $this->requireCsrf();
             $this->requireRole(['super_admin', 'coord_nacional', 'coord_pip', 'admin', 'administrador', 'coordinador']);
 
-            // El sync con OIRSA puede tardar varios minutos (paginación de 500.000).
-            // Subimos los límites SOLO para esta petición; no afectan al resto del sitio.
-            @set_time_limit(900);                  // 15 minutos máx
-            @ini_set('memory_limit', '1024M');     // 1 GB para 500K filas en memoria
+            // El sync con OIRSA puede tardar varios minutos. Subimos los límites
+            // SOLO para esta petición; no afectan al resto del sitio.
+            @set_time_limit(1800);                 // 30 minutos máx
+            @ini_set('memory_limit', '2048M');     // 2 GB — antes 1 GB se agotaba con >50K filas
             @ignore_user_abort(true);
 
             if (!class_exists('TrazaragroClient')) {
@@ -526,9 +526,11 @@ class EntregasController extends Controller
             $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
             $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : date('Y-m-d', strtotime('-365 days'));
             $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
-            // Tamaño del lote — se permite hasta 500.000 (límite Power Query oficial).
-            // Default 500.000 trae TODO el histórico OIRSA en una sola corrida.
-            $top      = max(1, min(500000, (int)$this->getPost('top', 500000)));
+            // Tamaño del lote — Default 50.000 es seguro para 2 GB de memoria.
+            // Antes era 500.000 pero PHP se quedaba sin memoria. Si hace falta
+            // sincronizar más, hacer varios syncs (UPSERT por movement_id, así
+            // los duplicados se ignoran y solo entran los nuevos).
+            $top      = max(1, min(500000, (int)$this->getPost('top', 50000)));
             // Solo Super Admin / Coord Nacional pueden limpiar la tabla antes del sync
             $limpiarSolicitado = (int)$this->getPost('limpiar', 0) === 1;
             $puedeLimpiar      = $this->hasRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
@@ -547,36 +549,82 @@ class EntregasController extends Controller
                     "programa={$progId} · filas borradas={$borradas}");
             }
 
-            $fetchArgs = [
-                'top'       => $top,
-                'desde'     => $desde,
-                'hasta'     => $hasta,
-                // tipoMovId = 0 → sin filtro de tipo. Trae AMBOS tipos:
-                //   111 = Entrega de insumos (Bodega → Productor)  → módulo Entregas
-                //   113 = Recepción de insumos (Proveedor → Bodega) → módulo Inventario OIRSA
-                // Ambos se guardan en la misma tabla con su tipo_movimiento_id.
-                'tipoMovId' => 0,
+            $fetchArgsBase = [
+                'top'   => $top,
+                'desde' => $desde,
+                'hasta' => $hasta,
             ];
             // Orden de precedencia: lista de IDs > ID único > texto
             if (is_array($rubroIds) && !empty($rubroIds)) {
-                $fetchArgs['rubroIds'] = $rubroIds;
+                $fetchArgsBase['rubroIds'] = $rubroIds;
                 $filtroAplicado = 'rubroIds=[' . implode(',', $rubroIds) . ']';
             } elseif ($rubroId > 0) {
-                $fetchArgs['rubroId'] = $rubroId;
+                $fetchArgsBase['rubroId'] = $rubroId;
                 $filtroAplicado = "rubroId={$rubroId}";
             } elseif (!empty($rubro)) {
-                $fetchArgs['rubro'] = $rubro;
+                $fetchArgsBase['rubro'] = $rubro;
                 $filtroAplicado = "rubro='{$rubro}' (texto)";
             } else {
                 $filtroAplicado = 'sin filtro de rubro';
             }
             error_log("sincronizarTrazaragro: programa={$progId} · {$filtroAplicado} · rango={$desde}/{$hasta} · top={$top}");
 
-            $movimientos = $cli->fetchEntregas($fetchArgs);
+            // Consultar cada tipo por separado. Antes se enviaba tipoMovId=0 y
+            // los tres tipos competían por el mismo TOP; si entregas/recepciones
+            // llenaban el lote, los traslados (112) nunca llegaban a persistirse.
+            $catalogoTipos = defined('OIRSA_TIPOS_MOVIMIENTO')
+                ? OIRSA_TIPOS_MOVIMIENTO
+                : [
+                    111 => ['nombre' => 'Bodega a Productor'],
+                    112 => ['nombre' => 'Bodega a Bodega'],
+                    113 => ['nombre' => 'Proveedor a Bodega'],
+                ];
+            $tiposConfigurados = array_map('intval', array_keys($catalogoTipos));
+            // Este campo puede llegar como array (select multiple / jQuery) o
+            // como CSV. No usar getPost(): el helper aplica trim() y falla con arrays.
+            $tiposSolicitados = $_POST['tipos_movimiento'] ?? $tiposConfigurados;
+            if (!is_array($tiposSolicitados)) {
+                $tiposSolicitados = preg_split('/\s*,\s*/', (string)$tiposSolicitados, -1, PREG_SPLIT_NO_EMPTY);
+            }
+            $tiposSolicitados = array_values(array_intersect(
+                $tiposConfigurados,
+                array_unique(array_map('intval', $tiposSolicitados))
+            ));
+            if (empty($tiposSolicitados)) {
+                $tiposSolicitados = $tiposConfigurados;
+            }
+
+            $stats = [
+                'recibidos' => 0, 'insertados' => 0, 'actualizados' => 0,
+                'errores' => 0, 'errores_det' => [],
+            ];
+            $porTipo = [];
+            foreach ($tiposSolicitados as $tipoMovId) {
+                $fetchArgs = $fetchArgsBase;
+                $fetchArgs['tipoMovId'] = $tipoMovId;
+                $movimientosTipo = $cli->fetchEntregas($fetchArgs);
+                $statsTipo = $this->persistirMovimientos($movimientosTipo);
+                $this->prepararDescuentoInventario($movimientosTipo);
+
+                $nombreTipo = $catalogoTipos[$tipoMovId]['nombre'] ?? ('Tipo ' . $tipoMovId);
+                $porTipo[(string)$tipoMovId] = [
+                    'nombre' => $nombreTipo,
+                    'recibidos' => $statsTipo['recibidos'],
+                    'insertados' => $statsTipo['insertados'],
+                    'actualizados' => $statsTipo['actualizados'],
+                    'errores' => $statsTipo['errores'],
+                ];
+                foreach (['recibidos', 'insertados', 'actualizados', 'errores'] as $campo) {
+                    $stats[$campo] += $statsTipo[$campo];
+                }
+                if (!empty($statsTipo['errores_det'])) {
+                    $stats['errores_det'] = array_merge($stats['errores_det'], $statsTipo['errores_det']);
+                }
+            }
 
             // Si OIRSA no devuelve nada, dar un mensaje útil al usuario en vez
             // de un genérico "0 sincronizados".
-            if (empty($movimientos)) {
+            if ($stats['recibidos'] === 0) {
                 $msg = "OIRSA no devolvió movimientos para {$progId} con {$filtroAplicado} "
                      . "entre {$desde} y {$hasta}. Posibles causas: "
                      . "(1) este programa aún no registra entregas en producción, "
@@ -591,22 +639,23 @@ class EntregasController extends Controller
                     'insertados'       => 0,
                     'actualizados'     => 0,
                     'errores'          => 0,
+                    'por_tipo'         => $porTipo,
                     'modo'             => $ping['mode'],
                     'rango'            => ['desde' => $desde, 'hasta' => $hasta],
                 ]);
                 return;
             }
 
-            $stats = $this->persistirMovimientos($movimientos);
-
-            // Stub: registra qué movimientos deberían descontar stock cuando Inventarios esté listo
-            $this->prepararDescuentoInventario($movimientos);
-
             // Resumen amigable
             $resumen = "Trazaragro ({$ping['mode']}): {$stats['recibidos']} movimientos sincronizados";
             if ($stats['insertados'])   $resumen .= " · {$stats['insertados']} nuevos";
             if ($stats['actualizados']) $resumen .= " · {$stats['actualizados']} actualizados";
             if ($stats['errores'])      $resumen .= " · {$stats['errores']} con error";
+            $conteosTipo = [];
+            foreach ($porTipo as $tipoId => $detalleTipo) {
+                $conteosTipo[] = $tipoId . '=' . $detalleTipo['recibidos'];
+            }
+            if ($conteosTipo) $resumen .= ' · por tipo: ' . implode(', ', $conteosTipo);
 
             $this->logAction('SYNC_TRAZARAGRO', 'entregas',
                 "filtro=({$filtroAplicado}) · {$resumen}");
@@ -620,6 +669,7 @@ class EntregasController extends Controller
                 'actualizados'     => $stats['actualizados'],
                 'errores'          => $stats['errores'],
                 'errores_det'      => $stats['errores_det'] ?? [],
+                'por_tipo'         => $porTipo,
                 'modo'             => $ping['mode'],
                 'rango'            => ['desde' => $desde, 'hasta' => $hasta],
             ]);
@@ -827,8 +877,12 @@ class EntregasController extends Controller
         )
         ON DUPLICATE KEY UPDATE
             rubro = VALUES(rubro),
+            rubro_id = VALUES(rubro_id),
             tipo_movimiento = VALUES(tipo_movimiento),
+            tipo_movimiento_id = VALUES(tipo_movimiento_id),
+            actividad_id = VALUES(actividad_id),
             objeto_trazable = VALUES(objeto_trazable),
+            objeto_trazable_codigo = VALUES(objeto_trazable_codigo),
             codigo_trazabilidad = VALUES(codigo_trazabilidad),
             guiasa_no = VALUES(guiasa_no),
             codigo_autorizacion = VALUES(codigo_autorizacion),

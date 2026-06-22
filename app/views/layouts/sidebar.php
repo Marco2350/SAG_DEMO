@@ -6,15 +6,15 @@ $progColor = $prog['color'] ?? '#54668E';
 $progIco   = $prog['icono'] ?? 'fa-seedling';
 
 // Detectar página activa
-$uri = $_SERVER['REQUEST_URI'] ?? '';
+$uri = (string)($_SERVER['REQUEST_URI'] ?? '');
 function navActive(string $segment): string {
     global $uri;
-    return (strpos($uri, $segment) !== false) ? 'active' : '';
+    return (strpos((string)$uri, $segment) !== false) ? 'active' : '';
 }
 function navGroupOpen(array $segments): string {
     global $uri;
     foreach ($segments as $segment) {
-        if (strpos($uri, $segment) !== false) {
+        if (strpos((string)$uri, $segment) !== false) {
             return 'open';
         }
     }

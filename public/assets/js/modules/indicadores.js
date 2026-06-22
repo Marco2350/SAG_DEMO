@@ -68,7 +68,7 @@ $(function () {
                 dataSrc: 'data',
             },
             columns,
-            language:   { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
+            language:   { url: (document.querySelector('meta[name="base-url"]')?.content || '') + '/public/assets/js/datatables/es-MX.json' },
             order:      [[1, 'asc']],
             pageLength: 15,
         });

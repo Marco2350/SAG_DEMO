@@ -359,6 +359,7 @@ $router->get ('/inventarios/recepcionesOirsa',       'InventariosController', 'r
 $router->get('/movilizaciones',                      'MovilizacionesOirsaController', 'index');
 $router->get('/movilizaciones/listar',               'MovilizacionesOirsaController', 'listar');
 $router->get('/movilizaciones/resumen',              'MovilizacionesOirsaController', 'resumen');
+$router->get('/movilizaciones/auditoria',            'MovilizacionesOirsaController', 'auditoria');
 
 // ── Fortalecimiento de Programas (FPROG) ─────────
 $router->get( '/fortalecimiento',                        'FortalecimientoController', 'index');

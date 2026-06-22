@@ -34,6 +34,7 @@ $cssExtra = '<style>
 .tipo-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;white-space:nowrap;}
 .tipo-recep{background:#dbeafe;color:#1e40af;}
 .tipo-ent  {background:#fff7ed;color:#9a3412;}
+.tipo-tras {background:#ede9fe;color:#7c3aed;}
 
 .dataTables_wrapper{font-size:.78rem;}
 .dataTables_wrapper .dataTables_paginate .paginate_button{padding:3px 10px;margin:0 2px;border-radius:5px;}
@@ -48,7 +49,7 @@ require ROOT_PATH . '/app/views/layouts/header.php';
 require ROOT_PATH . '/app/views/layouts/sidebar.php';
 require ROOT_PATH . '/app/views/layouts/topbar.php';
 
-$totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
+$totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total'] + $kpis['tras_total']);
 ?>
 
 <div class="content">
@@ -59,13 +60,14 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
       <div class="page-title">
         <i class="fas fa-arrows-turn-to-dots" style="color:#0d9488;"></i>
         Movilizaciones OIRSA
-        <small><?= htmlspecialchars($progSigla) ?> &mdash; Reporte consolidado de Trazaragro (Recepciones y Entregas)</small>
+        <small><?= htmlspecialchars($progSigla) ?> &mdash; Reporte consolidado de Trazaragro (Recepciones, Traslados y Entregas)</small>
       </div>
     </div>
-    <div style="font-size:.82rem;color:#555;">
-      <i class="fas fa-circle-info" style="color:#1e40af;"></i>
-      Los datos se sincronizan desde el módulo
-      <a href="<?= BASE_URL ?>/entregas" style="color:#0d9488;font-weight:700;">Entregas de Incentivos</a>.
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-sm btn-primary" id="btnSyncMovilizaciones">
+        <i class="fas fa-rotate"></i> Actualizar sincronización
+      </button>
+      <span style="font-size:.78rem;color:#666;">Actualiza recepciones, traslados y entregas desde OIRSA.</span>
     </div>
   </div>
 
@@ -78,6 +80,10 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
     <div class="mov-kpi">
       <div class="ki" style="background:#fff7ed;color:#e8742c;"><i class="fas fa-people-carry-box"></i></div>
       <div><div class="kv" style="color:#e8742c;"><?= number_format($kpis['ent_total']) ?></div><div class="kl">Entregas</div></div>
+    </div>
+    <div class="mov-kpi">
+      <div class="ki" style="background:#ede9fe;color:#7c3aed;"><i class="fas fa-right-left"></i></div>
+      <div><div class="kv" style="color:#7c3aed;"><?= number_format($kpis['tras_total']) ?></div><div class="kl">Traslados</div></div>
     </div>
     <div class="mov-kpi">
       <div class="ki" style="background:#fef3c7;color:#9a3412;"><i class="fas fa-handshake"></i></div>
@@ -111,6 +117,9 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
     <button class="mov-tab" data-tab="por-producto">
       <i class="fas fa-boxes-stacked"></i> Por Producto
     </button>
+    <button class="mov-tab" data-tab="auditoria" style="color:#92400e;">
+      <i class="fas fa-triangle-exclamation"></i> Auditoría
+    </button>
   </div>
 
   <!-- TAB: Movimientos -->
@@ -121,9 +130,10 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
       <div>
         <div class="fl">Tipo de movimiento</div>
         <select class="fc" id="mfTipo">
-          <option value="">Todos (recepciones + entregas)</option>
+          <option value="">Todos (recepciones + entregas + traslados)</option>
           <option value="recepcion">Solo Recepciones (Proveedor → Bodega)</option>
           <option value="entrega">Solo Entregas (Bodega → Productor)</option>
+          <option value="traslado">Solo Traslados (Bodega → Bodega)</option>
         </select>
       </div>
       <div>
@@ -214,6 +224,20 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total']);
     <div id="mov-resProducto">
       <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
         Cargando productos...
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Auditoría -->
+  <div class="mov-panel" id="mov-tab-auditoria">
+    <div style="background:#fef3c7;border:1.5px solid #f59e0b;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:.85rem;color:#78350f;">
+      <i class="fas fa-circle-info"></i>
+      Esta vista detecta <strong>inconsistencias</strong> en los datos sincronizados desde OIRSA.
+      No corrige nada — sólo te muestra dónde mirar para auditar.
+    </div>
+    <div id="mov-auditoria">
+      <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
+        Cargando auditoría...
       </div>
     </div>
   </div>

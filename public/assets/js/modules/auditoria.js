@@ -32,7 +32,7 @@ $(function () {
         // El orden lo fija el servidor (fecha DESC); ordenar por otras
         // columnas server-side no aporta en una bitácora cronológica.
         ordering:   false,
-        language:   { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
+        language:   { url: (document.querySelector('meta[name="base-url"]')?.content || '') + '/public/assets/js/datatables/es-MX.json' },
         pageLength: 25,
         lengthMenu: [25, 50, 100],
     });

@@ -5,6 +5,7 @@
  * Lee de sag_trazaragro_movimientos (poblada por el sync del módulo Entregas)
  * y muestra TODOS los tipos de movilización del programa activo:
  *   • Tipo 113 — Recepción de insumos (Proveedor → Bodega)
+ *   • Tipo 112 — Traslado de insumos (Bodega → Bodega)
  *   • Tipo 111 — Entrega de insumos (Bodega → Productor)
  *
  * Es un módulo de SOLO LECTURA. No genera movimientos propios; refleja lo
@@ -41,6 +42,7 @@ class MovilizacionesOirsaController extends Controller
         $vacio = [
             'recep_total'    => 0, 'recep_cantidad'   => 0,
             'ent_total'      => 0, 'ent_cantidad'     => 0,
+            'tras_total'     => 0, 'tras_cantidad'    => 0,
             'proveedores'    => 0, 'bodegas'          => 0,
             'productos'      => 0, 'manifiestos'      => 0,
             'primera_fecha'  => '', 'ultima_fecha'    => '',
@@ -60,30 +62,46 @@ class MovilizacionesOirsaController extends Controller
                     SUM(CASE WHEN tipo_movimiento_id = 113 THEN cantidad ELSE 0 END)       AS recep_cantidad,
                     SUM(CASE WHEN tipo_movimiento_id = 111 THEN 1 ELSE 0 END)              AS ent_total,
                     SUM(CASE WHEN tipo_movimiento_id = 111 THEN cantidad ELSE 0 END)       AS ent_cantidad,
+                    SUM(CASE WHEN tipo_movimiento_id = 112 THEN 1 ELSE 0 END)              AS tras_total,
+                    SUM(CASE WHEN tipo_movimiento_id = 112 THEN cantidad ELSE 0 END)       AS tras_cantidad,
                     COUNT(DISTINCT CASE WHEN tipo_movimiento_id = 113
                                         THEN NULLIF(origen_establecimiento,'')
                                         END)                                                AS proveedores,
-                    COUNT(DISTINCT CASE WHEN tipo_movimiento_id IN (111,113)
-                                        THEN NULLIF(IF(tipo_movimiento_id = 113, destino_establecimiento, origen_establecimiento),'')
-                                        END)                                                AS bodegas,
                     COUNT(DISTINCT NULLIF(objeto_trazable,''))                             AS productos,
                     COUNT(DISTINCT NULLIF(guiasa_no,''))                                   AS manifiestos,
                     MIN(fecha_autorizacion)                                                AS primera_fecha,
                     MAX(fecha_autorizacion)                                                AS ultima_fecha
                  FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 113)",
+                 WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)",
                 [$pid]
             );
 
             if (!$row) return $vacio;
+
+            $rowBodegas = $db->fetchOne(
+                "SELECT COUNT(DISTINCT estab) AS total FROM (
+                    SELECT destino_establecimiento AS estab
+                      FROM sag_trazaragro_movimientos
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (112, 113)
+                       AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                    UNION
+                    SELECT origen_establecimiento AS estab
+                      FROM sag_trazaragro_movimientos
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112)
+                       AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                ) AS bodegas",
+                [$pid, $pid]
+            );
 
             return [
                 'recep_total'   => (int)($row['recep_total']    ?? 0),
                 'recep_cantidad'=> (float)($row['recep_cantidad'] ?? 0),
                 'ent_total'     => (int)($row['ent_total']      ?? 0),
                 'ent_cantidad'  => (float)($row['ent_cantidad']  ?? 0),
+                'tras_total'    => (int)($row['tras_total']     ?? 0),
+                'tras_cantidad' => (float)($row['tras_cantidad'] ?? 0),
                 'proveedores'   => (int)($row['proveedores']    ?? 0),
-                'bodegas'       => (int)($row['bodegas']        ?? 0),
+                'bodegas'       => (int)($rowBodegas['total']   ?? 0),
                 'productos'     => (int)($row['productos']      ?? 0),
                 'manifiestos'   => (int)($row['manifiestos']    ?? 0),
                 'primera_fecha' => (string)($row['primera_fecha'] ?? ''),
@@ -116,15 +134,16 @@ class MovilizacionesOirsaController extends Controller
                ORDER BY nombre",
                 [$pid]
             );
-            // Bodegas: destino en recepciones + origen en entregas
+            // Bodegas: ambos extremos de traslados, destino en recepciones y
+            // origen en entregas.
             $rowsB = $db->fetchAll(
                 "SELECT DISTINCT estab AS nombre FROM (
                     SELECT destino_establecimiento AS estab FROM sag_trazaragro_movimientos
-                     WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (112, 113)
                        AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
                     UNION
                     SELECT origen_establecimiento AS estab FROM sag_trazaragro_movimientos
-                     WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112)
                        AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
                  ) AS u
                  ORDER BY nombre",
@@ -133,7 +152,7 @@ class MovilizacionesOirsaController extends Controller
             $rowsProd = $db->fetchAll(
                 "SELECT DISTINCT objeto_trazable AS nombre
                    FROM sag_trazaragro_movimientos
-                  WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 113)
+                  WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
                     AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
                ORDER BY nombre",
                 [$pid]
@@ -192,19 +211,20 @@ class MovilizacionesOirsaController extends Controller
             $orderExpr = ($columnsOrder[$orderCol] ?? 'fecha_autorizacion') . ' ' . $orderDir . ', movement_id ' . $orderDir;
 
             // Filtros
-            $where  = ['id_proyecto = ?', 'tipo_movimiento_id IN (111, 113)'];
+            $where  = ['id_proyecto = ?', 'tipo_movimiento_id IN (111, 112, 113)'];
             $params = [$pid];
 
             $tipo = (string)($_GET['f_tipo'] ?? '');
             if ($tipo === 'recepcion')   { $where[] = 'tipo_movimiento_id = 113'; }
             elseif ($tipo === 'entrega') { $where[] = 'tipo_movimiento_id = 111'; }
+            elseif ($tipo === 'traslado'){ $where[] = 'tipo_movimiento_id = 112'; }
 
             $prov = (string)($_GET['f_proveedor'] ?? '');
             if ($prov !== '') { $where[] = '(origen_establecimiento = ? AND tipo_movimiento_id = 113)'; $params[] = $prov; }
 
             $bod = (string)($_GET['f_bodega'] ?? '');
             if ($bod !== '') {
-                $where[] = '((tipo_movimiento_id = 113 AND destino_establecimiento = ?) OR (tipo_movimiento_id = 111 AND origen_establecimiento = ?))';
+                $where[] = '((tipo_movimiento_id IN (112, 113) AND destino_establecimiento = ?) OR (tipo_movimiento_id IN (111, 112) AND origen_establecimiento = ?))';
                 $params[] = $bod;
                 $params[] = $bod;
             }
@@ -233,7 +253,7 @@ class MovilizacionesOirsaController extends Controller
             // recordsTotal — total del proyecto (ambos tipos) sin filtros adicionales
             $rowT = $db->fetchOne(
                 "SELECT COUNT(*) AS c FROM sag_trazaragro_movimientos
-                  WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 113)",
+                  WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)",
                 [$pid]
             );
             $recordsTotal = (int)($rowT['c'] ?? 0);
@@ -324,7 +344,7 @@ class MovilizacionesOirsaController extends Controller
                                 SUM(CASE WHEN tipo_movimiento_id = 113 THEN 1 ELSE 0 END)        AS num_recepciones,
                                 SUM(CASE WHEN tipo_movimiento_id = 111 THEN 1 ELSE 0 END)        AS num_entregas
                            FROM sag_trazaragro_movimientos
-                          WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 113)
+                          WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
                             AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
                        GROUP BY objeto_trazable
                        ORDER BY recibido DESC
@@ -339,12 +359,16 @@ class MovilizacionesOirsaController extends Controller
 
                 case 'bodega':
                 default:
-                    // Bodegas: aparecen como destino en recepciones (113) y como origen en entregas (111)
+                    // Bodegas — fuentes de movimiento:
+                    //   • tipo 113 (Recepción): la bodega es destino → ENTRADA
+                    //   • tipo 111 (Entrega):    la bodega es origen  → SALIDA
+                    //   • tipo 112 (Traslado):   la bodega destino entra, la origen sale
                     $rows = $db->fetchAll(
                         "SELECT nombre, MAX(departamento) AS departamento,
-                                SUM(recibido) AS recibido, SUM(entregado) AS entregado,
-                                SUM(num_recep) AS num_recep, SUM(num_ent) AS num_ent
+                                SUM(recibido)  AS recibido,  SUM(entregado) AS entregado,
+                                SUM(num_recep) AS num_recep, SUM(num_ent)   AS num_ent
                            FROM (
+                              -- Entradas por recepción (Proveedor → Bodega)
                               SELECT destino_establecimiento AS nombre,
                                      MAX(destino_departamento) AS departamento,
                                      SUM(cantidad) AS recibido, 0 AS entregado,
@@ -354,6 +378,7 @@ class MovilizacionesOirsaController extends Controller
                                  AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
                             GROUP BY destino_establecimiento
                               UNION ALL
+                              -- Salidas por entrega al productor
                               SELECT origen_establecimiento AS nombre,
                                      MAX(origen_departamento) AS departamento,
                                      0 AS recibido, SUM(cantidad) AS entregado,
@@ -362,14 +387,104 @@ class MovilizacionesOirsaController extends Controller
                                WHERE id_proyecto = ? AND tipo_movimiento_id = 111
                                  AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
                             GROUP BY origen_establecimiento
+                              UNION ALL
+                              -- Traslado (Bodega → Bodega): la bodega DESTINO recibe
+                              SELECT destino_establecimiento AS nombre,
+                                     MAX(destino_departamento) AS departamento,
+                                     SUM(cantidad) AS recibido, 0 AS entregado,
+                                     COUNT(*) AS num_recep, 0 AS num_ent
+                                FROM sag_trazaragro_movimientos
+                               WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                                 AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                            GROUP BY destino_establecimiento
+                              UNION ALL
+                              -- Traslado (Bodega → Bodega): la bodega ORIGEN entrega
+                              SELECT origen_establecimiento AS nombre,
+                                     MAX(origen_departamento) AS departamento,
+                                     0 AS recibido, SUM(cantidad) AS entregado,
+                                     0 AS num_recep, COUNT(*) AS num_ent
+                                FROM sag_trazaragro_movimientos
+                               WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                                 AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                            GROUP BY origen_establecimiento
                            ) AS u
                        GROUP BY nombre
                        ORDER BY recibido DESC
                           LIMIT 200",
-                        [$pid, $pid]
+                        [$pid, $pid, $pid, $pid]
                     );
+
+                    // Por cada bodega, traemos el detalle de productos en una sola query
+                    // (un solo IN con todos los nombres de bodega de la página).
+                    // Cada producto agrupa recibido (cuando bodega es destino, tipo 113)
+                    // y entregado (cuando bodega es origen, tipo 111).
+                    $bodegaNames = array_column($rows, 'nombre');
+                    $prodByBodega = [];
+                    if (!empty($bodegaNames)) {
+                        $place = implode(',', array_fill(0, count($bodegaNames), '?'));
+                        // Cuatro UNIONs: recepciones (113), entregas (111), traslado-destino (112), traslado-origen (112)
+                        $params = array_merge(
+                            [$pid], $bodegaNames, [$pid], $bodegaNames,
+                            [$pid], $bodegaNames, [$pid], $bodegaNames
+                        );
+                        $rowsProd = $db->fetchAll(
+                            "SELECT bodega, producto, MAX(unidad) AS unidad,
+                                    SUM(recibido) AS recibido, SUM(entregado) AS entregado
+                               FROM (
+                                  SELECT destino_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                         SUM(cantidad) AS recibido, 0 AS entregado
+                                    FROM sag_trazaragro_movimientos
+                                   WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+                                     AND destino_establecimiento IN ($place)
+                                     AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                                GROUP BY destino_establecimiento, objeto_trazable, unidad
+                                  UNION ALL
+                                  SELECT origen_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                         0 AS recibido, SUM(cantidad) AS entregado
+                                    FROM sag_trazaragro_movimientos
+                                   WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                                     AND origen_establecimiento IN ($place)
+                                     AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                                GROUP BY origen_establecimiento, objeto_trazable, unidad
+                                  UNION ALL
+                                  -- Traslado (112): destino recibe
+                                  SELECT destino_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                         SUM(cantidad) AS recibido, 0 AS entregado
+                                    FROM sag_trazaragro_movimientos
+                                   WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                                     AND destino_establecimiento IN ($place)
+                                     AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                                GROUP BY destino_establecimiento, objeto_trazable, unidad
+                                  UNION ALL
+                                  -- Traslado (112): origen entrega
+                                  SELECT origen_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                         0 AS recibido, SUM(cantidad) AS entregado
+                                    FROM sag_trazaragro_movimientos
+                                   WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                                     AND origen_establecimiento IN ($place)
+                                     AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                                GROUP BY origen_establecimiento, objeto_trazable, unidad
+                               ) AS u
+                           GROUP BY bodega, producto
+                           ORDER BY bodega, recibido DESC",
+                            $params
+                        );
+                        foreach ($rowsProd as $rp) {
+                            $bod = (string)$rp['bodega'];
+                            $prodByBodega[$bod][] = [
+                                'producto'       => (string)$rp['producto'],
+                                'unidad'         => (string)($rp['unidad'] ?? ''),
+                                'recibido'       => (float)$rp['recibido'],
+                                'entregado'      => (float)$rp['entregado'],
+                                'stock_estimado' => (float)$rp['recibido'] - (float)$rp['entregado'],
+                            ];
+                        }
+                    }
+
                     foreach ($rows as &$r) {
-                        $r['stock_estimado'] = (float)$r['recibido'] - (float)$r['entregado'];
+                        $r['stock_estimado']  = (float)$r['recibido'] - (float)$r['entregado'];
+                        $r['productos']       = $prodByBodega[$r['nombre']] ?? [];
+                        $r['productos_total'] = count($r['productos']);
                     }
                     unset($r);
                     break;
@@ -379,6 +494,144 @@ class MovilizacionesOirsaController extends Controller
         } catch (\Throwable $e) {
             error_log('MovilizacionesOirsa::resumen — ' . $e->getMessage());
             $this->json(['data' => [], 'error' => 'Error interno.'], 500);
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  AJAX: AUDITORÍA / INCONSISTENCIAS
+    //  GET /movilizaciones/auditoria
+    //
+    //  Devuelve 4 análisis para detectar problemas en los datos OIRSA:
+    //   1. Bodegas con entregas SIN recepciones (entregan lo que no recibieron)
+    //   2. Bodegas con recepciones SIN entregas (stock estancado)
+    //   3. Productos con stock negativo a nivel programa
+    //   4. Posibles bodegas duplicadas (nombres similares con CUE distinto)
+    // ════════════════════════════════════════════════════════════
+    public function auditoria(): void
+    {
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+
+            $vacio = [
+                'bodegas_entregan_sin_recibir' => [],
+                'bodegas_reciben_sin_entregar' => [],
+                'productos_stock_negativo'     => [],
+                'posibles_duplicados_bodega'   => [],
+            ];
+            if (!$db->tablaExiste('sag_trazaragro_movimientos')) {
+                $this->json($vacio);
+                return;
+            }
+
+            // ─── 1. Bodegas con entregas sin recepciones ───
+            // (origen en tipo 111 que nunca aparece como destino en 113 ni 112)
+            $rowsA = $db->fetchAll(
+                "SELECT origen_establecimiento   AS bodega,
+                        MAX(origen_departamento) AS departamento,
+                        COUNT(*)                 AS num_entregas,
+                        COALESCE(SUM(cantidad),0) AS cantidad_entregada,
+                        MIN(fecha_autorizacion)  AS primera,
+                        MAX(fecha_autorizacion)  AS ultima
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                    AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                    AND origen_establecimiento NOT IN (
+                        SELECT DISTINCT destino_establecimiento
+                          FROM sag_trazaragro_movimientos
+                         WHERE id_proyecto = ? AND tipo_movimiento_id IN (112, 113)
+                           AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                    )
+               GROUP BY origen_establecimiento
+               ORDER BY cantidad_entregada DESC
+                  LIMIT 200",
+                [$pid, $pid]
+            );
+
+            // ─── 2. Bodegas con recepciones sin entregas (stock estancado) ───
+            $rowsB = $db->fetchAll(
+                "SELECT destino_establecimiento   AS bodega,
+                        MAX(destino_departamento) AS departamento,
+                        COUNT(*)                  AS num_recepciones,
+                        COALESCE(SUM(cantidad),0) AS cantidad_recibida,
+                        MIN(fecha_autorizacion)   AS primera,
+                        MAX(fecha_autorizacion)   AS ultima
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+                    AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                    AND destino_establecimiento NOT IN (
+                        SELECT DISTINCT origen_establecimiento
+                          FROM sag_trazaragro_movimientos
+                         WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112)
+                           AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                    )
+               GROUP BY destino_establecimiento
+               ORDER BY cantidad_recibida DESC
+                  LIMIT 200",
+                [$pid, $pid]
+            );
+
+            // ─── 3. Productos con stock negativo ───
+            // (suma global del programa: recibido < entregado)
+            $rowsC = $db->fetchAll(
+                "SELECT producto, MAX(unidad) AS unidad,
+                        SUM(recibido) AS recibido, SUM(entregado) AS entregado,
+                        SUM(recibido) - SUM(entregado) AS stock
+                   FROM (
+                      SELECT objeto_trazable AS producto, unidad,
+                             SUM(cantidad) AS recibido, 0 AS entregado
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+                         AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                    GROUP BY objeto_trazable, unidad
+                      UNION ALL
+                      SELECT objeto_trazable AS producto, unidad,
+                             0 AS recibido, SUM(cantidad) AS entregado
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                         AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
+                    GROUP BY objeto_trazable, unidad
+                   ) AS u
+               GROUP BY producto
+                 HAVING stock < 0
+               ORDER BY stock ASC
+                  LIMIT 200",
+                [$pid, $pid]
+            );
+
+            // ─── 4. Posibles bodegas duplicadas ───
+            // Comparamos los primeros 30 caracteres del nombre (ignorando el CUE
+            // que viene como sufijo). Si hay 2+ filas con el mismo prefijo y
+            // CUE distinto, las marcamos como sospechosas.
+            $rowsD = $db->fetchAll(
+                "SELECT TRIM(SUBSTRING_INDEX(nombre, ';', 1))            AS nombre_corto,
+                        COUNT(DISTINCT nombre)                            AS variantes,
+                        GROUP_CONCAT(DISTINCT nombre SEPARATOR ' | ')     AS lista
+                   FROM (
+                      SELECT origen_establecimiento AS nombre FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
+                         AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                      UNION
+                      SELECT destino_establecimiento FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
+                         AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                   ) AS u
+               GROUP BY nombre_corto
+                 HAVING variantes > 1
+               ORDER BY variantes DESC
+                  LIMIT 100",
+                [$pid, $pid]
+            );
+
+            $this->json([
+                'bodegas_entregan_sin_recibir' => $rowsA,
+                'bodegas_reciben_sin_entregar' => $rowsB,
+                'productos_stock_negativo'     => $rowsC,
+                'posibles_duplicados_bodega'   => $rowsD,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('MovilizacionesOirsa::auditoria — ' . $e->getMessage());
+            $this->json(['error' => 'Error interno.'], 500);
         }
     }
 }

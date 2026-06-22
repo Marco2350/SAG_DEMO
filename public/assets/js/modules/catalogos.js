@@ -6,7 +6,7 @@
 $(function () {
 
     const DT_OPTS = {
-        language:   { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
+        language:   { url: (document.querySelector('meta[name="base-url"]')?.content || '') + '/public/assets/js/datatables/es-MX.json' },
         pageLength: 15,
         columnDefs: [{ targets: -1, orderable: false }],
     };
