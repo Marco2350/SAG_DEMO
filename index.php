@@ -334,6 +334,7 @@ $router->post('/presupuesto/api/lineas',         'PresupuestoController', 'apiLi
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
 $router->get('/entregas/diag',                       'EntregasController', 'diag');
+$router->get('/entregas/descubrirTiposMovimientos',  'EntregasController', 'descubrirTiposMovimientos');
 $router->get('/entregas/exportar',                   'EntregasController', 'exportar');
 $router->get('/entregas/acta',                       'EntregasController', 'acta');
 $router->post('/entregas/sincronizar',               'EntregasController', 'sincronizar');
@@ -352,6 +353,12 @@ $router->post('/inventarios/importarExcel',          'InventariosController', 'i
 $router->post('/inventarios/recibirLinea',           'InventariosController', 'recibirLinea');
 $router->post('/inventarios/kardex',                 'InventariosController', 'kardex');
 $router->post('/inventarios/stockPorBodega',         'InventariosController', 'stockPorBodega');
+$router->get ('/inventarios/recepcionesOirsa',       'InventariosController', 'recepcionesOirsa');
+
+// ── Movilizaciones OIRSA (reporte consolidado Recepciones + Entregas) ──
+$router->get('/movilizaciones',                      'MovilizacionesOirsaController', 'index');
+$router->get('/movilizaciones/listar',               'MovilizacionesOirsaController', 'listar');
+$router->get('/movilizaciones/resumen',              'MovilizacionesOirsaController', 'resumen');
 
 // ── Fortalecimiento de Programas (FPROG) ─────────
 $router->get( '/fortalecimiento',                        'FortalecimientoController', 'index');

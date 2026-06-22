@@ -287,7 +287,11 @@ class TrazaragroClient
         // Construir filtro OData
         $parts = [];
         $parts[] = "ActivityId eq {$actividadId}";
-        $parts[] = "MovementTypeId eq {$tipoMovId}";
+        // Si tipoMovId <= 0 → no filtramos por tipo de movimiento.
+        // Útil para diagnóstico (ver TODOS los tipos disponibles).
+        if ($tipoMovId > 0) {
+            $parts[] = "MovementTypeId eq {$tipoMovId}";
+        }
 
         if (!empty($filtros['authCode'])) {
             $code = strtolower(addslashes($filtros['authCode']));

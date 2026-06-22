@@ -191,6 +191,9 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
       <button class="inv-tab" data-tab="kardex">
         <i class="fas fa-list-ul"></i> Kardex
       </button>
+      <a class="inv-tab" href="<?= BASE_URL ?>/movilizaciones" style="text-decoration:none;" title="Abre el reporte consolidado de OIRSA en una vista propia">
+        <i class="fas fa-truck-arrow-right"></i> Recepciones OIRSA <i class="fas fa-arrow-up-right-from-square" style="font-size:.65rem;margin-left:4px;opacity:.6;"></i>
+      </a>
     </div>
     <?php if ($esAdmin): ?>
     <button class="btn-primario" id="btnNuevoCronograma" <?= (empty($proveedores) || empty($productos) || empty($bodegas)) ? 'disabled title="Configure primero proveedores, productos y bodegas"' : '' ?>>
@@ -401,6 +404,81 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
               <td style="font-size:.82rem;color:var(--texto-sec);"><?= htmlspecialchars($m['descripcion']) ?></td>
             </tr>
             <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TAB: Recepciones OIRSA ── -->
+  <div class="inv-panel" id="tab-recepciones-oirsa">
+    <!-- KPIs Recepciones OIRSA -->
+    <div class="row g-2 mb-3" id="recepKpis">
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#dbeafe;color:#1e40af;"><i class="fas fa-truck-arrow-right"></i></div>
+          <div><div class="kpi-val" id="recepKpiTotal">—</div><div class="kpi-lbl">Recepciones</div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#fef3c7;color:#9a3412;"><i class="fas fa-handshake"></i></div>
+          <div><div class="kpi-val" id="recepKpiProveedores">—</div><div class="kpi-lbl">Proveedores</div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#eef0f7;color:var(--primario);"><i class="fas fa-warehouse"></i></div>
+          <div><div class="kpi-val" id="recepKpiBodegas">—</div><div class="kpi-lbl">Bodegas destino</div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#d1fae5;color:#16a34a;"><i class="fas fa-boxes-stacked"></i></div>
+          <div><div class="kpi-val" id="recepKpiProductos">—</div><div class="kpi-lbl">Productos</div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#fed7aa;color:#9a3412;"><i class="fas fa-file-invoice"></i></div>
+          <div><div class="kpi-val" id="recepKpiManifiestos">—</div><div class="kpi-lbl">Manifiestos (GUIASA)</div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:#ede9fe;color:#7c3aed;"><i class="fas fa-cubes"></i></div>
+          <div><div class="kpi-val" id="recepKpiCantidad">—</div><div class="kpi-lbl">Total unidades</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listado de recepciones -->
+    <div class="card-box">
+      <div class="card-box-header">
+        <h6><i class="fas fa-list-ul"></i> Recepciones sincronizadas desde OIRSA Trazaragro</h6>
+        <span style="font-size:.78rem;color:var(--texto-sec);" id="recepListInfo">Cargando...</span>
+      </div>
+      <div style="padding:8px 14px;font-size:.78rem;color:var(--texto-sec);background:#f8fafc;border-bottom:1px solid var(--borde-suave);">
+        <i class="fas fa-circle-info" style="color:#1e40af;"></i>
+        Estos datos vienen directamente de OIRSA Trazaragro (tipo 113 — Recepción de insumos). Para sincronizar, andá al módulo <strong>Entregas de Incentivos</strong> y hacé clic en "Sincronizar con Trazaragro".
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="sag-table" id="tblRecepciones" style="min-width:1400px;">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Proveedor</th>
+              <th>Bodega destino</th>
+              <th>Producto / objeto trazable</th>
+              <th>GUIASA</th>
+              <th>Cód. trazabilidad</th>
+              <th style="text-align:right;">Cantidad</th>
+              <th>Unidad</th>
+              <th>Estado OIRSA</th>
+            </tr>
+          </thead>
+          <tbody id="recepTbody">
+            <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--texto-sec);">Cargando recepciones...</td></tr>
           </tbody>
         </table>
       </div>

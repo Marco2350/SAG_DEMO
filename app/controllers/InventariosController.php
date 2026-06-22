@@ -641,4 +641,95 @@ class InventariosController extends Controller
             ['id_movimiento'=>8, 'fecha'=>'2026-05-08 11:30:00', 'tipo'=>'salida',  'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01','cantidad'=>4,   'saldo'=>788, 'origen'=>'entrega',    'id_origen'=>1006, 'descripcion'=>'Entrega ENT-1006 (Manuel J. Ramos)'],
         ];
     }
+
+    // ════════════════════════════════════════════════════════════
+    //  RECEPCIONES OIRSA  (tipo_movimiento_id = 113)
+    //  Tab adicional dentro de /inventarios. Lee de sag_trazaragro_movimientos
+    //  los movimientos de tipo Recepción (Proveedor → Bodega) ya sincronizados
+    //  por el módulo Entregas. Solo lectura — el sync se hace desde Entregas.
+    //
+    //  Endpoint: GET /inventarios/recepcionesOirsa?limit=200
+    // ════════════════════════════════════════════════════════════
+    public function recepcionesOirsa(): void
+    {
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+
+            // Si la tabla no existe (programa que aún no usa OIRSA), devolver vacío
+            // sin error visible.
+            if (!$db->tablaExiste('sag_trazaragro_movimientos')) {
+                $this->success('OK', [
+                    'kpis'  => $this->kpisRecepcionesVacios(),
+                    'data'  => [],
+                    'total' => 0,
+                ]);
+                return;
+            }
+
+            $limit = max(1, min(2000, (int)$this->getQuery('limit', 500)));
+
+            // KPIs agregados (una sola query, escalable)
+            $rowK = $db->fetchOne(
+                "SELECT
+                    COUNT(*)                                         AS total,
+                    COALESCE(SUM(cantidad), 0)                       AS cantidad_total,
+                    COUNT(DISTINCT NULLIF(origen_establecimiento,'')) AS proveedores_unicos,
+                    COUNT(DISTINCT NULLIF(destino_establecimiento,'')) AS bodegas_unicas,
+                    COUNT(DISTINCT NULLIF(objeto_trazable,''))        AS productos_unicos,
+                    COUNT(DISTINCT NULLIF(guiasa_no,''))              AS manifiestos_unicos,
+                    MIN(fecha_autorizacion)                          AS primera_fecha,
+                    MAX(fecha_autorizacion)                          AS ultima_fecha
+                 FROM sag_trazaragro_movimientos
+                 WHERE id_proyecto = ? AND tipo_movimiento_id = 113",
+                [$pid]
+            );
+
+            $kpis = [
+                'total'              => (int)($rowK['total'] ?? 0),
+                'cantidad_total'     => (float)($rowK['cantidad_total'] ?? 0),
+                'proveedores_unicos' => (int)($rowK['proveedores_unicos'] ?? 0),
+                'bodegas_unicas'     => (int)($rowK['bodegas_unicas'] ?? 0),
+                'productos_unicos'   => (int)($rowK['productos_unicos'] ?? 0),
+                'manifiestos_unicos' => (int)($rowK['manifiestos_unicos'] ?? 0),
+                'primera_fecha'      => (string)($rowK['primera_fecha'] ?? ''),
+                'ultima_fecha'       => (string)($rowK['ultima_fecha'] ?? ''),
+            ];
+
+            // Listado paginado (las más recientes primero)
+            $rows = $db->fetchAll(
+                "SELECT movement_id, rubro, objeto_trazable, codigo_trazabilidad,
+                        guiasa_no, codigo_autorizacion,
+                        fecha_autorizacion,
+                        origen_persona, origen_establecimiento, origen_departamento, origen_municipio,
+                        destino_establecimiento, destino_departamento, destino_municipio,
+                        cantidad, unidad, transportista,
+                        autorizado_por, status_oirsa
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+               ORDER BY fecha_autorizacion DESC, movement_id DESC
+                  LIMIT $limit",
+                [$pid]
+            );
+
+            $this->success('OK', [
+                'kpis'  => $kpis,
+                'data'  => $rows,
+                'limit' => $limit,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('recepcionesOirsa EX: ' . $e->getMessage());
+            $this->error('Error al cargar recepciones OIRSA.');
+        }
+    }
+
+    private function kpisRecepcionesVacios(): array
+    {
+        return [
+            'total' => 0, 'cantidad_total' => 0,
+            'proveedores_unicos' => 0, 'bodegas_unicas' => 0,
+            'productos_unicos' => 0, 'manifiestos_unicos' => 0,
+            'primera_fecha' => '', 'ultima_fecha' => '',
+        ];
+    }
 }

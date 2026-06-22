@@ -100,8 +100,9 @@ function navGroupOpen(array $segments): string {
   </a>
 
   <!-- Entregas e Inventarios (solo PIPs) -->
-  <div class="nav-group <?= navGroupOpen(['/entregas', '/inventarios']) ?>" data-nav-group="entregas-inventarios">
-    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/entregas', '/inventarios']) ? 'true' : 'false' ?>">
+  <?php $eiRutas = ['/entregas', '/inventarios', '/movilizaciones']; ?>
+  <div class="nav-group <?= navGroupOpen($eiRutas) ?>" data-nav-group="entregas-inventarios">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen($eiRutas) ? 'true' : 'false' ?>">
       <span>Entregas e Inventarios</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
     </button>
@@ -117,6 +118,10 @@ function navGroupOpen(array $segments): string {
       <a class="nav-item-s <?= navActive('/inventarios') ?>" href="<?= BASE_URL ?>/inventarios">
         <i class="fas fa-warehouse"></i>
         <span class="nav-label">Inventarios de Incentivos</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/movilizaciones') ?>" href="<?= BASE_URL ?>/movilizaciones">
+        <i class="fas fa-arrows-turn-to-dots"></i>
+        <span class="nav-label">Movilizaciones OIRSA</span>
       </a>
     </div>
   </div>

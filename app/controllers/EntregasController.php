@@ -70,6 +70,7 @@ class EntregasController extends Controller
                         estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
                  FROM sag_trazaragro_movimientos
                  WHERE id_proyecto = ?
+                   AND tipo_movimiento_id = 111  -- solo Entregas (Bodega → Productor)
                  ORDER BY fecha_autorizacion DESC, movement_id DESC",
                 [$pid]
             );
@@ -85,24 +86,31 @@ class EntregasController extends Controller
             $db  = Database::programa();
             $pid = Database::proyectoId();
             // Aislamiento: los valores DISTINCT salen sólo de los movimientos del PIP activo.
+            // Filtro tipo_movimiento_id=111: los catálogos del módulo Entregas
+            // solo deben mostrar valores presentes en Entregas (Bodega→Productor),
+            // no en Recepciones (Proveedor→Bodega, que se muestran en Inventario OIRSA).
             $rubros = $db->fetchAll(
                 "SELECT DISTINCT rubro FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ? AND rubro IS NOT NULL AND rubro <> '' ORDER BY rubro",
+                 WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                   AND rubro IS NOT NULL AND rubro <> '' ORDER BY rubro",
                 [$pid]
             );
             $tipos = $db->fetchAll(
                 "SELECT DISTINCT tipo_movimiento FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ? AND tipo_movimiento IS NOT NULL AND tipo_movimiento <> '' ORDER BY tipo_movimiento",
+                 WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                   AND tipo_movimiento IS NOT NULL AND tipo_movimiento <> '' ORDER BY tipo_movimiento",
                 [$pid]
             );
             $deptos = $db->fetchAll(
                 "SELECT DISTINCT destino_departamento AS depto FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ? AND destino_departamento IS NOT NULL AND destino_departamento <> '' ORDER BY depto",
+                 WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                   AND destino_departamento IS NOT NULL AND destino_departamento <> '' ORDER BY depto",
                 [$pid]
             );
             $objetos = $db->fetchAll(
                 "SELECT DISTINCT objeto_trazable FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ? AND objeto_trazable IS NOT NULL AND objeto_trazable <> '' ORDER BY objeto_trazable",
+                 WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                   AND objeto_trazable IS NOT NULL AND objeto_trazable <> '' ORDER BY objeto_trazable",
                 [$pid]
             );
             return [
@@ -540,9 +548,14 @@ class EntregasController extends Controller
             }
 
             $fetchArgs = [
-                'top'   => $top,
-                'desde' => $desde,
-                'hasta' => $hasta,
+                'top'       => $top,
+                'desde'     => $desde,
+                'hasta'     => $hasta,
+                // tipoMovId = 0 → sin filtro de tipo. Trae AMBOS tipos:
+                //   111 = Entrega de insumos (Bodega → Productor)  → módulo Entregas
+                //   113 = Recepción de insumos (Proveedor → Bodega) → módulo Inventario OIRSA
+                // Ambos se guardan en la misma tabla con su tipo_movimiento_id.
+                'tipoMovId' => 0,
             ];
             // Orden de precedencia: lista de IDs > ID único > texto
             if (is_array($rubroIds) && !empty($rubroIds)) {
@@ -675,6 +688,91 @@ class EntregasController extends Controller
         } catch (\Throwable $e) {
             error_log('descubrirRubrosOirsa EX: ' . $e->getMessage());
             $this->error('Error interno descubriendo rubros OIRSA.');
+        }
+    }
+
+    /**
+     * Diagnóstico: lista los tipos de movimiento (MovementTypeId / MovementTypeName)
+     * que existen en OIRSA para el rubro del programa activo.
+     *
+     * Útil para descubrir el ID correcto de "Proveedor → Bodega" (entradas a
+     * bodega SAG), que se usará luego en el módulo de Inventarios OIRSA.
+     *
+     * Endpoint: GET /entregas/descubrirTiposMovimientos?muestra=2000
+     * Solo administradores. No persiste nada, solo lee y agrupa.
+     */
+    public function descubrirTiposMovimientos(): void
+    {
+        try {
+            $this->requireRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
+
+            if (!class_exists('TrazaragroClient')) {
+                $this->error('core/TrazaragroClient.php no está desplegado.');
+                return;
+            }
+            $cli  = new TrazaragroClient();
+            $ping = $cli->ping();
+            if (!$ping['ok']) {
+                $this->error('No se pudo contactar a Trazaragro: ' . ($ping['msg'] ?? 'sin respuesta'));
+                return;
+            }
+
+            $muestra = max(100, min(10000, (int)$this->getQuery('muestra', 2000)));
+
+            // Filtrar por rubro del programa activo (si está definido), para
+            // que el descubrimiento sea relevante al PIP. Si el programa no
+            // tiene rubro configurado, traemos cualquier rubro.
+            $progId   = $_SESSION['programa']['id'] ?? '';
+            $rubroId  = (int)(PROGRAMAS[$progId]['trazaragro_rubro_id'] ?? 0);
+            $rubroIds = PROGRAMAS[$progId]['trazaragro_rubro_ids'] ?? null;
+
+            $fetchArgs = [
+                'top'       => $muestra,
+                'tipoMovId' => 0, // 0 = sin filtro de tipo (lo nuevo, ver cliente)
+            ];
+            if (is_array($rubroIds) && !empty($rubroIds)) {
+                $fetchArgs['rubroIds'] = $rubroIds;
+            } elseif ($rubroId > 0) {
+                $fetchArgs['rubroId'] = $rubroId;
+            }
+
+            $movs = $cli->fetchEntregas($fetchArgs);
+
+            // Agrupar por TipoMovimientoId + Nombre, contar ocurrencias
+            $tipos = [];
+            foreach ($movs as $m) {
+                $id = (int)($m['tipo_movimiento_id'] ?? 0);
+                $nm = (string)($m['tipo_movimiento']    ?? '');
+                $k  = $id . '|' . $nm;
+                if (!isset($tipos[$k])) {
+                    $tipos[$k] = [
+                        'id'     => $id,
+                        'nombre' => $nm,
+                        'conteo' => 0,
+                        'ejemplo_origen'  => $m['origen_establecimiento'] ?? '',
+                        'ejemplo_destino' => $m['destino_establecimiento'] ?? '',
+                    ];
+                }
+                $tipos[$k]['conteo']++;
+            }
+            uasort($tipos, fn($a, $b) => $b['conteo'] <=> $a['conteo']);
+
+            $this->logAction('DESCUBRIR_TIPOS_MOV_OIRSA', 'entregas',
+                'programa=' . $progId . ' · muestra=' . $muestra . ' · distintos=' . count($tipos));
+
+            $this->success('Tipos de movimiento OIRSA detectados en la muestra.', [
+                'ambiente'         => stripos(TRAZARAGRO['base_url'], 'pruebas') === false ? 'producción' : 'pruebas',
+                'programa'         => $progId,
+                'rubro_id'         => $rubroId,
+                'rubro_ids'        => $rubroIds,
+                'muestra_solicitada' => $muestra,
+                'muestra_obtenida'   => count($movs),
+                'tipos'            => array_values($tipos),
+                'nota'             => 'El que dice "Bodega → Productor" (o equivalente, ID 111 en producción) es el que YA se sincroniza. Buscá el que sugiere "Proveedor → Bodega" o "Entrada" o "Recepción".',
+            ]);
+        } catch (\Throwable $e) {
+            error_log('descubrirTiposMovimientos EX: ' . $e->getMessage());
+            $this->error('Error interno descubriendo tipos de movimiento OIRSA.');
         }
     }
 
@@ -869,11 +967,14 @@ class EntregasController extends Controller
         }
 
         // Aislamiento: el CSV exporta SOLO movimientos del PIP activo
+        // y SOLO entregas a productor (tipo 111). Las recepciones (tipo 113)
+        // se exportan desde el módulo Inventario OIRSA.
         $pid  = Database::proyectoId();
         $rows = $db->fetchAll(
             "SELECT *
              FROM sag_trazaragro_movimientos
              WHERE id_proyecto = ?
+               AND tipo_movimiento_id = 111
              ORDER BY fecha_autorizacion DESC, movement_id DESC",
             [$pid]
         );
@@ -964,9 +1065,11 @@ class EntregasController extends Controller
         }
 
         // Aislamiento por proyecto: el acta sólo agrega entregas del PIP activo
+        // y SOLO entregas a productor (tipo 111), no recepciones.
         $movs = $db->fetchAll(
             "SELECT * FROM sag_trazaragro_movimientos
              WHERE destino_dni = ? AND id_proyecto = ?
+               AND tipo_movimiento_id = 111
              ORDER BY fecha_autorizacion ASC, guiasa_no ASC",
             [$dni, $pid]
         );

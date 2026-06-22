@@ -13,8 +13,102 @@
       document.querySelectorAll('.inv-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+
+      // Lazy-load del tab Recepciones OIRSA (solo la primera vez)
+      if (btn.dataset.tab === 'recepciones-oirsa' && !window._recepLoaded) {
+        loadRecepcionesOirsa();
+      }
     });
   });
+
+  // ── Tab Recepciones OIRSA ──────────────────────────
+  function loadRecepcionesOirsa() {
+    window._recepLoaded = true;
+    SAG.ajax({
+      url: '/inventarios/recepcionesOirsa',
+      method: 'GET',
+      data: { limit: 500 },
+      success: function (res) {
+        if (!res || !res.success || !res.data) {
+          document.getElementById('recepTbody').innerHTML =
+            '<tr><td colspan="9" style="text-align:center;padding:30px;color:#dc2626;">Error al cargar recepciones.</td></tr>';
+          return;
+        }
+        renderRecepcionesOirsa(res.data);
+      },
+      error: function () {
+        document.getElementById('recepTbody').innerHTML =
+          '<tr><td colspan="9" style="text-align:center;padding:30px;color:#dc2626;">Error de red al cargar recepciones.</td></tr>';
+      },
+    });
+  }
+
+  function renderRecepcionesOirsa(d) {
+    const k = d.kpis || {};
+    const fmt = (n) => (new Intl.NumberFormat('es-HN')).format(n || 0);
+    const escapar = (s) => {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    };
+    const limpiarEstab = (s) => {
+      // Quita el sufijo "; 3400801167401" (CUE) que OIRSA agrega al final
+      return String(s || '').replace(/;\s*\d+\s*$/, '').trim() || '—';
+    };
+
+    // KPIs
+    document.getElementById('recepKpiTotal').textContent       = fmt(k.total);
+    document.getElementById('recepKpiProveedores').textContent = fmt(k.proveedores_unicos);
+    document.getElementById('recepKpiBodegas').textContent     = fmt(k.bodegas_unicas);
+    document.getElementById('recepKpiProductos').textContent   = fmt(k.productos_unicos);
+    document.getElementById('recepKpiManifiestos').textContent = fmt(k.manifiestos_unicos);
+    document.getElementById('recepKpiCantidad').textContent    = fmt(Math.round(k.cantidad_total || 0));
+
+    // Listado
+    const rows = d.data || [];
+    const info = document.getElementById('recepListInfo');
+    if (rows.length === 0) {
+      info.textContent = 'Sin recepciones registradas';
+      document.getElementById('recepTbody').innerHTML =
+        '<tr><td colspan="9" style="text-align:center;padding:60px 20px;color:var(--texto-sec);">'
+        + '<i class="fas fa-truck-arrow-right" style="font-size:2rem;display:block;margin-bottom:10px;color:#bbb;"></i>'
+        + 'Sin recepciones sincronizadas desde OIRSA todavía.<br>'
+        + '<small>Andá al módulo <strong>Entregas de Incentivos</strong> y hacé clic en "Sincronizar con Trazaragro" para traer las recepciones.</small>'
+        + '</td></tr>';
+      return;
+    }
+
+    info.textContent = fmt(rows.length) + (rows.length >= (d.limit || 500) ? ' (mostrando primeras ' + (d.limit || 500) + ')' : '') + ' recepciones';
+
+    let html = '';
+    rows.forEach(r => {
+      const fecha = r.fecha_autorizacion ? String(r.fecha_autorizacion).substring(0, 10) : '';
+      const proveedor = escapar(limpiarEstab(r.origen_establecimiento)) +
+        (r.origen_departamento ? '<br><small style="color:var(--texto-sec);">' + escapar(r.origen_departamento) + '</small>' : '');
+      const bodega = escapar(limpiarEstab(r.destino_establecimiento)) +
+        (r.destino_departamento ? '<br><small style="color:var(--texto-sec);">' + escapar(r.destino_departamento)
+          + (r.destino_municipio ? ' / ' + escapar(r.destino_municipio) : '') + '</small>' : '');
+      const cod = r.codigo_trazabilidad
+        ? '<strong style="color:#0f766e;">' + escapar(r.codigo_trazabilidad) + '</strong>'
+        : '<em style="color:#bbb;">—</em>';
+      const estado = r.status_oirsa
+        ? '<span class="lin-badge lb-recibida">' + escapar(r.status_oirsa) + '</span>'
+        : '—';
+
+      html += '<tr>'
+        + '<td style="white-space:nowrap;color:var(--texto-sec);font-size:.82rem;">' + escapar(fecha) + '</td>'
+        + '<td style="font-size:.85rem;">' + proveedor + '</td>'
+        + '<td style="font-size:.85rem;">' + bodega + '</td>'
+        + '<td><strong>' + escapar(r.objeto_trazable) + '</strong></td>'
+        + '<td style="font-size:.82rem;">' + escapar(r.guiasa_no) + '</td>'
+        + '<td>' + cod + '</td>'
+        + '<td style="text-align:right;font-weight:700;color:#16a34a;">+' + fmt(Math.round(r.cantidad || 0)) + '</td>'
+        + '<td style="font-size:.82rem;color:var(--texto-sec);">' + escapar(r.unidad) + '</td>'
+        + '<td>' + estado + '</td>'
+        + '</tr>';
+    });
+    document.getElementById('recepTbody').innerHTML = html;
+  }
 
   // ── Toggle cronograma (acordeón) ───────────────────
   window.toggleCronograma = function (id) {
