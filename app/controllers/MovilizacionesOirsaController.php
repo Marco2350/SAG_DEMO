@@ -364,106 +364,127 @@ class MovilizacionesOirsaController extends Controller
                     //   • tipo 111 (Entrega):    la bodega es origen  → SALIDA
                     //   • tipo 112 (Traslado):   la bodega destino entra, la origen sale
                     $rows = $db->fetchAll(
-                        "SELECT nombre, MAX(departamento) AS departamento,
+                        "SELECT bodega_key, MAX(cue) AS cue, MAX(nombre) AS nombre,
+                                MAX(departamento) AS departamento,
                                 SUM(recibido)  AS recibido,  SUM(entregado) AS entregado,
                                 SUM(num_recep) AS num_recep, SUM(num_ent)   AS num_ent
                            FROM (
                               -- Entradas por recepción (Proveedor → Bodega)
-                              SELECT destino_establecimiento AS nombre,
+                              SELECT COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                              CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega_key,
+                                     MAX(NULLIF(TRIM(destino_cue), '')) AS cue,
+                                     MAX(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))) AS nombre,
                                      MAX(destino_departamento) AS departamento,
                                      SUM(cantidad) AS recibido, 0 AS entregado,
                                      COUNT(*) AS num_recep, 0 AS num_ent
                                 FROM sag_trazaragro_movimientos
                                WHERE id_proyecto = ? AND tipo_movimiento_id = 113
                                  AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
-                            GROUP BY destino_establecimiento
+                            GROUP BY bodega_key
                               UNION ALL
                               -- Salidas por entrega al productor
-                              SELECT origen_establecimiento AS nombre,
+                              SELECT COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                              CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega_key,
+                                     MAX(NULLIF(TRIM(origen_cue), '')) AS cue,
+                                     MAX(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))) AS nombre,
                                      MAX(origen_departamento) AS departamento,
                                      0 AS recibido, SUM(cantidad) AS entregado,
                                      0 AS num_recep, COUNT(*) AS num_ent
                                 FROM sag_trazaragro_movimientos
                                WHERE id_proyecto = ? AND tipo_movimiento_id = 111
                                  AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
-                            GROUP BY origen_establecimiento
+                            GROUP BY bodega_key
                               UNION ALL
                               -- Traslado (Bodega → Bodega): la bodega DESTINO recibe
-                              SELECT destino_establecimiento AS nombre,
+                              SELECT COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                              CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega_key,
+                                     MAX(NULLIF(TRIM(destino_cue), '')) AS cue,
+                                     MAX(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))) AS nombre,
                                      MAX(destino_departamento) AS departamento,
                                      SUM(cantidad) AS recibido, 0 AS entregado,
                                      COUNT(*) AS num_recep, 0 AS num_ent
                                 FROM sag_trazaragro_movimientos
                                WHERE id_proyecto = ? AND tipo_movimiento_id = 112
                                  AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
-                            GROUP BY destino_establecimiento
+                            GROUP BY bodega_key
                               UNION ALL
                               -- Traslado (Bodega → Bodega): la bodega ORIGEN entrega
-                              SELECT origen_establecimiento AS nombre,
+                              SELECT COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                              CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega_key,
+                                     MAX(NULLIF(TRIM(origen_cue), '')) AS cue,
+                                     MAX(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))) AS nombre,
                                      MAX(origen_departamento) AS departamento,
                                      0 AS recibido, SUM(cantidad) AS entregado,
                                      0 AS num_recep, COUNT(*) AS num_ent
                                 FROM sag_trazaragro_movimientos
                                WHERE id_proyecto = ? AND tipo_movimiento_id = 112
                                  AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
-                            GROUP BY origen_establecimiento
+                            GROUP BY bodega_key
                            ) AS u
-                       GROUP BY nombre
+                       GROUP BY bodega_key
                        ORDER BY recibido DESC
                           LIMIT 200",
                         [$pid, $pid, $pid, $pid]
                     );
 
                     // Por cada bodega, traemos el detalle de productos en una sola query
-                    // (un solo IN con todos los nombres de bodega de la página).
+                    // (un solo IN con las claves CUE de las bodegas de la página).
                     // Cada producto agrupa recibido (cuando bodega es destino, tipo 113)
                     // y entregado (cuando bodega es origen, tipo 111).
-                    $bodegaNames = array_column($rows, 'nombre');
+                    $bodegaKeys = array_column($rows, 'bodega_key');
                     $prodByBodega = [];
-                    if (!empty($bodegaNames)) {
-                        $place = implode(',', array_fill(0, count($bodegaNames), '?'));
+                    if (!empty($bodegaKeys)) {
+                        $place = implode(',', array_fill(0, count($bodegaKeys), '?'));
                         // Cuatro UNIONs: recepciones (113), entregas (111), traslado-destino (112), traslado-origen (112)
                         $params = array_merge(
-                            [$pid], $bodegaNames, [$pid], $bodegaNames,
-                            [$pid], $bodegaNames, [$pid], $bodegaNames
+                            [$pid], $bodegaKeys, [$pid], $bodegaKeys,
+                            [$pid], $bodegaKeys, [$pid], $bodegaKeys
                         );
                         $rowsProd = $db->fetchAll(
                             "SELECT bodega, producto, MAX(unidad) AS unidad,
                                     SUM(recibido) AS recibido, SUM(entregado) AS entregado
                                FROM (
-                                  SELECT destino_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                  SELECT COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                                  CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega,
+                                         objeto_trazable AS producto, unidad,
                                          SUM(cantidad) AS recibido, 0 AS entregado
                                     FROM sag_trazaragro_movimientos
                                    WHERE id_proyecto = ? AND tipo_movimiento_id = 113
-                                     AND destino_establecimiento IN ($place)
+                                     AND COALESCE(NULLIF(TRIM(destino_cue), ''), CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) IN ($place)
                                      AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
-                                GROUP BY destino_establecimiento, objeto_trazable, unidad
+                                GROUP BY bodega, objeto_trazable, unidad
                                   UNION ALL
-                                  SELECT origen_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                  SELECT COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                                  CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega,
+                                         objeto_trazable AS producto, unidad,
                                          0 AS recibido, SUM(cantidad) AS entregado
                                     FROM sag_trazaragro_movimientos
                                    WHERE id_proyecto = ? AND tipo_movimiento_id = 111
-                                     AND origen_establecimiento IN ($place)
+                                     AND COALESCE(NULLIF(TRIM(origen_cue), ''), CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) IN ($place)
                                      AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
-                                GROUP BY origen_establecimiento, objeto_trazable, unidad
+                                GROUP BY bodega, objeto_trazable, unidad
                                   UNION ALL
                                   -- Traslado (112): destino recibe
-                                  SELECT destino_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                  SELECT COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                                  CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega,
+                                         objeto_trazable AS producto, unidad,
                                          SUM(cantidad) AS recibido, 0 AS entregado
                                     FROM sag_trazaragro_movimientos
                                    WHERE id_proyecto = ? AND tipo_movimiento_id = 112
-                                     AND destino_establecimiento IN ($place)
+                                     AND COALESCE(NULLIF(TRIM(destino_cue), ''), CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) IN ($place)
                                      AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
-                                GROUP BY destino_establecimiento, objeto_trazable, unidad
+                                GROUP BY bodega, objeto_trazable, unidad
                                   UNION ALL
                                   -- Traslado (112): origen entrega
-                                  SELECT origen_establecimiento AS bodega, objeto_trazable AS producto, unidad,
+                                  SELECT COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                                  CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega,
+                                         objeto_trazable AS producto, unidad,
                                          0 AS recibido, SUM(cantidad) AS entregado
                                     FROM sag_trazaragro_movimientos
                                    WHERE id_proyecto = ? AND tipo_movimiento_id = 112
-                                     AND origen_establecimiento IN ($place)
+                                     AND COALESCE(NULLIF(TRIM(origen_cue), ''), CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) IN ($place)
                                      AND objeto_trazable IS NOT NULL AND objeto_trazable <> ''
-                                GROUP BY origen_establecimiento, objeto_trazable, unidad
+                                GROUP BY bodega, objeto_trazable, unidad
                                ) AS u
                            GROUP BY bodega, producto
                            ORDER BY bodega, recibido DESC",
@@ -483,7 +504,7 @@ class MovilizacionesOirsaController extends Controller
 
                     foreach ($rows as &$r) {
                         $r['stock_estimado']  = (float)$r['recibido'] - (float)$r['entregado'];
-                        $r['productos']       = $prodByBodega[$r['nombre']] ?? [];
+                        $r['productos']       = $prodByBodega[$r['bodega_key']] ?? [];
                         $r['productos_total'] = count($r['productos']);
                     }
                     unset($r);
@@ -525,9 +546,11 @@ class MovilizacionesOirsaController extends Controller
             }
 
             // ─── 1. Bodegas con entregas sin recepciones ───
-            // (origen en tipo 111 que nunca aparece como destino en 113 ni 112)
+            // Conciliar por CUE; usar nombre normalizado solo cuando OIRSA no
+            // entregue CUE. Comparar el texto crudo generaba falsos negativos.
             $rowsA = $db->fetchAll(
-                "SELECT origen_establecimiento   AS bodega,
+                "SELECT MAX(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))) AS bodega,
+                        MAX(NULLIF(TRIM(origen_cue), '')) AS cue,
                         MAX(origen_departamento) AS departamento,
                         COUNT(*)                 AS num_entregas,
                         COALESCE(SUM(cantidad),0) AS cantidad_entregada,
@@ -536,13 +559,16 @@ class MovilizacionesOirsaController extends Controller
                    FROM sag_trazaragro_movimientos
                   WHERE id_proyecto = ? AND tipo_movimiento_id = 111
                     AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
-                    AND origen_establecimiento NOT IN (
-                        SELECT DISTINCT destino_establecimiento
+                    AND COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                 CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) NOT IN (
+                        SELECT DISTINCT COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                                CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1)))))
                           FROM sag_trazaragro_movimientos
                          WHERE id_proyecto = ? AND tipo_movimiento_id IN (112, 113)
                            AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
                     )
-               GROUP BY origen_establecimiento
+               GROUP BY COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                 CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1)))))
                ORDER BY cantidad_entregada DESC
                   LIMIT 200",
                 [$pid, $pid]
@@ -550,7 +576,8 @@ class MovilizacionesOirsaController extends Controller
 
             // ─── 2. Bodegas con recepciones sin entregas (stock estancado) ───
             $rowsB = $db->fetchAll(
-                "SELECT destino_establecimiento   AS bodega,
+                "SELECT MAX(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))) AS bodega,
+                        MAX(NULLIF(TRIM(destino_cue), '')) AS cue,
                         MAX(destino_departamento) AS departamento,
                         COUNT(*)                  AS num_recepciones,
                         COALESCE(SUM(cantidad),0) AS cantidad_recibida,
@@ -559,13 +586,16 @@ class MovilizacionesOirsaController extends Controller
                    FROM sag_trazaragro_movimientos
                   WHERE id_proyecto = ? AND tipo_movimiento_id = 113
                     AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
-                    AND destino_establecimiento NOT IN (
-                        SELECT DISTINCT origen_establecimiento
+                    AND COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                 CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) NOT IN (
+                        SELECT DISTINCT COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                                CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1)))))
                           FROM sag_trazaragro_movimientos
                          WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112)
                            AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
                     )
-               GROUP BY destino_establecimiento
+               GROUP BY COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                 CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1)))))
                ORDER BY cantidad_recibida DESC
                   LIMIT 200",
                 [$pid, $pid]

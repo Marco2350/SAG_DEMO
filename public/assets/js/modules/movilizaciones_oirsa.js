@@ -28,7 +28,9 @@ $(function () {
         SAG.ajax({
             url: '/entregas/sincronizarTrazaragro',
             method: 'POST',
-            data: { tipos_movimiento: '111,112,113' },
+            // Inventario requiere el historial completo: una salida reciente
+            // puede corresponder a una entrada de años anteriores.
+            data: { tipos_movimiento: '111,112,113', desde: '2000-01-01' },
             success: function (res) {
                 if (!res || !res.success) {
                     SAG.toast((res && res.message) || 'No se pudo sincronizar con OIRSA.', 'error');
@@ -212,6 +214,7 @@ $(function () {
                 + '<div style="flex:1;min-width:0;">'
                 + '<strong style="font-size:.92rem;display:block;">' + escapar(limpiarEstab(b.nombre)) + '</strong>'
                 + (b.departamento ? '<div style="font-size:.7rem;color:#888;">' + escapar(b.departamento) + '</div>' : '')
+                + (b.cue ? '<div style="font-size:.65rem;color:#94a3b8;">CUE: ' + escapar(b.cue) + '</div>' : '')
                 + '</div></div>'
                 + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px dashed #e5e7eb;padding-top:10px;">'
                 + '<div><div style="font-size:.65rem;color:#888;text-transform:uppercase;">Recibido</div><strong style="color:#1e40af;font-size:1.1rem;">+' + nf(Math.round(b.recibido)) + '</strong></div>'

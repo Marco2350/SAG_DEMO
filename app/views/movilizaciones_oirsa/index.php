@@ -67,7 +67,7 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total'] + $kpis['tras_tot
       <button type="button" class="btn btn-sm btn-primary" id="btnSyncMovilizaciones">
         <i class="fas fa-rotate"></i> Actualizar sincronización
       </button>
-      <span style="font-size:.78rem;color:#666;">Actualiza recepciones, traslados y entregas desde OIRSA.</span>
+      <span style="font-size:.78rem;color:#666;">Actualiza el historial completo de recepciones, traslados y entregas desde OIRSA.</span>
     </div>
   </div>
 

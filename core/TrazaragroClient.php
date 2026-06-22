@@ -496,11 +496,18 @@ class TrazaragroClient
         // Destino
         $destDesc     = (string)$this->pick($r, ['DestinyEndpointDescription', 'Descripción del punto final del destino']);
         $destCode     = (string)$this->pick($r, ['DestinyEndpointCode',        'Código de punto final de destino', 'Código de DestinyEndpoint']);
+        [, $destCodeFromDesc] = $this->splitNombreDni($destDesc);
+        if (trim($destCode) === '') {
+            $destCode = $destCodeFromDesc;
+        }
         $destLoc1     = (string)$this->pick($r, ['DestinyLocation1', 'DestinoUbicación1']);
         $destLoc2     = (string)$this->pick($r, ['DestinyLocation2', 'DestinoUbicación2']);
         // Origen
         $srcCp        = (string)$this->pick($r, ['SourceEndpointCounterpart', 'FuenteEndpointContraparte']);
         $srcCode      = (string)$this->pick($r, ['SourceEndpointCode',        'Código de punto final de origen']);
+        if (trim($srcCode) === '') {
+            $srcCode = $bodegaCodigo;
+        }
         $srcLoc1      = (string)$this->pick($r, ['SourceLocation1', 'FuenteUbicación1', 'Ubicación de origen1', 'Ubicación de origen 1']);
         $srcLoc2      = (string)$this->pick($r, ['SourceLocation2', 'FuenteUbicación2', 'Ubicación de origen 2']);
 
