@@ -70,8 +70,7 @@ class EntregasController extends Controller
                         estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
                  FROM sag_trazaragro_movimientos
                  WHERE id_proyecto = ?
-                 ORDER BY fecha_autorizacion DESC, movement_id DESC
-                 LIMIT 1000",
+                 ORDER BY fecha_autorizacion DESC, movement_id DESC",
                 [$pid]
             );
         } catch (\Throwable $e) {
