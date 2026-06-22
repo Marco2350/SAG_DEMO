@@ -43,25 +43,25 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/fortalecimien
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= $resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-list-check" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#f5a623;">
-        <div class="ms-val" style="color:#f5a623;"><?= $resumen['planificado'] ?></div>
+        <div class="ms-val" style="color:#f5a623;" data-stat="planificado"><?= $resumen['planificado'] ?></div>
         <div class="ms-lbl"><i class="fas fa-clock" style="color:#f5a623;margin-right:4px;"></i>Planificadas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= $resumen['en_ejecucion'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="en_ejecucion"><?= $resumen['en_ejecucion'] ?></div>
         <div class="ms-lbl"><i class="fas fa-spinner" style="color:#3b82f6;margin-right:4px;"></i>En Ejecución</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= $resumen['completado'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="completado"><?= $resumen['completado'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Completadas</div>
       </div>
     </div>

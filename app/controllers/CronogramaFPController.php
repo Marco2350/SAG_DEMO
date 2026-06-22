@@ -102,7 +102,7 @@ class CronogramaFPController extends Controller
                     'estado'       => htmlspecialchars((string)$a['estado'], ENT_QUOTES),
                 ];
             }, $rows);
-            $this->json(['data' => $data]);
+            $this->json(['data' => $data, 'resumen' => $this->model->getResumen()]);
         } catch (\Throwable $e) {
             error_log('CronogramaFPController::listar — ' . $e->getMessage());
             $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);

@@ -126,7 +126,7 @@ class IndicadoresController extends Controller
                 ];
             }, $rows);
 
-            $this->json(['data' => $data]);
+            $this->json(['data' => $data, 'resumen' => $this->model->getResumen()]);
         } catch (\Throwable $e) {
             error_log('IndicadoresController::listar — ' . $e->getMessage());
             $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);

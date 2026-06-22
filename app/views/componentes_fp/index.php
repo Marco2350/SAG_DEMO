@@ -28,25 +28,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= (int)$resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= (int)$resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-layer-group" style="color:var(--primario);margin-right:4px;"></i>Componentes</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= (int)$resumen['en_ejecucion'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="en_ejecucion"><?= (int)$resumen['en_ejecucion'] ?></div>
         <div class="ms-lbl"><i class="fas fa-spinner" style="color:#3b82f6;margin-right:4px;"></i>En Ejecución</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int)$resumen['completados'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="completados"><?= (int)$resumen['completados'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Completados</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#f59e0b;">
-        <div class="ms-val" style="color:#f59e0b;"><?= number_format((float)$resumen['pct_ejecucion'], 1) ?>%</div>
+        <div class="ms-val" style="color:#f59e0b;" data-stat="pct_ejecucion" data-stat-fmt="pct1"><?= number_format((float)$resumen['pct_ejecucion'], 1) ?>%</div>
         <div class="ms-lbl"><i class="fas fa-chart-line" style="color:#f59e0b;margin-right:4px;"></i>Ejecución Presup.</div>
       </div>
     </div>
@@ -63,11 +63,11 @@
           <div style="display:flex;justify-content:space-between;">
             <div>
               <div style="font-size:.7rem;color:#6b7280;">Asignado</div>
-              <div style="font-size:1.1rem;font-weight:700;">L. <?= number_format((float)$resumen['presupuesto_total'], 2) ?></div>
+              <div style="font-size:1.1rem;font-weight:700;">L. <span data-stat="presupuesto_total" data-stat-fmt="money2"><?= number_format((float)$resumen['presupuesto_total'], 2) ?></span></div>
             </div>
             <div>
               <div style="font-size:.7rem;color:#6b7280;">Ejecutado</div>
-              <div style="font-size:1.1rem;font-weight:700;color:#16a34a;">L. <?= number_format((float)$resumen['ejecutado_total'], 2) ?></div>
+              <div style="font-size:1.1rem;font-weight:700;color:#16a34a;">L. <span data-stat="ejecutado_total" data-stat-fmt="money2"><?= number_format((float)$resumen['ejecutado_total'], 2) ?></span></div>
             </div>
           </div>
           <div style="margin-top:8px;background:#f3f4f6;border-radius:5px;height:8px;overflow:hidden;">
@@ -83,11 +83,11 @@
         </div>
         <div class="card-box-body" style="padding:12px 14px;font-size:.82rem;">
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
-            <div><span style="color:#f59e0b;">●</span> Planificados: <strong><?= (int)$resumen['planificados'] ?></strong></div>
-            <div><span style="color:#3b82f6;">●</span> En ejecución: <strong><?= (int)$resumen['en_ejecucion'] ?></strong></div>
-            <div><span style="color:#16a34a;">●</span> Completados: <strong><?= (int)$resumen['completados'] ?></strong></div>
-            <div><span style="color:#6b7280;">●</span> Suspendidos: <strong><?= (int)$resumen['suspendidos'] ?></strong></div>
-            <div><span style="color:#dc2626;">●</span> Cancelados: <strong><?= (int)$resumen['cancelados'] ?></strong></div>
+            <div><span style="color:#f59e0b;">●</span> Planificados: <strong data-stat="planificados"><?= (int)$resumen['planificados'] ?></strong></div>
+            <div><span style="color:#3b82f6;">●</span> En ejecución: <strong data-stat="en_ejecucion"><?= (int)$resumen['en_ejecucion'] ?></strong></div>
+            <div><span style="color:#16a34a;">●</span> Completados: <strong data-stat="completados"><?= (int)$resumen['completados'] ?></strong></div>
+            <div><span style="color:#6b7280;">●</span> Suspendidos: <strong data-stat="suspendidos"><?= (int)$resumen['suspendidos'] ?></strong></div>
+            <div><span style="color:#dc2626;">●</span> Cancelados: <strong data-stat="cancelados"><?= (int)$resumen['cancelados'] ?></strong></div>
           </div>
         </div>
       </div>

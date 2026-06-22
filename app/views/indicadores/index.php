@@ -27,25 +27,25 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= (int)$resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= (int)$resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-list-check" style="color:var(--primario);margin-right:4px;"></i>Total</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#3b82f6;">
-        <div class="ms-val" style="color:#3b82f6;"><?= (int)$resumen['producto'] ?></div>
+        <div class="ms-val" style="color:#3b82f6;" data-stat="producto"><?= (int)$resumen['producto'] ?></div>
         <div class="ms-lbl"><i class="fas fa-cube" style="color:#3b82f6;margin-right:4px;"></i>Producto</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#8b5cf6;">
-        <div class="ms-val" style="color:#8b5cf6;"><?= (int)$resumen['resultado'] ?></div>
+        <div class="ms-val" style="color:#8b5cf6;" data-stat="resultado"><?= (int)$resumen['resultado'] ?></div>
         <div class="ms-lbl"><i class="fas fa-check-double" style="color:#8b5cf6;margin-right:4px;"></i>Resultado</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int)$resumen['impacto'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="impacto"><?= (int)$resumen['impacto'] ?></div>
         <div class="ms-lbl"><i class="fas fa-bullseye" style="color:#16a34a;margin-right:4px;"></i>Impacto</div>
       </div>
     </div>

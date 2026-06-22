@@ -30,25 +30,25 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= $resumen['total'] ?></div>
+        <div class="ms-val" data-stat="total"><?= $resumen['total'] ?></div>
         <div class="ms-lbl"><i class="fas fa-handshake" style="color:var(--primario);margin-right:4px;"></i>Total visitas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= $resumen['finalizadas'] ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="finalizadas"><?= $resumen['finalizadas'] ?></div>
         <div class="ms-lbl"><i class="fas fa-circle-check" style="color:#16a34a;margin-right:4px;"></i>Finalizadas</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
-        <div class="ms-val"><?= $resumen['hombres'] ?></div>
+        <div class="ms-val" data-stat="hombres"><?= $resumen['hombres'] ?></div>
         <div class="ms-lbl">Productores hombres</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#db2777;">
-        <div class="ms-val"><?= $resumen['mujeres'] ?></div>
+        <div class="ms-val" data-stat="mujeres"><?= $resumen['mujeres'] ?></div>
         <div class="ms-lbl">Productoras mujeres</div>
       </div>
     </div>

@@ -27,25 +27,25 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="mini-stat">
-        <div class="ms-val"><?= number_format((int) ($resumen['total'] ?? 0)) ?></div>
+        <div class="ms-val" data-stat="total" data-stat-fmt="intgroup"><?= number_format((int) ($resumen['total'] ?? 0)) ?></div>
         <div class="ms-lbl"><i class="fas fa-clipboard-list" style="color:var(--primario);margin-right:4px;"></i>Registros totales</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat blue">
-        <div class="ms-val"><?= (int) ($resumen['hoy'] ?? 0) ?></div>
+        <div class="ms-val" data-stat="hoy"><?= (int) ($resumen['hoy'] ?? 0) ?></div>
         <div class="ms-lbl"><i class="fas fa-calendar-day" style="color:#3b82f6;margin-right:4px;"></i>Acciones hoy</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#16a34a;">
-        <div class="ms-val" style="color:#16a34a;"><?= (int) ($resumen['logins_hoy'] ?? 0) ?></div>
+        <div class="ms-val" style="color:#16a34a;" data-stat="logins_hoy"><?= (int) ($resumen['logins_hoy'] ?? 0) ?></div>
         <div class="ms-lbl"><i class="fas fa-right-to-bracket" style="color:#16a34a;margin-right:4px;"></i>Ingresos hoy</div>
       </div>
     </div>
     <div class="col-6 col-md-3">
       <div class="mini-stat" style="border-left-color:#dc2626;">
-        <div class="ms-val" style="color:#dc2626;"><?= (int) ($resumen['fallidos_hoy'] ?? 0) ?></div>
+        <div class="ms-val" style="color:#dc2626;" data-stat="fallidos_hoy"><?= (int) ($resumen['fallidos_hoy'] ?? 0) ?></div>
         <div class="ms-lbl"><i class="fas fa-user-slash" style="color:#dc2626;margin-right:4px;"></i>Intentos fallidos hoy</div>
       </div>
     </div>

@@ -31,9 +31,16 @@ class Router
         $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $method = $_SERVER['REQUEST_METHOD'];
 
-        // Remover el base path si existe
-        $basePath = parse_url(BASE_URL, PHP_URL_PATH);
-        if ($basePath && str_starts_with($uri, $basePath)) {
+        // Remover el base path (la subcarpeta donde vive el proyecto) si existe.
+        // Se deriva de SCRIPT_NAME —la ubicación real de index.php—, que es
+        // confiable aunque .env no esté configurado o BASE_URL esté mal puesta.
+        // BASE_URL se usa sólo como respaldo.
+        $basePath = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+        $basePath = rtrim($basePath, '/');
+        if ($basePath === '' || !str_starts_with($uri, $basePath)) {
+            $basePath = rtrim((string) parse_url(BASE_URL, PHP_URL_PATH), '/');
+        }
+        if ($basePath !== '' && str_starts_with($uri, $basePath)) {
             $uri = substr($uri, strlen($basePath));
         }
 

@@ -89,6 +89,7 @@ class BeneficiariosController extends Controller
                 'recordsTotal'    => $total,
                 'recordsFiltered' => $filtrados,
                 'data'            => $data,
+                'resumen'         => $this->model->getResumen(),
             ]);
         } catch (Exception $e) {
             error_log('BeneficiariosController::listar — ' . $e->getMessage());

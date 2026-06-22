@@ -28,6 +28,36 @@ class ExportarController extends Controller
         $this->view('exportar/index', compact('pageTitle', 'departamentos', 'conteos'));
     }
 
+    /**
+     * Cuenta cuántos registros coinciden con los filtros, ANTES de descargar.
+     * El frontend usa esto para avisar "no hay registros" en lugar de
+     * descargar un archivo vacío. Reutiliza la misma lógica de filtros que
+     * generar() para que el conteo y la descarga sean siempre consistentes.
+     */
+    public function contar(): void
+    {
+        $modulo  = $this->getPost('modulo', '');
+        $modulos = ['beneficiarios', 'organizaciones', 'capacitaciones', 'asistencias'];
+        if (!in_array($modulo, $modulos, true)) {
+            $this->error('Módulo no válido.');
+            return;
+        }
+
+        try {
+            $db = Database::programa();
+            $filtros = [
+                'anio'            => (int) $this->getPost('anio', 0),
+                'id_departamento' => (int) $this->getPost('id_departamento', 0),
+                'estado'          => $this->getPost('estado', ''),
+            ];
+            $rows = $this->getData($db, $modulo, $filtros);
+            $this->success('OK', ['total' => count($rows)]);
+        } catch (Exception $e) {
+            error_log('ExportarController::contar — ' . $e->getMessage());
+            $this->error('Error al verificar los registros. Intente de nuevo.');
+        }
+    }
+
     public function generar(): void
     {
         $modulo  = $this->getPost('modulo', '');

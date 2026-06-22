@@ -110,7 +110,7 @@ class ComponentesFPController extends Controller
                 ];
             }, $rows);
 
-            $this->json(['data' => $data]);
+            $this->json(['data' => $data, 'resumen' => $this->model->getResumen()]);
         } catch (\Throwable $e) {
             error_log('ComponentesFPController::listar — ' . $e->getMessage());
             $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);

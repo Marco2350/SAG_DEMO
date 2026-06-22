@@ -510,18 +510,33 @@ $(function () {
                     ? '<span class="badge-activo">Finalizado</span>'
                     : '<span class="badge-pendiente">Borrador</span>';
 
+                // ── Helpers de presentación ──
+                const seccion = (icono, color, titulo) => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-left:4px solid ${color};background:${color}12;border-radius:4px;margin:18px 0 12px;font-weight:700;font-size:.82rem;color:#374151;">
+                        <i class="fas ${icono}" style="color:${color};"></i>${titulo}
+                    </div>`;
+                const campo = (label, valor, col = 'col-md-4') => `
+                    <div class="${col}">
+                        <div style="font-size:.68rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:2px;">${label}</div>
+                        <div style="font-size:.9rem;color:#111827;">${(valor === 0 || valor) ? valor : '<span style="color:#cbd5e1;">—</span>'}</div>
+                    </div>`;
+
+                // ── Tabla de participantes ──
                 let partsHtml = '<p style="color:#aaa;font-size:.82rem;">Sin participantes registrados</p>';
                 if (p && p.length > 0) {
-                    const filas = p.map((pp, i) => `
+                    const filas = p.map((pp, i) => {
+                        const sx = pp.sexo === 'M' ? 'Masculino' : (pp.sexo === 'F' ? 'Femenino' : '—');
+                        return `
                         <tr>
                             <td>${i + 1}</td>
                             <td>${escHtml(pp.nombre)} ${escHtml(pp.apellido || '')}</td>
                             <td>${pp.dni || '—'}</td>
                             <td>${pp.edad || '—'}</td>
-                            <td>${pp.sexo || '—'}</td>
+                            <td>${sx}</td>
                             <td>${escHtml(pp.organizacion || '—')}</td>
                             <td>${pp.telefono || '—'}</td>
-                        </tr>`).join('');
+                        </tr>`;
+                    }).join('');
                     partsHtml = `
                         <div style="overflow-x:auto;">
                         <table class="sag-table" style="width:100%;margin-top:0;">
@@ -533,31 +548,91 @@ $(function () {
                         </table></div>`;
                 }
 
+                // ── Comprobante / Evidencia documental ──
+                const estLabels = {
+                    'pendiente': ['PENDIENTE', '#f1f5f9', '#6b7280'],
+                    'cargada':   ['CARGADA',   '#dbeafe', '#1e40af'],
+                    'validada':  ['VALIDADA',  '#d1fae5', '#065f46'],
+                    'rechazada': ['RECHAZADA', '#fee2e2', '#991b1b'],
+                };
+                let comprobanteHtml;
+                if (c.evidencia_archivo) {
+                    const est = c.evidencia_estado || 'cargada';
+                    const [lbl, bg, fg] = estLabels[est] || estLabels.cargada;
+                    const icoMap = {
+                        'application/pdf':                                                  ['fa-file-pdf',   '#dc2626'],
+                        'application/vnd.ms-excel':                                         ['fa-file-excel', '#15803d'],
+                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['fa-file-excel', '#15803d'],
+                        'image/jpeg':                                                       ['fa-file-image', '#7c3aed'],
+                        'image/png':                                                        ['fa-file-image', '#7c3aed'],
+                    };
+                    const [ico, color] = icoMap[c.evidencia_mime] || ['fa-file', '#6b7280'];
+                    const url   = SAG.BASE_URL + '/capacitaciones/evidencia?id=' + c.id_capacitacion;
+                    const tam   = c.evidencia_tamano ? Math.round(c.evidencia_tamano / 1024) + ' KB' : '';
+                    const meta  = [tam, c.evidencia_subida_at ? 'subido ' + c.evidencia_subida_at : ''].filter(Boolean).join(' · ');
+                    const esPdf = c.evidencia_mime === 'application/pdf';
+                    const esImg = (c.evidencia_mime || '').indexOf('image/') === 0;
+
+                    let preview = '';
+                    if (esPdf) {
+                        preview = `<iframe src="${url}#toolbar=1&view=FitH" title="Comprobante PDF" style="width:100%;height:480px;border:1px solid #e5e7eb;border-radius:8px;margin-top:12px;background:#fff;"></iframe>`;
+                    } else if (esImg) {
+                        preview = `<div style="margin-top:12px;text-align:center;"><img src="${url}" alt="Comprobante" style="max-width:100%;max-height:480px;border:1px solid #e5e7eb;border-radius:8px;"/></div>`;
+                    } else {
+                        preview = `<div style="margin-top:10px;font-size:.78rem;color:#6b7280;"><i class="fas fa-circle-info me-1"></i>Vista previa no disponible para este formato. Use el botón para abrir el archivo.</div>`;
+                    }
+
+                    comprobanteHtml = `
+                        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;">
+                            <div style="font-size:2rem;color:${color};"><i class="fas ${ico}"></i></div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:700;font-size:.88rem;word-break:break-word;">${escHtml(c.evidencia_nombre_original || c.evidencia_archivo)}</div>
+                                <div style="font-size:.74rem;color:#6b7280;">${escHtml(meta) || '—'}</div>
+                                ${c.evidencia_observaciones ? `<div style="font-size:.76rem;color:#555;margin-top:3px;">Obs: ${escHtml(c.evidencia_observaciones)}</div>` : ''}
+                            </div>
+                            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                                <span style="font-size:.66rem;padding:3px 10px;border-radius:12px;font-weight:700;background:${bg};color:${fg};">${lbl}</span>
+                                <a href="${url}" target="_blank" rel="noopener" class="btn-primario btn-sm" style="white-space:nowrap;">
+                                    <i class="fas fa-up-right-from-square me-1"></i>Ver comprobante
+                                </a>
+                            </div>
+                        </div>
+                        ${preview}`;
+                } else {
+                    comprobanteHtml = `
+                        <div style="display:flex;align-items:center;gap:10px;padding:16px;background:#fafafa;border:1.5px dashed #d1d5db;border-radius:8px;color:#9ca3af;font-size:.85rem;">
+                            <i class="fas fa-file-circle-xmark" style="font-size:1.3rem;"></i>
+                            No se ha adjuntado comprobante / evidencia para esta capacitación.
+                        </div>`;
+                }
+
                 $('#modalCapBody').html(`
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4"><label class="form-label-b">Fecha</label>
-                            <p>${c.fecha_capacitacion}</p></div>
-                        <div class="col-md-4"><label class="form-label-b">Duración</label>
-                            <p>${c.duracion_horas ? c.duracion_horas + ' horas' : '—'}</p></div>
-                        <div class="col-md-4"><label class="form-label-b">Estado</label>
-                            <p>${estadoHtml}</p></div>
-                        <div class="col-md-4"><label class="form-label-b">Tema</label>
-                            <p><strong>${escHtml(c.tema)}</strong></p></div>
-                        <div class="col-md-4"><label class="form-label-b">Subtema</label>
-                            <p>${escHtml(c.subtema || '—')}</p></div>
-                        <div class="col-md-4"><label class="form-label-b">Técnico</label>
-                            <p>${escHtml(c.tecnico)}</p></div>
-                        <div class="col-md-6"><label class="form-label-b">Ubicación</label>
-                            <p>${escHtml(c.departamento)} / ${escHtml(c.municipio)}${c.aldea ? ' / ' + escHtml(c.aldea) : ''}</p></div>
-                        <div class="col-md-6"><label class="form-label-b">Lugar específico</label>
-                            <p>${escHtml(c.lugar_especifico || '—')}</p></div>
-                        ${c.descripcion ? `<div class="col-12"><label class="form-label-b">Descripción</label><p>${escHtml(c.descripcion)}</p></div>` : ''}
+                    <!-- Banner -->
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-radius:10px;background:linear-gradient(135deg,#f0fdf4 0%,#eff6ff 100%);border:1px solid #e5e7eb;">
+                        <div style="min-width:0;">
+                            <div style="font-size:1.05rem;font-weight:800;color:#111827;">
+                                <i class="fas fa-chalkboard-user me-1" style="color:var(--primario-oscuro);"></i>${escHtml(c.tema)}${c.subtema ? ' — ' + escHtml(c.subtema) : ''}
+                            </div>
+                            <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">
+                                <i class="fas fa-calendar-day me-1"></i>${c.fecha_capacitacion || '—'}${c.duracion_horas ? ' · ' + c.duracion_horas + ' h' : ''}
+                            </div>
+                        </div>
+                        <div>${estadoHtml}</div>
                     </div>
-                    <div class="form-section-title" style="margin-top:0;">
-                        <i class="fas fa-users me-1"></i>Participantes
-                        <span class="badge-count ms-2">${c.num_participantes || 0}</span>
+
+                    ${seccion('fa-location-dot', '#1e40af', 'Ubicación y Detalle')}
+                    <div class="row g-3">
+                        ${campo('Ubicación', `${escHtml(c.departamento)} / ${escHtml(c.municipio)}${c.aldea ? ' / ' + escHtml(c.aldea) : ''}`, 'col-md-5')}
+                        ${campo('Lugar específico', escHtml(c.lugar_especifico), 'col-md-4')}
+                        ${campo('Técnico responsable', escHtml(c.tecnico), 'col-md-3')}
+                        ${c.descripcion ? campo('Descripción', `<span style="white-space:pre-wrap;">${escHtml(c.descripcion)}</span>`, 'col-12') : ''}
                     </div>
+
+                    ${seccion('fa-users', '#d97706', 'Participantes (' + (c.num_participantes || 0) + ')')}
                     ${partsHtml}
+
+                    ${seccion('fa-paperclip', '#0d9488', 'Comprobante / Evidencia')}
+                    ${comprobanteHtml}
                 `);
 
                 $('.btn-editar-desde-modal-cap, .btn-participantes-desde-modal').data('id', id);

@@ -262,6 +262,7 @@ $router->get('/estadisticas/datos',          'EstadisticasController', 'datos');
 
 // ── Exportar ──────────────────────────────────────
 $router->get('/exportar',                    'ExportarController', 'index');
+$router->post('/exportar/contar',            'ExportarController', 'contar');
 $router->post('/exportar/generar',           'ExportarController', 'generar');
 
 // ── Mantenimiento ─────────────────────────────────

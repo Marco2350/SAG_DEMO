@@ -68,7 +68,7 @@ class EquipoFPController extends Controller
                 'responsable'           => htmlspecialchars((string)($r['responsable'] ?? ''), ENT_QUOTES),
                 'estado'                => htmlspecialchars((string)$r['estado'], ENT_QUOTES),
             ], $rows);
-            $this->json(['data' => $data]);
+            $this->json(['data' => $data, 'resumen' => $this->model->getResumen()]);
         } catch (\Throwable $e) {
             error_log('EquipoFPController::listar — ' . $e->getMessage());
             $this->json(['data' => [], 'error' => 'Error al cargar el listado.']);

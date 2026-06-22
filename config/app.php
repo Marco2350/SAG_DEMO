@@ -9,7 +9,39 @@ require_once __DIR__ . '/../core/Env.php';
 Env::load(__DIR__ . '/../.env');
 
 // ── URL base ──────────────────────────────────────
-define('BASE_URL',   Env::get('BASE_URL', 'http://localhost/PROYECTOS-PHP/SAG'));
+// Si BASE_URL no está definida en .env (caso típico al clonar el repo, donde
+// .env no se versiona), se autodetecta desde el servidor. Así el proyecto
+// funciona sin configurar nada, ya sea en una subcarpeta (localhost/.../SAG_DEMO)
+// o en la raíz de un dominio (https://midominio.com). Sólo conviene fijarla en
+// .env si hay un proxy/CDN que altere el host o el esquema.
+if (!function_exists('sag_detectar_base_url')) {
+    function sag_detectar_base_url(): string {
+        // En CLI no hay request HTTP: usar default local de desarrollo.
+        if (PHP_SAPI === 'cli' || empty($_SERVER['HTTP_HOST'])) {
+            return 'http://localhost';
+        }
+
+        $esHttps = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                || ((int) ($_SERVER['SERVER_PORT'] ?? 80) === 443);
+        $scheme = $esHttps ? 'https' : 'http';
+
+        $host = $_SERVER['HTTP_HOST'];
+
+        // SCRIPT_NAME apunta a index.php; su carpeta es la base del proyecto.
+        // En raíz de dominio dirname() devuelve '/' (o '\' en Windows) → se anula.
+        $base = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+        $base = '/' . trim($base, '/');
+        if ($base === '/') {
+            $base = '';
+        }
+
+        return $scheme . '://' . $host . $base;
+    }
+}
+
+$baseUrlEnv = trim((string) Env::get('BASE_URL', ''));
+define('BASE_URL',   $baseUrlEnv !== '' ? rtrim($baseUrlEnv, '/') : sag_detectar_base_url());
 define('APP_NAME',   Env::get('APP_NAME', 'SAG Honduras Sin Hambre'));
 define('APP_ENV',    Env::get('APP_ENV', 'development'));
 define('APP_VERSION','2.0');
