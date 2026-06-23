@@ -30,7 +30,7 @@ $(function () {
             method: 'POST',
             // Inventario requiere el historial completo: una salida reciente
             // puede corresponder a una entrada de años anteriores.
-            data: { tipos_movimiento: '111,112,113', desde: '2000-01-01' },
+            data: { tipos_movimiento: '111,112,113', desde: '2000-01-01', top: 100000 },
             success: function (res) {
                 if (!res || !res.success) {
                     SAG.toast((res && res.message) || 'No se pudo sincronizar con OIRSA.', 'error');
