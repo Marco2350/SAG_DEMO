@@ -8,11 +8,11 @@
  */
 // Tabs del módulo Entregas — expuesto globalmente porque los botones lo invocan inline
 window.switchEntregasTab = function (tab) {
-    ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'].forEach(t => {
+    ['resumen', 'movimientos', 'departamentos', 'productores', 'bodegas', 'anomalias'].forEach(t => {
         const el = document.getElementById('tab-ent-' + t);
         if (el) el.style.display = (t === tab) ? 'block' : 'none';
     });
-    const order = ['resumen', 'movimientos', 'productores', 'bodegas', 'anomalias'];
+    const order = ['resumen', 'movimientos', 'departamentos', 'productores', 'bodegas', 'anomalias'];
     const idx = order.indexOf(tab);
     document.querySelectorAll('.mode-tab').forEach((btn, i) => {
         btn.classList.toggle('active', i === idx);
@@ -26,7 +26,7 @@ $(function () {
     // Restaurar última pestaña activa (si el usuario sincronizó y la página recargó)
     try {
         const saved = localStorage.getItem('sag_entregas_tab');
-        if (saved && ['resumen','movimientos','productores','anomalias'].includes(saved)) {
+        if (saved && ['resumen','movimientos','departamentos','productores','bodegas','anomalias'].includes(saved)) {
             window.switchEntregasTab(saved);
         }
     } catch (e) {}
@@ -59,6 +59,10 @@ $(function () {
         if (n === null || n === undefined || n === '') return '';
         const v = parseFloat(n);
         return isNaN(v) ? '' : v.toLocaleString('es-HN', { maximumFractionDigits: 2 });
+    }
+
+    function normText(s) {
+        return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     }
 
     function badgeEstado(estado) {
@@ -156,6 +160,39 @@ $(function () {
         $('#fDesde, #fHasta, #fBusca').val('');
         aplicarFiltros();
     });
+
+    function aplicarFiltrosProductores() {
+        const depto = $('#fpDepto').val() || '';
+        const padron = $('#fpPadron').val() || '';
+        const busca = normText(($('#fpBusca').val() || '').trim());
+        let visibles = 0;
+        const $cards = $('#listaProductores .prod-card');
+
+        $cards.each(function () {
+            const $card = $(this);
+            const cDepto = $card.data('depto') || '';
+            const cPadron = $card.data('padron') || '';
+            const cSearch = normText($card.data('search') || '');
+            let ok = true;
+
+            if (depto && cDepto !== depto) ok = false;
+            if (padron && cPadron !== padron) ok = false;
+            if (busca && !cSearch.includes(busca)) ok = false;
+
+            $card.toggle(ok);
+            if (ok) visibles++;
+        });
+
+        $('#fpContador').html($cards.length ? `Mostrando <strong>${visibles}</strong> de ${$cards.length} productor(es)` : '');
+    }
+
+    $('#fpDepto, #fpPadron').on('change', aplicarFiltrosProductores);
+    $('#fpBusca').on('input', aplicarFiltrosProductores);
+    $('#btnFpLimpiar').on('click', function () {
+        $('#fpDepto, #fpPadron, #fpBusca').val('');
+        aplicarFiltrosProductores();
+    });
+    aplicarFiltrosProductores();
 
     // ── DETALLE (modal) ──────────────────────────────────────
     $tbody.on('click', '.row-mov', function () {

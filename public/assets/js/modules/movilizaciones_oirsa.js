@@ -81,6 +81,7 @@ $(function () {
                     d.f_tipo      = $('#mfTipo').val();
                     d.f_proveedor = $('#mfProveedor').val();
                     d.f_bodega    = $('#mfBodega').val();
+                    d.f_departamento = $('#mfDepartamento').val();
                     d.f_producto  = $('#mfProducto').val();
                     d.f_desde     = $('#mfDesde').val();
                     d.f_hasta     = $('#mfHasta').val();
@@ -143,7 +144,7 @@ $(function () {
             ],
         });
 
-        $('#mfTipo, #mfProveedor, #mfBodega, #mfProducto').on('change', () => dtMov.ajax.reload());
+        $('#mfTipo, #mfProveedor, #mfBodega, #mfDepartamento, #mfProducto').on('change', () => dtMov.ajax.reload());
         $('#mfDesde, #mfHasta').on('change', () => dtMov.ajax.reload());
         let tBusca;
         $('#mfGuiasa').on('input', function () {
@@ -151,7 +152,7 @@ $(function () {
             tBusca = setTimeout(() => dtMov.ajax.reload(), 300);
         });
         $('#btnMfLimpiar').on('click', () => {
-            $('#mfTipo,#mfProveedor,#mfBodega,#mfProducto,#mfDesde,#mfHasta,#mfGuiasa').val('');
+            $('#mfTipo,#mfProveedor,#mfBodega,#mfDepartamento,#mfProducto,#mfDesde,#mfHasta,#mfGuiasa').val('');
             dtMov.search('').ajax.reload();
         });
     }

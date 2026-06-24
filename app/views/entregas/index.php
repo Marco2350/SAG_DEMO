@@ -60,6 +60,27 @@ $cssExtra = '<style>
 .tbl-desg td{padding:6px 10px;border-bottom:1px solid #f1f5f9;}
 .tbl-desg td.num{text-align:right;font-weight:600;}
 .tbl-desg tr:nth-child(even){background:#fafbfc;}
+.avance-bar{height:9px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:5px;}
+.avance-bar>span{display:block;height:100%;background:linear-gradient(90deg,#16a34a,#0d9488);border-radius:999px;}
+.avance-depto-card{background:#fff;border:1.5px solid var(--borde);border-radius:10px;padding:14px 16px;height:100%;}
+.avance-depto-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed #e5e7eb;}
+.avance-depto-k{font-size:.62rem;color:#888;text-transform:uppercase;}
+.avance-depto-v{font-size:1.05rem;font-weight:800;line-height:1.15;}
+.avance-detail-wrap{margin-top:14px;max-height:58vh;overflow:auto;padding-right:4px;}
+.avance-row{background:#fff;border:1.5px solid var(--borde);border-radius:10px;margin-bottom:8px;overflow:hidden;}
+.avance-row .avance-depto-card{border:0;border-radius:0;}
+.avance-row-head{width:100%;border:none;background:#fff;padding:12px 14px;display:grid;grid-template-columns:1.2fr .75fr .75fr .75fr .75fr 28px;gap:12px;align-items:center;text-align:left;cursor:pointer;}
+.avance-row-head:hover{background:#f8fafc;}
+.avance-row-title{font-weight:800;color:#111827;}
+.avance-row-sub{font-size:.72rem;color:#6b7280;margin-top:2px;}
+.avance-row-metric .k{font-size:.62rem;color:#888;text-transform:uppercase;}
+.avance-row-metric .v{font-size:1rem;font-weight:800;line-height:1.15;}
+.avance-row-body{display:none;border-top:1px dashed #e5e7eb;padding:12px 14px;background:#fff;}
+.avance-row.open .avance-row-body{display:block;}
+.avance-row.open .avance-chevron{transform:rotate(180deg);}
+.avance-chevron{transition:transform .15s;color:#6b7280;text-align:right;}
+.avance-products-list{max-height:180px;overflow:auto;padding-right:4px;}
+@media (max-width: 900px){.avance-row-head{grid-template-columns:1fr 1fr;}.avance-chevron{text-align:left;}}
 
 /* Modal */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1050;align-items:center;justify-content:center;padding:16px;}
@@ -137,6 +158,9 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('movimientos')">
       <i class="fas fa-list-ul"></i> Movimientos <small style="opacity:.7;">(<?= count($movimientos ?? []) ?>)</small>
+    </button>
+    <button class="mode-tab" onclick="switchEntregasTab('departamentos')">
+      <i class="fas fa-map-location-dot"></i> Por Departamento <small style="opacity:.7;">(<?= count($reporteDepartamentos ?? []) ?>)</small>
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('productores')">
       <i class="fas fa-user-tag"></i> Por Productor <small style="opacity:.7;">(<?= count($reporteProductores ?? []) ?>)</small>
@@ -243,6 +267,149 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
   <?php endif; ?>
 
   </div> <!-- /tab-ent-resumen -->
+
+  <!-- ══ TAB: POR DEPARTAMENTO ══ -->
+  <div id="tab-ent-departamentos" style="display:none;">
+    <?php if (empty($reporteDepartamentos)): ?>
+      <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
+        <i class="fas fa-map-location-dot" style="font-size:2rem;margin-bottom:10px;display:block;color:#bbb;"></i>
+        Sin departamentos con entregas registradas. Sincroniza con Trazaragro para ver el avance territorial.
+      </div>
+    <?php else: ?>
+      <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
+        <i class="fas fa-info-circle"></i>
+        Avance calculado con movimientos OIRSA: <strong>entradas a bodega (113 + 112 destino)</strong> contra <strong>salidas desde bodega (111 + 112 origen)</strong>, sumando todas las bodegas del departamento.
+      </div>
+
+      <div style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:auto;margin-bottom:14px;">
+        <table class="tbl-desg" style="min-width:960px;">
+          <thead>
+            <tr>
+              <th>Departamento</th>
+              <th class="num">Avance</th>
+              <th class="num">Entradas OIRSA</th>
+              <th class="num">Salidas OIRSA</th>
+              <th class="num">Saldo</th>
+              <th class="num">Bodegas</th>
+              <th class="num">GUIASA</th>
+              <th class="num">Beneficiarios</th>
+              <th class="num">Mov. entrega</th>
+              <th>Último movimiento</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($reporteDepartamentos as $d):
+              $pctReal = (float)($d['avance_pct'] ?? 0);
+              $pctBar = max(0, min(100, $pctReal));
+              $saldo = (float)($d['saldo_inventario'] ?? 0);
+            ?>
+            <tr>
+              <td><strong><?= htmlspecialchars($d['departamento']) ?></strong></td>
+              <td class="num" style="min-width:150px;">
+                <strong style="color:<?= $saldo < 0 ? '#dc2626' : '#0d9488' ?>;"><?= number_format($pctReal, 1) ?>%</strong>
+                <div class="avance-bar"><span style="width:<?= $pctBar ?>%;background:<?= $saldo < 0 ? 'linear-gradient(90deg,#f97316,#dc2626)' : 'linear-gradient(90deg,#16a34a,#0d9488)' ?>;"></span></div>
+              </td>
+              <td class="num"><?= number_format($d['inventario_registrado'], 0) ?></td>
+              <td class="num" style="color:#16a34a;"><?= number_format($d['cantidad_entregada'], 0) ?></td>
+              <td class="num" style="color:<?= $saldo < 0 ? '#dc2626' : '#d97706' ?>;"><?= number_format($saldo, 0) ?></td>
+              <td class="num"><?= number_format($d['bodegas'] ?? $d['municipios'] ?? 0) ?></td>
+              <td class="num"><?= number_format($d['manifiestos_unicos']) ?></td>
+              <td class="num"><?= number_format($d['beneficiarios_unicos']) ?></td>
+              <td class="num"><?= number_format($d['movimientos']) ?></td>
+              <td><?= htmlspecialchars(substr((string)$d['ultimo_movimiento'], 0, 10) ?: '—') ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin:4px 0 8px;font-size:.82rem;color:#555;font-weight:700;">
+        <i class="fas fa-list-check"></i> Detalle por departamento
+        <span style="font-weight:400;color:#888;">— revisar desplazando la lista</span>
+      </div>
+
+      <div class="avance-detail-wrap">
+        <?php foreach ($reporteDepartamentos as $d):
+          $pctReal = (float)($d['avance_pct'] ?? 0);
+          $pctBar = max(0, min(100, $pctReal));
+          $saldo = (float)($d['saldo_inventario'] ?? 0);
+        ?>
+        <div class="avance-row">
+          <div class="avance-depto-card">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+              <div style="min-width:0;">
+                <strong style="font-size:.95rem;color:#1a1a1a;display:block;"><?= htmlspecialchars($d['departamento']) ?></strong>
+                <div style="font-size:.72rem;color:#888;margin-top:2px;">
+                  <?= number_format($d['bodegas'] ?? $d['municipios'] ?? 0) ?> bodega(s) · Último: <?= htmlspecialchars(substr((string)$d['ultimo_movimiento'], 0, 10) ?: '—') ?>
+                </div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:1.25rem;font-weight:900;color:<?= $saldo < 0 ? '#dc2626' : '#0d9488' ?>;line-height:1;"><?= number_format($pctReal, 1) ?>%</div>
+                <div style="font-size:.62rem;color:#888;text-transform:uppercase;">avance</div>
+              </div>
+            </div>
+
+            <div class="avance-bar" title="<?= number_format($pctReal, 1) ?>% de salidas contra entradas OIRSA">
+              <span style="width:<?= $pctBar ?>%;background:<?= $saldo < 0 ? 'linear-gradient(90deg,#f97316,#dc2626)' : 'linear-gradient(90deg,#16a34a,#0d9488)' ?>;"></span>
+            </div>
+
+            <div class="avance-depto-grid">
+              <div>
+                <div class="avance-depto-k">Entradas</div>
+                <div class="avance-depto-v" style="color:#1e40af;"><?= number_format($d['inventario_registrado'], 0) ?></div>
+              </div>
+              <div>
+                <div class="avance-depto-k">Salidas</div>
+                <div class="avance-depto-v" style="color:#16a34a;"><?= number_format($d['cantidad_entregada'], 0) ?></div>
+              </div>
+              <div>
+                <div class="avance-depto-k">Saldo</div>
+                <div class="avance-depto-v" style="color:<?= $saldo < 0 ? '#dc2626' : '#d97706' ?>;"><?= number_format($saldo, 0) ?></div>
+              </div>
+              <div>
+                <div class="avance-depto-k">GUIASA</div>
+                <div class="avance-depto-v" style="color:#9a3412;"><?= number_format($d['manifiestos_unicos']) ?></div>
+              </div>
+            </div>
+
+            <?php if ($saldo < 0): ?>
+            <div style="margin-top:10px;background:#fee2e2;color:#991b1b;border-radius:7px;padding:7px 9px;font-size:.72rem;font-weight:700;">
+              <i class="fas fa-triangle-exclamation"></i>
+              Las salidas superan las entradas registradas por <?= number_format(abs($saldo), 0) ?> unidad(es).
+            </div>
+            <?php endif; ?>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:.74rem;">
+              <div style="color:#555;">
+                <i class="fas fa-users" style="color:var(--primario);"></i>
+                Beneficiarios: <strong><?= number_format($d['beneficiarios_unicos']) ?></strong>
+              </div>
+              <div style="color:#555;text-align:right;">
+                <i class="fas fa-file-invoice" style="color:#7c3aed;"></i>
+                Mov. entrega: <strong><?= number_format($d['movimientos']) ?></strong>
+              </div>
+            </div>
+
+            <?php if (!empty($d['top_objetos'])): ?>
+            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e5e7eb;">
+              <div style="font-size:.62rem;color:#888;text-transform:uppercase;margin-bottom:4px;">Productos entregados</div>
+              <div class="avance-products-list">
+              <?php foreach ($d['top_objetos'] as $to): ?>
+              <div style="display:flex;justify-content:space-between;font-size:.74rem;padding:2px 0;">
+                <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;margin-right:6px;"><?= htmlspecialchars($to['objeto']) ?></span>
+                <strong style="color:#0f766e;flex-shrink:0;"><?= number_format($to['cantidad']) ?></strong>
+              </div>
+              <?php endforeach; ?>
+              </div>
+            </div>
+            <?php endif; ?>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+
+    <?php endif; ?>
+  </div>
 
   <!-- ══ TAB: MOVIMIENTOS ══ -->
   <div id="tab-ent-movimientos" style="display:none;">
@@ -355,9 +522,49 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
         <i class="fas fa-info-circle"></i>
         <strong><?= count($reporteProductores) ?> productor(es)</strong> con entregas registradas. Tarjeta con fondo amarillento = el productor tiene alguna alerta.
       </div>
-      <div style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:hidden;">
+      <div class="ent-filtros" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+        <div>
+          <div class="fl">Departamento</div>
+          <select class="fc" id="fpDepto"><option value="">Todos</option>
+            <?php foreach (($catalogos['deptos'] ?? []) as $d): ?>
+              <option><?= htmlspecialchars($d) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <div class="fl">Estado padrón</div>
+          <select class="fc" id="fpPadron">
+            <option value="">Todos</option>
+            <option value="en_padron">En padrón</option>
+            <option value="no_padron">No en padrón</option>
+            <option value="sin_dni">Sin DNI</option>
+          </select>
+        </div>
+        <div>
+          <div class="fl">Buscar productor / DNI / GUIASA / producto</div>
+          <input type="text" class="fc" id="fpBusca" placeholder="Texto libre..."/>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="fc" id="btnFpLimpiar" style="background:#eef0f7;cursor:pointer;font-weight:700;">
+            <i class="fas fa-broom"></i> Limpiar
+          </button>
+        </div>
+      </div>
+      <div id="fpContador" style="margin:-4px 0 10px;font-size:.78rem;color:#666;text-align:right;"></div>
+      <div id="listaProductores" style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:hidden;">
       <?php foreach ($reporteProductores as $p): ?>
-      <div style="padding:14px 16px;border-bottom:2px solid #f1f5f9;background:<?= $p['tiene_alerta'] ? '#fffbeb' : '#fff' ?>;">
+      <?php
+        $prodSearch = strtolower(trim(implode(' ', array_filter([
+            $p['nombre'] ?? '', $p['dni'] ?? '', $p['departamento'] ?? '',
+            $p['municipio'] ?? '', $p['establecimiento'] ?? '',
+            implode(' ', array_map(fn($o) => (($o['objeto'] ?? '') . ' ' . ($o['guiasa'] ?? '') . ' ' . ($o['codigo_traza'] ?? '')), $p['objetos'] ?? [])),
+        ]))));
+      ?>
+      <div class="prod-card"
+           data-depto="<?= htmlspecialchars($p['departamento']) ?>"
+           data-padron="<?= htmlspecialchars($p['validacion']) ?>"
+           data-search="<?= htmlspecialchars($prodSearch) ?>"
+           style="padding:14px 16px;border-bottom:2px solid #f1f5f9;background:<?= $p['tiene_alerta'] ? '#fffbeb' : '#fff' ?>;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:240px;">
             <strong style="font-size:.95rem;color:#1a1a1a;"><?= htmlspecialchars($p['nombre']) ?></strong>

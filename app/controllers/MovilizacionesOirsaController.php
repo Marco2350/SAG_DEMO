@@ -119,7 +119,7 @@ class MovilizacionesOirsaController extends Controller
     // ════════════════════════════════════════════════════════════
     private function catalogosFiltros(): array
     {
-        $vacio = ['proveedores' => [], 'bodegas' => [], 'productos' => []];
+        $vacio = ['proveedores' => [], 'bodegas' => [], 'productos' => [], 'departamentos' => []];
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
@@ -157,11 +157,25 @@ class MovilizacionesOirsaController extends Controller
                ORDER BY nombre",
                 [$pid]
             );
+            $rowsDepto = $db->fetchAll(
+                "SELECT DISTINCT depto AS nombre FROM (
+                    SELECT origen_departamento AS depto FROM sag_trazaragro_movimientos
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
+                       AND origen_departamento IS NOT NULL AND origen_departamento <> ''
+                    UNION
+                    SELECT destino_departamento AS depto FROM sag_trazaragro_movimientos
+                     WHERE id_proyecto = ? AND tipo_movimiento_id IN (111, 112, 113)
+                       AND destino_departamento IS NOT NULL AND destino_departamento <> ''
+                 ) AS u
+                 ORDER BY nombre",
+                [$pid, $pid]
+            );
 
             return [
-                'proveedores' => array_column($rowsP,    'nombre'),
-                'bodegas'     => array_column($rowsB,    'nombre'),
-                'productos'   => array_column($rowsProd, 'nombre'),
+                'proveedores'   => array_column($rowsP,     'nombre'),
+                'bodegas'       => array_column($rowsB,     'nombre'),
+                'productos'     => array_column($rowsProd,  'nombre'),
+                'departamentos' => array_column($rowsDepto, 'nombre'),
             ];
         } catch (\Throwable $e) {
             error_log('MovilizacionesOirsa::catalogosFiltros — ' . $e->getMessage());
@@ -227,6 +241,13 @@ class MovilizacionesOirsaController extends Controller
                 $where[] = '((tipo_movimiento_id IN (112, 113) AND destino_establecimiento = ?) OR (tipo_movimiento_id IN (111, 112) AND origen_establecimiento = ?))';
                 $params[] = $bod;
                 $params[] = $bod;
+            }
+
+            $depto = (string)($_GET['f_departamento'] ?? '');
+            if ($depto !== '') {
+                $where[] = '(origen_departamento = ? OR destino_departamento = ?)';
+                $params[] = $depto;
+                $params[] = $depto;
             }
 
             $prod = (string)($_GET['f_producto'] ?? '');

@@ -153,6 +153,14 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total'] + $kpis['tras_tot
         </select>
       </div>
       <div>
+        <div class="fl">Departamento</div>
+        <select class="fc" id="mfDepartamento"><option value="">Todos</option>
+          <?php foreach (($filtros['departamentos'] ?? []) as $d): ?>
+            <option><?= htmlspecialchars($d) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div>
         <div class="fl">Producto</div>
         <select class="fc" id="mfProducto"><option value="">Todos</option>
           <?php foreach (($filtros['productos'] ?? []) as $prod): ?>

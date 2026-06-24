@@ -30,6 +30,7 @@ class EntregasController extends Controller
 
         $movimientos        = $this->cargarMovimientos();
         $movimientos        = $this->enriquecerMovimientos($movimientos);
+        $reporteDepartamentos = $this->reportePorDepartamento($movimientos);
         $reporteProductores = $this->reportePorProductor($movimientos);
         $reporteBodegas     = $this->reportePorBodega($movimientos);
         $anomalias          = $this->recolectarAnomalias($movimientos);
@@ -43,7 +44,7 @@ class EntregasController extends Controller
 
         $this->view('entregas/index', compact(
             'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
-            'reporteProductores', 'reporteBodegas', 'anomalias'
+            'reporteDepartamentos', 'reporteProductores', 'reporteBodegas', 'anomalias'
         ));
     }
 
@@ -280,6 +281,138 @@ class EntregasController extends Controller
     // ════════════════════════════════════════════════════════════
     //  REPORTE POR PRODUCTOR
     // ════════════════════════════════════════════════════════════
+
+    /**
+     * Agrupa por departamento de bodega y calcula el avance contra inventario OIRSA:
+     * entradas a bodega (113 + 112 destino) menos salidas (111 + 112 origen).
+     */
+    private function reportePorDepartamento(array $movs): array
+    {
+        return $this->inventarioOirsaPorDepartamento();
+    }
+
+    private function inventarioOirsaPorDepartamento(): array
+    {
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+
+            if (!$db->tablaExiste('sag_trazaragro_movimientos')) {
+                return [];
+            }
+
+            $rows = $db->fetchAll(
+                "SELECT departamento,
+                        SUM(recibido) AS inventario_registrado,
+                        SUM(entregado) AS cantidad_entregada,
+                        SUM(num_entregas_guiasa) AS movimientos,
+                        COUNT(DISTINCT CASE WHEN bodega_key IS NOT NULL AND bodega_key <> '' THEN bodega_key END) AS bodegas,
+                        COUNT(DISTINCT CASE WHEN beneficiario_key IS NOT NULL AND beneficiario_key <> '' THEN beneficiario_key END) AS beneficiarios_unicos,
+                        COUNT(DISTINCT CASE WHEN manifiesto IS NOT NULL AND manifiesto <> '' THEN manifiesto END) AS manifiestos_unicos,
+                        MAX(fecha_movimiento) AS ultimo_movimiento
+                   FROM (
+                      -- Entrada: Proveedor -> Bodega
+                      SELECT COALESCE(NULLIF(destino_departamento,''), '(sin departamento)') AS departamento,
+                             COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                      CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega_key,
+                             SUM(cantidad) AS recibido, 0 AS entregado,
+                             0 AS num_entregas_guiasa,
+                             NULL AS beneficiario_key, NULL AS manifiesto,
+                             MAX(fecha_autorizacion) AS fecha_movimiento
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 113
+                         AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                    GROUP BY departamento, bodega_key
+                      UNION ALL
+                      -- Salida: Bodega -> Productor
+                      SELECT COALESCE(NULLIF(origen_departamento,''), '(sin departamento)') AS departamento,
+                             COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                      CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega_key,
+                             0 AS recibido, SUM(cantidad) AS entregado,
+                             SUM(CASE WHEN guiasa_no IS NOT NULL AND TRIM(guiasa_no) <> '' THEN 1 ELSE 0 END) AS num_entregas_guiasa,
+                             NULLIF(TRIM(destino_dni), '') AS beneficiario_key,
+                             NULLIF(TRIM(guiasa_no), '') AS manifiesto,
+                             MAX(fecha_autorizacion) AS fecha_movimiento
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                         AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                    GROUP BY departamento, bodega_key, beneficiario_key, manifiesto
+                      UNION ALL
+                      -- Traslado: la bodega destino recibe
+                      SELECT COALESCE(NULLIF(destino_departamento,''), '(sin departamento)') AS departamento,
+                             COALESCE(NULLIF(TRIM(destino_cue), ''),
+                                      CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(destino_establecimiento, ';', 1))))) AS bodega_key,
+                             SUM(cantidad) AS recibido, 0 AS entregado,
+                             0 AS num_entregas_guiasa,
+                             NULL AS beneficiario_key, NULL AS manifiesto,
+                             MAX(fecha_autorizacion) AS fecha_movimiento
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                         AND destino_establecimiento IS NOT NULL AND destino_establecimiento <> ''
+                    GROUP BY departamento, bodega_key
+                      UNION ALL
+                      -- Traslado: la bodega origen sale
+                      SELECT COALESCE(NULLIF(origen_departamento,''), '(sin departamento)') AS departamento,
+                             COALESCE(NULLIF(TRIM(origen_cue), ''),
+                                      CONCAT('NOMBRE:', LOWER(TRIM(SUBSTRING_INDEX(origen_establecimiento, ';', 1))))) AS bodega_key,
+                             0 AS recibido, SUM(cantidad) AS entregado,
+                             0 AS num_entregas_guiasa,
+                             NULL AS beneficiario_key, NULL AS manifiesto,
+                             MAX(fecha_autorizacion) AS fecha_movimiento
+                        FROM sag_trazaragro_movimientos
+                       WHERE id_proyecto = ? AND tipo_movimiento_id = 112
+                         AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+                    GROUP BY departamento, bodega_key
+                   ) AS u
+               GROUP BY departamento
+               ORDER BY inventario_registrado DESC, cantidad_entregada DESC",
+                [$pid, $pid, $pid, $pid]
+            );
+
+            $topRows = $db->fetchAll(
+                "SELECT COALESCE(NULLIF(origen_departamento,''), '(sin departamento)') AS departamento,
+                        COALESCE(NULLIF(TRIM(objeto_trazable), ''), '(sin producto)') AS producto,
+                        SUM(cantidad) AS cantidad
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ?
+                    AND tipo_movimiento_id = 111
+                    AND guiasa_no IS NOT NULL AND TRIM(guiasa_no) <> ''
+                    AND origen_establecimiento IS NOT NULL AND origen_establecimiento <> ''
+               GROUP BY departamento, producto
+               ORDER BY departamento, cantidad DESC",
+                [$pid]
+            );
+
+            $topByDepto = [];
+            foreach ($topRows as $r) {
+                $depto = (string)$r['departamento'];
+                $topByDepto[$depto][] = [
+                    'objeto'   => (string)$r['producto'],
+                    'cantidad' => (float)$r['cantidad'],
+                ];
+            }
+
+            foreach ($rows as &$r) {
+                $r['inventario_registrado'] = (float)$r['inventario_registrado'];
+                $r['cantidad_entregada']    = (float)$r['cantidad_entregada'];
+                $r['saldo_inventario']      = $r['inventario_registrado'] - $r['cantidad_entregada'];
+                $r['avance_pct']            = $r['inventario_registrado'] > 0
+                    ? round(($r['cantidad_entregada'] / $r['inventario_registrado']) * 100, 1)
+                    : 0;
+                $r['bodegas']               = (int)$r['bodegas'];
+                $r['municipios']            = $r['bodegas'];
+                $r['entregados']            = (int)$r['movimientos'];
+                $r['pendientes']            = 0;
+                $r['top_objetos']           = $topByDepto[(string)$r['departamento']] ?? [];
+            }
+            unset($r);
+
+            return $rows;
+        } catch (\Throwable $e) {
+            error_log('inventarioOirsaPorDepartamento: ' . $e->getMessage());
+            return [];
+        }
+    }
 
     /**
      * Agrupa movimientos por destino_dni y devuelve un array con la información
