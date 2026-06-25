@@ -36,6 +36,7 @@ class EntregasController extends Controller
         $anomalias          = $this->recolectarAnomalias($movimientos);
         $kpis               = $this->calcularKpis($movimientos);
         $catalogos          = $this->cargarCatalogosFiltros();
+        $conteosOirsaTipos  = $this->conteosTrazaragroPorTipo();
 
         // Para badge en sidebar — actualiza el contador de alertas en sesión
         $_SESSION['entregas_alertas_count'] = $kpis['con_alertas'] ?? 0;
@@ -44,7 +45,8 @@ class EntregasController extends Controller
 
         $this->view('entregas/index', compact(
             'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
-            'reporteDepartamentos', 'reporteProductores', 'reporteBodegas', 'anomalias'
+            'reporteDepartamentos', 'reporteProductores', 'reporteBodegas',
+            'anomalias', 'conteosOirsaTipos'
         ));
     }
 

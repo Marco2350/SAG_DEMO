@@ -119,7 +119,7 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
         Inventarios de Incentivos
         <small>
           <?= progIconHtml($prog, 'margin-right:4px;') ?>
-          <?= htmlspecialchars($progSigla) ?> — Cronogramas, recepción y stock
+          <?= htmlspecialchars($progSigla) ?> — Cronogramas internos, kardex y stock · Para movimientos OIRSA (tipos 111/112/113) usá <strong>Movilizaciones</strong>
         </small>
       </div>
     </div>
@@ -366,8 +366,12 @@ $progIco    = $prog['icono']  ?? 'fa-seedling';
   <div class="inv-panel" id="tab-kardex">
     <div class="card-box">
       <div class="card-box-header">
-        <h6><i class="fas fa-list-ul"></i> Movimientos recientes</h6>
-        <span style="font-size:.78rem;color:var(--texto-sec);"><?= count($kardex) ?> movimientos</span>
+        <h6><i class="fas fa-list-ul"></i> Kardex interno — Entradas, salidas y ajustes</h6>
+        <span style="font-size:.78rem;color:var(--texto-sec);"><?= count($kardex) ?> movimientos registrados localmente</span>
+      </div>
+      <div style="padding:8px 14px;font-size:.78rem;color:var(--texto-sec);background:#f8fafc;border-bottom:1px solid var(--borde-suave);">
+        <i class="fas fa-circle-info" style="color:#1e40af;"></i>
+        Estos son movimientos del inventario local SAG (vinculados a cronogramas). Las recepciones OIRSA (tipo 113) y entregas a productores (tipo 111) se ven en <strong>Entregas</strong> y <strong>Movilizaciones</strong>.
       </div>
       <div style="overflow-x:auto;">
         <table class="sag-table">

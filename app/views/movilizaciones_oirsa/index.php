@@ -106,7 +106,11 @@ $totalGlobal = (int)($kpis['recep_total'] + $kpis['ent_total'] + $kpis['tras_tot
   <!-- Tabs -->
   <div class="mov-tabs">
     <button class="mov-tab active" data-tab="movimientos">
-      <i class="fas fa-list-ul"></i> Movimientos <small style="opacity:.7;">(<?= number_format($totalGlobal) ?>)</small>
+      <i class="fas fa-list-ul"></i> Movimientos
+      <small style="opacity:.85;">
+        (<?= number_format($totalGlobal) ?>:
+        <span style="color:#1e40af;font-weight:700;"><?= number_format($kpis['recep_total']) ?>R</span>·<span style="color:#e8742c;font-weight:700;"><?= number_format($kpis['ent_total']) ?>E</span>·<span style="color:#7c3aed;font-weight:700;"><?= number_format($kpis['tras_total']) ?>T</span>)
+      </small>
     </button>
     <button class="mov-tab" data-tab="por-bodega">
       <i class="fas fa-warehouse"></i> Por Bodega

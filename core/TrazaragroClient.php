@@ -379,13 +379,42 @@ class TrazaragroClient
             $values = $res['body']['value'] ?? [];
             if (empty($values)) break;            // OIRSA agotó resultados
 
+            // Conteo por tipo en ESTA página para diagnóstico
+            $pageCount = ['111' => 0, '112' => 0, '113' => 0, 'otros' => 0];
+
             foreach ($values as $row) {
-                $normalized[] = $this->parseMovement($row);
+                $parsed = $this->parseMovement($row);
+                $tipo   = (int)($parsed['tipo_movimiento_id'] ?? 0);
+                if (in_array($tipo, [111, 112, 113], true)) $pageCount[(string)$tipo]++;
+                else                                        $pageCount['otros']++;
+                $normalized[] = $parsed;
             }
+
+            error_log(
+                "TrazaragroClient::fetchEntregas página {$pages} (offset={$offset}) "
+                . "recibió " . count($values)
+                . " · tipo111={$pageCount['111']}"
+                . " · tipo112={$pageCount['112']}"
+                . " · tipo113={$pageCount['113']}"
+                . " · otros={$pageCount['otros']}"
+            );
 
             // Si OIRSA devolvió menos que pedimos, no hay más páginas
             if (count($values) < $thisTop) break;
         }
+
+        // Resumen final por tipo (sobre TODO el sync)
+        $totalPorTipo = ['111' => 0, '112' => 0, '113' => 0, 'otros' => 0];
+        foreach ($normalized as $m) {
+            $tipo = (int)($m['tipo_movimiento_id'] ?? 0);
+            if (in_array($tipo, [111, 112, 113], true)) $totalPorTipo[(string)$tipo]++;
+            else                                        $totalPorTipo['otros']++;
+        }
+        error_log(
+            "TrazaragroClient::fetchEntregas TOTAL " . count($normalized)
+            . " movimientos · 111={$totalPorTipo['111']} · 112={$totalPorTipo['112']}"
+            . " · 113={$totalPorTipo['113']} · otros={$totalPorTipo['otros']}"
+        );
 
         return $normalized;
     }

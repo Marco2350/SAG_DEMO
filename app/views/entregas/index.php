@@ -109,6 +109,11 @@ require ROOT_PATH . '/app/views/layouts/topbar.php';
 
 // Pasar movimientos a JS para el filtrado client-side
 $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT | JSON_HEX_APOS);
+
+// ── Conteo por tipo OIRSA (para banner y badges) ───────────────
+// 111 = Entrega Bodega → Productor · 112 = Traslado Bodega → Bodega · 113 = Recepción Proveedor → Bodega
+$conteoPorTipo = array_merge(['111' => 0, '112' => 0, '113' => 0], $conteosOirsaTipos ?? []);
+$totalMov = array_sum($conteoPorTipo);
 ?>
 
 <!-- ══ CONTENT ══ -->
@@ -145,8 +150,18 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
   <div class="info-banner">
     <i class="fas fa-circle-check"></i>
     <div>
-      <strong>Datos reales de OIRSA</strong> &mdash; <?= count($movimientos) ?> movimientos sincronizados.
-      <strong>Clic normal</strong> = sync incremental · <strong>Shift+Clic</strong> = limpia BD y re-sincroniza desde cero.
+      <strong>Datos reales de OIRSA</strong> &mdash; <?= number_format($totalMov) ?> movimientos sincronizados:
+      <span title="Tipo 111 · Bodega → Productor" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;">
+        <?= number_format($conteoPorTipo['111']) ?> entregas
+      </span>
+      <span title="Tipo 113 · Proveedor → Bodega" style="background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:2px;">
+        <?= number_format($conteoPorTipo['113']) ?> recepciones
+      </span>
+      <span title="Tipo 112 · Bodega → Bodega" style="background:#ede9fe;color:#7c3aed;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:2px;">
+        <?= number_format($conteoPorTipo['112']) ?> traslados
+      </span>
+      <br>
+      <small><strong>Clic normal</strong> = sync incremental · <strong>Shift+Clic</strong> = limpia BD y re-sincroniza desde cero.</small>
     </div>
   </div>
   <?php endif; ?>
