@@ -651,23 +651,23 @@ class EntregasController extends Controller
                 return;
             }
 
-            // ── Validación de inputs ──
-            // Default: últimos 365 días. Programas SAG operan en ciclos anuales,
-            // y muchas entregas en OIRSA pueden tener fechas históricas (la última
-            // entrega 2375 en producción es de mayo 2026, pero podría haber huecos).
-            $desdeRaw = (string)$this->getPost('desde', date('Y-m-d', strtotime('-365 days')));
-            $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
-            $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : date('Y-m-d', strtotime('-365 days'));
-            $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
-            // Tamaño del lote — Default 50.000 es seguro para 2 GB de memoria.
-            // Antes era 500.000 pero PHP se quedaba sin memoria. Si hace falta
-            // sincronizar más, hacer varios syncs (UPSERT por movement_id, así
-            // los duplicados se ignoran y solo entran los nuevos).
-            $top      = max(1, min(500000, (int)$this->getPost('top', 50000)));
             // Solo Super Admin / Coord Nacional pueden limpiar la tabla antes del sync
             $limpiarSolicitado = (int)$this->getPost('limpiar', 0) === 1;
             $puedeLimpiar      = $this->hasRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
             $limpiar           = $limpiarSolicitado && $puedeLimpiar;
+
+            // ── Validación de inputs ──
+            // Sync incremental: últimos 365 días. Limpieza: histórico completo.
+            // Una salida reciente puede depender de una recepción 113 más antigua.
+            $desdeDefault = $limpiar ? '2000-01-01' : date('Y-m-d', strtotime('-365 days'));
+            $topDefault   = $limpiar ? 100000 : 50000;
+            $desdeRaw = (string)$this->getPost('desde', $desdeDefault);
+            $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
+            $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : $desdeDefault;
+            $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
+            // Tamaño del lote. Para limpieza se pide más historial por tipo; si OIRSA
+            // tiene más de este límite, puede repetirse el sync sin duplicar filas.
+            $top      = max(1, min(500000, (int)$this->getPost('top', $topDefault)));
 
             // Filtro OIRSA: preferimos ID numérico si está validado para el programa,
             // si no usamos texto (substringof) como fallback.
@@ -675,12 +675,6 @@ class EntregasController extends Controller
             $rubroId  = (int)(PROGRAMAS[$progId]['trazaragro_rubro_id'] ?? 0);
             $rubroIds = PROGRAMAS[$progId]['trazaragro_rubro_ids'] ?? null;
             $rubro    = PROGRAMAS[$progId]['trazaragro_rubro']    ?? null;
-
-            if ($limpiar) {
-                $borradas = $this->limpiarMovimientos();
-                $this->logAction('SYNC_TRAZARAGRO_LIMPIEZA', 'entregas',
-                    "programa={$progId} · filas borradas={$borradas}");
-            }
 
             $fetchArgsBase = [
                 'top'   => $top,
@@ -732,26 +726,35 @@ class EntregasController extends Controller
                 'errores' => 0, 'errores_det' => [],
             ];
             $porTipo = [];
+            $movimientosPendientes = [];
             foreach ($tiposSolicitados as $tipoMovId) {
                 $fetchArgs = $fetchArgsBase;
                 $fetchArgs['tipoMovId'] = $tipoMovId;
                 $movimientosTipo = $cli->fetchEntregas($fetchArgs);
-                $statsTipo = $this->persistirMovimientos($movimientosTipo);
-                $this->prepararDescuentoInventario($movimientosTipo);
 
                 $nombreTipo = $catalogoTipos[$tipoMovId]['nombre'] ?? ('Tipo ' . $tipoMovId);
                 $porTipo[(string)$tipoMovId] = [
                     'nombre' => $nombreTipo,
-                    'recibidos' => $statsTipo['recibidos'],
-                    'insertados' => $statsTipo['insertados'],
-                    'actualizados' => $statsTipo['actualizados'],
-                    'errores' => $statsTipo['errores'],
+                    'recibidos' => count($movimientosTipo),
+                    'insertados' => 0,
+                    'actualizados' => 0,
+                    'errores' => 0,
                 ];
-                foreach (['recibidos', 'insertados', 'actualizados', 'errores'] as $campo) {
-                    $stats[$campo] += $statsTipo[$campo];
-                }
-                if (!empty($statsTipo['errores_det'])) {
-                    $stats['errores_det'] = array_merge($stats['errores_det'], $statsTipo['errores_det']);
+                $stats['recibidos'] += count($movimientosTipo);
+
+                if ($limpiar) {
+                    $movimientosPendientes[(string)$tipoMovId] = $movimientosTipo;
+                } else {
+                    $statsTipo = $this->persistirMovimientos($movimientosTipo);
+                    $this->prepararDescuentoInventario($movimientosTipo);
+
+                    foreach (['insertados', 'actualizados', 'errores'] as $campo) {
+                        $porTipo[(string)$tipoMovId][$campo] = $statsTipo[$campo];
+                        $stats[$campo] += $statsTipo[$campo];
+                    }
+                    if (!empty($statsTipo['errores_det'])) {
+                        $stats['errores_det'] = array_merge($stats['errores_det'], $statsTipo['errores_det']);
+                    }
                 }
             }
 
@@ -779,6 +782,64 @@ class EntregasController extends Controller
                 return;
             }
 
+            if ($limpiar) {
+                $recibidos111 = $porTipo['111']['recibidos'] ?? 0;
+                $recibidos113 = $porTipo['113']['recibidos'] ?? 0;
+                if (in_array(113, $tiposSolicitados, true) && $recibidos111 > 0 && $recibidos113 === 0) {
+                    $msg = "OIRSA devolvio entregas 111 pero ninguna recepcion 113 para {$progId}. "
+                         . "No se borro la base local para evitar dejar inventario incompleto.";
+                    $this->logAction('SYNC_TRAZARAGRO_ABORTADO', 'entregas', $msg);
+                    $this->error($msg);
+                    return;
+                }
+
+                try {
+                    $db  = Database::programa();
+                    $pid = Database::proyectoId();
+                    $db->beginTransaction();
+                    $borradas = $db->execute(
+                        "DELETE FROM sag_trazaragro_movimientos WHERE id_proyecto = ?",
+                        [$pid]
+                    );
+
+                    foreach ($movimientosPendientes as $tipoMovId => $movimientosTipo) {
+                        $statsTipo = $this->persistirMovimientos($movimientosTipo);
+                        $this->prepararDescuentoInventario($movimientosTipo);
+
+                        foreach (['insertados', 'actualizados', 'errores'] as $campo) {
+                            $porTipo[$tipoMovId][$campo] = $statsTipo[$campo];
+                            $stats[$campo] += $statsTipo[$campo];
+                        }
+                        if (!empty($statsTipo['errores_det'])) {
+                            $stats['errores_det'] = array_merge($stats['errores_det'], $statsTipo['errores_det']);
+                        }
+                    }
+
+                    if ($stats['errores'] > 0) {
+                        $db->rollback();
+                        $detalleErrores = !empty($stats['errores_det'])
+                            ? ' Detalle: ' . implode(' | ', array_slice($stats['errores_det'], 0, 3))
+                            : '';
+                        $this->error('La re-sincronizacion tuvo errores; se conservaron los datos anteriores.' . $detalleErrores);
+                        return;
+                    }
+
+                    $db->commit();
+                    $this->logAction('SYNC_TRAZARAGRO_LIMPIEZA', 'entregas',
+                        "programa={$progId} · filas reemplazadas={$borradas}");
+                } catch (\Throwable $e) {
+                    if (isset($db)) {
+                        try { $db->rollback(); } catch (\Throwable $ignored) {}
+                    }
+                    error_log('sincronizarTrazaragro limpieza segura EX: ' . $e->getMessage());
+                    $this->error('No se pudo reemplazar la base local; se conservaron los datos anteriores.');
+                    return;
+                }
+            }
+
+            $conteosBd = $this->conteosTrazaragroPorTipo();
+            $datosIncompletos = ($conteosBd['111'] ?? 0) > 0 && ($conteosBd['113'] ?? 0) === 0;
+
             // Resumen amigable
             $resumen = "Trazaragro ({$ping['mode']}): {$stats['recibidos']} movimientos sincronizados";
             if ($stats['insertados'])   $resumen .= " · {$stats['insertados']} nuevos";
@@ -789,6 +850,9 @@ class EntregasController extends Controller
                 $conteosTipo[] = $tipoId . '=' . $detalleTipo['recibidos'];
             }
             if ($conteosTipo) $resumen .= ' · por tipo: ' . implode(', ', $conteosTipo);
+            if ($datosIncompletos) {
+                $resumen .= ' · ADVERTENCIA: hay salidas 111 sin recepciones 113 en BD';
+            }
 
             $this->logAction('SYNC_TRAZARAGRO', 'entregas',
                 "filtro=({$filtroAplicado}) · {$resumen}");
@@ -803,6 +867,8 @@ class EntregasController extends Controller
                 'errores'          => $stats['errores'],
                 'errores_det'      => $stats['errores_det'] ?? [],
                 'por_tipo'         => $porTipo,
+                'conteos_bd'       => $conteosBd,
+                'datos_incompletos'=> $datosIncompletos,
                 'modo'             => $ping['mode'],
                 'rango'            => ['desde' => $desde, 'hasta' => $hasta],
             ]);
@@ -1137,6 +1203,32 @@ class EntregasController extends Controller
         } catch (\Throwable $e) {
             return 0;
         }
+    }
+
+    private function conteosTrazaragroPorTipo(): array
+    {
+        $conteos = ['111' => 0, '112' => 0, '113' => 0];
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            $rows = $db->fetchAll(
+                "SELECT tipo_movimiento_id AS tipo, COUNT(*) AS total
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ?
+                    AND tipo_movimiento_id IN (111, 112, 113)
+               GROUP BY tipo_movimiento_id",
+                [$pid]
+            );
+            foreach ($rows as $row) {
+                $tipo = (string)($row['tipo'] ?? '');
+                if (array_key_exists($tipo, $conteos)) {
+                    $conteos[$tipo] = (int)($row['total'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('conteosTrazaragroPorTipo: ' . $e->getMessage());
+        }
+        return $conteos;
     }
 
     // ════════════════════════════════════════════════════════════

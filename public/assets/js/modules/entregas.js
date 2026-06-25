@@ -298,9 +298,16 @@ $(function () {
         $btn.addClass('is-loading').prop('disabled', true);
         $btn.html('<i class="fas fa-rotate"></i> ' + (limpiar ? 'Limpiando y sincronizando...' : 'Sincronizando con OIRSA...'));
 
+        const data = { limpiar: limpiar };
+        if (limpiar) {
+            data.tipos_movimiento = '111,112,113';
+            data.desde = '2000-01-01';
+            data.top = 100000;
+        }
+
         SAG.ajax({
             url: '/entregas/sincronizarTrazaragro',
-            data: { limpiar: limpiar },
+            data: data,
             success: r => {
                 $btn.removeClass('is-loading').prop('disabled', false);
                 $btn.html('<i class="fas fa-rotate"></i> Sincronizar con Trazaragro');
