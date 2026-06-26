@@ -222,13 +222,20 @@ class EntregasController extends Controller
         }
 
         // 2) Contar duplicados: misma combinación DNI + objeto trazable
+        // Configurable por programa. Algunos PIPs (ej PIPC: 2 sacos de fertilizante
+        // por productor como mínimo) generan duplicados legítimos por diseño,
+        // así que respetamos el flag 'detectar_dup_dni_objeto' del config.
+        $progId          = $_SESSION['programa']['id'] ?? '';
+        $detectarDupDniObjeto = (bool)(PROGRAMAS[$progId]['detectar_dup_dni_objeto'] ?? true);
         $contDniObjeto = [];
-        foreach ($movs as $m) {
-            $dni  = trim((string)($m['destino_dni'] ?? ''));
-            $obj  = trim((string)($m['objeto_trazable'] ?? ''));
-            if ($dni === '' || $obj === '') continue;
-            $k = $dni . '||' . $obj;
-            $contDniObjeto[$k] = ($contDniObjeto[$k] ?? 0) + 1;
+        if ($detectarDupDniObjeto) {
+            foreach ($movs as $m) {
+                $dni  = trim((string)($m['destino_dni'] ?? ''));
+                $obj  = trim((string)($m['objeto_trazable'] ?? ''));
+                if ($dni === '' || $obj === '') continue;
+                $k = $dni . '||' . $obj;
+                $contDniObjeto[$k] = ($contDniObjeto[$k] ?? 0) + 1;
+            }
         }
 
         // 3) Enriquecer cada movimiento
@@ -658,15 +665,54 @@ class EntregasController extends Controller
             $puedeLimpiar      = $this->hasRole(['super_admin', 'coord_nacional', 'admin', 'administrador']);
             $limpiar           = $limpiarSolicitado && $puedeLimpiar;
 
+            // ── Modos de sincronización (FASE 2 — junio 2026) ──────────
+            // Modos válidos:
+            //   · incremental → desde MAX(synced_at) - 1 día (default)
+            //   · historico   → desde OIRSA_FECHA_BASE hasta hoy
+            //   · rango       → desde/hasta del POST (rango específico)
+            //   · guiasa      → filtra por RegistrationCode = guiasa_no del POST
+            //   · bodega      → filtra por CUE (origen o destino) = bodega_cue del POST
+            // Si el modo es 'guiasa' o 'bodega', no aplicamos limpieza ni filtro de rubro
+            // (el filtro específico es más restrictivo que el rubro).
+            $modosValidos = ['incremental', 'historico', 'rango', 'guiasa', 'bodega'];
+            $modo = strtolower(trim((string)$this->getPost('modo', 'incremental')));
+            if (!in_array($modo, $modosValidos, true)) $modo = 'incremental';
+            $guiasaNo  = trim((string)$this->getPost('guiasa_no', ''));
+            $bodegaCue = trim((string)$this->getPost('bodega_cue', ''));
+            // Validaciones de modo: si falta el input requerido, degradar a incremental
+            if ($modo === 'guiasa' && $guiasaNo === '') $modo = 'incremental';
+            if ($modo === 'bodega' && $bodegaCue === '') $modo = 'incremental';
+            // 'historico' es equivalente a Shift+Clic siempre que tenga permiso
+            if ($modo === 'historico' && $puedeLimpiar) $limpiar = true;
+
             // ── Validación de inputs ──
-            // Sync incremental: últimos 365 días. Limpieza: histórico completo.
-            // Una salida reciente puede depender de una recepción 113 más antigua.
-            $desdeDefault = $limpiar ? '2000-01-01' : date('Y-m-d', strtotime('-365 days'));
-            $topDefault   = $limpiar ? 100000 : 50000;
-            $desdeRaw = (string)$this->getPost('desde', $desdeDefault);
-            $hastaRaw = (string)$this->getPost('hasta', date('Y-m-d'));
-            $desde    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : $desdeDefault;
-            $hasta    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
+            // Estrategia de fechas (nueva — junio 2026):
+            //   · Limpieza (Shift+Clic): histórico completo desde OIRSA_FECHA_BASE.
+            //   · Incremental (Clic normal): desde MAX(fecha_autorizacion) en BD menos 1 día,
+            //     o desde OIRSA_FECHA_BASE si la tabla está vacía.
+            // El "menos 1 día" da overlap defensivo por si OIRSA tiene movimientos
+            // que se autorizaron en las últimas horas pero ya estaban en proceso.
+            $fechaBase = defined('OIRSA_FECHA_BASE') ? OIRSA_FECHA_BASE : '2026-04-01';
+
+            if ($limpiar) {
+                $desdeDefault = $fechaBase;
+            } else {
+                $ultimaFecha = $this->ultimaFechaAutorizacionDelPrograma();
+                if ($ultimaFecha) {
+                    $desdeDefault = date('Y-m-d', strtotime($ultimaFecha . ' -1 day'));
+                    // Nunca antes de la fecha base
+                    if ($desdeDefault < $fechaBase) $desdeDefault = $fechaBase;
+                } else {
+                    $desdeDefault = $fechaBase;
+                }
+            }
+            $topDefault = $limpiar ? 100000 : 50000;
+            $desdeRaw   = (string)$this->getPost('desde', $desdeDefault);
+            $hastaRaw   = (string)$this->getPost('hasta', date('Y-m-d'));
+            $desde      = preg_match('/^\d{4}-\d{2}-\d{2}$/', $desdeRaw) ? $desdeRaw : $desdeDefault;
+            $hasta      = preg_match('/^\d{4}-\d{2}-\d{2}$/', $hastaRaw) ? $hastaRaw : date('Y-m-d');
+            // Tope mínimo: jamás traer cosas anteriores a OIRSA_FECHA_BASE.
+            if ($desde < $fechaBase) $desde = $fechaBase;
             // Tamaño del lote. Para limpieza se pide más historial por tipo; si OIRSA
             // tiene más de este límite, puede repetirse el sync sin duplicar filas.
             $top      = max(1, min(500000, (int)$this->getPost('top', $topDefault)));
@@ -683,20 +729,38 @@ class EntregasController extends Controller
                 'desde' => $desde,
                 'hasta' => $hasta,
             ];
-            // Orden de precedencia: lista de IDs > ID único > texto
-            if (is_array($rubroIds) && !empty($rubroIds)) {
-                $fetchArgsBase['rubroIds'] = $rubroIds;
-                $filtroAplicado = 'rubroIds=[' . implode(',', $rubroIds) . ']';
-            } elseif ($rubroId > 0) {
-                $fetchArgsBase['rubroId'] = $rubroId;
-                $filtroAplicado = "rubroId={$rubroId}";
-            } elseif (!empty($rubro)) {
-                $fetchArgsBase['rubro'] = $rubro;
-                $filtroAplicado = "rubro='{$rubro}' (texto)";
+
+            // ── Filtros específicos por modo ───────────────────────────
+            // Si el sync es por GUIASA o por bodega, ignoramos el filtro de rubro
+            // (queremos TODOS los movimientos de esa guía/bodega, sin importar rubro).
+            if ($modo === 'guiasa') {
+                $fetchArgsBase['regCode'] = $guiasaNo;
+                $filtroAplicado = "GUIASA={$guiasaNo} (sin filtro de rubro)";
+                // Una guía suele tener pocos movimientos; bajamos top y subimos rango
+                $fetchArgsBase['desde'] = $fechaBase;
+                $fetchArgsBase['hasta'] = date('Y-m-d');
+            } elseif ($modo === 'bodega') {
+                $fetchArgsBase['cue'] = $bodegaCue;
+                $filtroAplicado = "BodegaCUE={$bodegaCue} (sin filtro de rubro)";
+                $fetchArgsBase['desde'] = $fechaBase;
+                $fetchArgsBase['hasta'] = date('Y-m-d');
             } else {
-                $filtroAplicado = 'sin filtro de rubro';
+                // Modos incremental / historico / rango usan el filtro de rubro habitual.
+                // Orden de precedencia: lista de IDs > ID único > texto
+                if (is_array($rubroIds) && !empty($rubroIds)) {
+                    $fetchArgsBase['rubroIds'] = $rubroIds;
+                    $filtroAplicado = 'rubroIds=[' . implode(',', $rubroIds) . ']';
+                } elseif ($rubroId > 0) {
+                    $fetchArgsBase['rubroId'] = $rubroId;
+                    $filtroAplicado = "rubroId={$rubroId}";
+                } elseif (!empty($rubro)) {
+                    $fetchArgsBase['rubro'] = $rubro;
+                    $filtroAplicado = "rubro='{$rubro}' (texto)";
+                } else {
+                    $filtroAplicado = 'sin filtro de rubro';
+                }
             }
-            error_log("sincronizarTrazaragro: programa={$progId} · {$filtroAplicado} · rango={$desde}/{$hasta} · top={$top}");
+            error_log("sincronizarTrazaragro: programa={$progId} · modo={$modo} · {$filtroAplicado} · rango={$fetchArgsBase['desde']}/{$fetchArgsBase['hasta']} · top={$top}");
 
             // Consultar cada tipo por separado. Antes se enviaba tipoMovId=0 y
             // los tres tipos competían por el mismo TOP; si entregas/recepciones
@@ -1231,6 +1295,33 @@ class EntregasController extends Controller
             error_log('conteosTrazaragroPorTipo: ' . $e->getMessage());
         }
         return $conteos;
+    }
+
+    /**
+     * Devuelve la fecha de autorización OIRSA más reciente ya guardada.
+     * El endpoint OIRSA filtra por AuthorizationDate, así que el incremental
+     * debe usar la misma referencia temporal para no saltarse movimientos.
+     *
+     * @return string|null  'YYYY-MM-DD HH:MM:SS' o null si no hay filas.
+     */
+    private function ultimaFechaAutorizacionDelPrograma(): ?string
+    {
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            if (!$db->tablaExiste('sag_trazaragro_movimientos')) return null;
+            $row = $db->fetchOne(
+                "SELECT MAX(fecha_autorizacion) AS u
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ?",
+                [$pid]
+            );
+            $valor = $row['u'] ?? null;
+            return $valor ? (string)$valor : null;
+        } catch (\Throwable $e) {
+            error_log('ultimaFechaAutorizacionDelPrograma: ' . $e->getMessage());
+            return null;
+        }
     }
 
     // ════════════════════════════════════════════════════════════

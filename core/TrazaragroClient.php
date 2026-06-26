@@ -297,6 +297,20 @@ class TrazaragroClient
             $code = strtolower(addslashes($filtros['authCode']));
             $parts[] = "substringof('{$code}',tolower(AuthorizationCode))";
         }
+        // ── Filtro por GUIASA (RegistrationCode en OIRSA) ──────────
+        // En BD se llama guiasa_no pero proviene de RegistrationCode.
+        // Útil cuando el usuario quiere actualizar UNA guía específica
+        // tras una corrección manual hecha en OIRSA semanas después.
+        if (!empty($filtros['regCode'])) {
+            $code = strtolower(addslashes($filtros['regCode']));
+            $parts[] = "substringof('{$code}',tolower(RegistrationCode))";
+        }
+        // ── Filtro por CUE de bodega (origen O destino) ────────────
+        // Para re-sincronizar una bodega puntual sin tocar el resto.
+        if (!empty($filtros['cue'])) {
+            $cue = strtolower(addslashes($filtros['cue']));
+            $parts[] = "(substringof('{$cue}',tolower(SourceEndpointCode)) or substringof('{$cue}',tolower(DestinyEndpointCode)))";
+        }
         // Filtro por rubro — preferimos ID numérico (fuente de verdad OIRSA):
         //   2371=Café · 2373=Pecuario · 2374=Pesquero · 2375=Agrícola
         // Si llega 'rubroIds' (array), genera OR. Si solo 'rubroId', filtro exacto.

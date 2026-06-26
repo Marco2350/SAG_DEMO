@@ -109,11 +109,6 @@ require ROOT_PATH . '/app/views/layouts/topbar.php';
 
 // Pasar movimientos a JS para el filtrado client-side
 $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT | JSON_HEX_APOS);
-
-// ── Conteo por tipo OIRSA (para banner y badges) ───────────────
-// 111 = Entrega Bodega → Productor · 112 = Traslado Bodega → Bodega · 113 = Recepción Proveedor → Bodega
-$conteoPorTipo = array_merge(['111' => 0, '112' => 0, '113' => 0], $conteosOirsaTipos ?? []);
-$totalMov = array_sum($conteoPorTipo);
 ?>
 
 <!-- ══ CONTENT ══ -->
@@ -129,12 +124,77 @@ $totalMov = array_sum($conteoPorTipo);
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn-sync" id="btnSincronizarTrazaragro" style="background:#1e3a8a;" title="Clic = incremental · Shift+Clic = limpia BD y re-sincroniza desde cero">
-        <i class="fas fa-rotate"></i> Sincronizar con Trazaragro
-      </button>
+      <!-- Grupo: botón principal + opciones avanzadas -->
+      <div class="btn-group" role="group">
+        <button class="btn-sync" id="btnSincronizarTrazaragro" style="background:#1e3a8a;border-top-right-radius:0;border-bottom-right-radius:0;" title="Clic = incremental · Shift+Clic = histórico completo desde 2026-04-01">
+          <i class="fas fa-rotate"></i> Sincronizar con Trazaragro
+        </button>
+        <button type="button" class="btn-sync dropdown-toggle dropdown-toggle-split" id="btnSyncOpciones" data-bs-toggle="dropdown" aria-expanded="false" style="background:#1e3a8a;border-left:1px solid rgba(255,255,255,.25);border-top-left-radius:0;border-bottom-left-radius:0;padding:0 12px;" title="Opciones de sincronización">
+          <span class="visually-hidden">Opciones</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="font-size:.88rem;min-width:260px;">
+          <li><h6 class="dropdown-header" style="font-size:.72rem;text-transform:uppercase;">Sincronización personalizada</h6></li>
+          <li><a class="dropdown-item" href="#" data-sync-modo="guiasa"><i class="fas fa-file-invoice me-2" style="color:#9a3412;width:18px;"></i> Por GUIASA específica</a></li>
+          <li><a class="dropdown-item" href="#" data-sync-modo="bodega"><i class="fas fa-warehouse me-2" style="color:#1e40af;width:18px;"></i> Por bodega (CUE)</a></li>
+          <li><a class="dropdown-item" href="#" data-sync-modo="rango"><i class="fas fa-calendar-range me-2" style="color:#7c3aed;width:18px;"></i> Por rango de fechas</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="#" data-sync-modo="historico"><i class="fas fa-clock-rotate-left me-2" style="color:#dc2626;width:18px;"></i> Histórico completo desde 2026-04-01</a></li>
+        </ul>
+      </div>
       <a class="btn-sync" href="<?= BASE_URL ?>/entregas/exportar" style="background:#16a34a;" title="Descargar CSV (formato OIRSA)">
         <i class="fas fa-file-csv"></i> Descargar reporte
       </a>
+    </div>
+
+    <!-- ══ Modal: Sincronización personalizada ══ -->
+    <div class="modal fade" id="modalSyncPers" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header" style="background:#1e3a8a;color:#fff;">
+            <h5 class="modal-title"><i class="fas fa-rotate me-2"></i> <span id="syncPersTitulo">Sincronización personalizada</span></h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p id="syncPersDesc" style="font-size:.88rem;color:#475569;"></p>
+
+            <!-- Campos por modo -->
+            <div id="syncCampoGuiasa" style="display:none;">
+              <label class="form-label" style="font-weight:600;">Número de GUIASA</label>
+              <input type="text" class="form-control" id="syncInputGuiasa" placeholder="Ej: EH0000210" autocomplete="off">
+              <small style="color:#64748b;">Trae todos los movimientos de OIRSA que contengan esta guía. Útil para corregir guías modificadas.</small>
+            </div>
+            <div id="syncCampoBodega" style="display:none;">
+              <label class="form-label" style="font-weight:600;">CUE de la bodega</label>
+              <input type="text" class="form-control" id="syncInputBodega" placeholder="Ej: CUE-001-23" autocomplete="off">
+              <small style="color:#64748b;">Trae movimientos donde esta bodega sea origen o destino.</small>
+            </div>
+            <div id="syncCampoRango" style="display:none;">
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label" style="font-weight:600;">Desde</label>
+                  <input type="date" class="form-control" id="syncInputDesde" min="2026-04-01">
+                </div>
+                <div class="col-6">
+                  <label class="form-label" style="font-weight:600;">Hasta</label>
+                  <input type="date" class="form-control" id="syncInputHasta">
+                </div>
+              </div>
+              <small style="color:#64748b;">No se puede ir antes del 01/04/2026 (inicio de los programas).</small>
+            </div>
+            <div id="syncCampoHistorico" style="display:none;">
+              <div style="background:#fee2e2;color:#991b1b;border-left:4px solid #dc2626;padding:12px 14px;border-radius:6px;font-size:.88rem;">
+                <strong>⚠️ Cuidado.</strong> Esta opción <strong>borra todos los movimientos del programa</strong> y los re-descarga completos desde el 01/04/2026. Puede tardar varios minutos.
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnSyncPersConfirmar" style="background:#1e3a8a;border-color:#1e3a8a;">
+              <i class="fas fa-rotate me-1"></i> Sincronizar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -148,20 +208,9 @@ $totalMov = array_sum($conteoPorTipo);
   </div>
   <?php else: ?>
   <div class="info-banner">
-    <i class="fas fa-circle-check"></i>
+    <i class="fas fa-circle-info"></i>
     <div>
-      <strong>Datos reales de OIRSA</strong> &mdash; <?= number_format($totalMov) ?> movimientos sincronizados:
-      <span title="Tipo 111 · Bodega → Productor" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:4px;">
-        <?= number_format($conteoPorTipo['111']) ?> entregas
-      </span>
-      <span title="Tipo 113 · Proveedor → Bodega" style="background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:2px;">
-        <?= number_format($conteoPorTipo['113']) ?> recepciones
-      </span>
-      <span title="Tipo 112 · Bodega → Bodega" style="background:#ede9fe;color:#7c3aed;padding:1px 8px;border-radius:8px;font-size:.72rem;font-weight:700;margin-left:2px;">
-        <?= number_format($conteoPorTipo['112']) ?> traslados
-      </span>
-      <br>
-      <small><strong>Clic normal</strong> = sync incremental · <strong>Shift+Clic</strong> = limpia BD y re-sincroniza desde cero.</small>
+      <strong>Clic normal</strong> = sync incremental · <strong>Shift+Clic</strong> = limpia BD y re-sincroniza desde cero.
     </div>
   </div>
   <?php endif; ?>

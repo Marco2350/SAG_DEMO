@@ -71,6 +71,10 @@ define('PROGRAMAS', [
         // (rubro 2371 = "Insumo/Incentivo de café").
         'trazaragro_rubro_id' => 2371,
         'trazaragro_rubro'    => 'café',
+        // En PIPC un productor recibe MINIMO 2 sacos de Fertilizante (20-3-18) (43 kg),
+        // por lo que detectar "mismo DNI + mismo objeto trazable" como duplicado
+        // genera falsos positivos en TODOS los movimientos. Desactivado para PIPC.
+        'detectar_dup_dni_objeto' => false,
     ],
     'pipg' => [
         'id'          => 'pipg',
@@ -135,6 +139,12 @@ define('OIRSA_TIPOS_MOVIMIENTO', [
     112 => ['nombre' => 'Bodega a Bodega',    'naturaleza' => 'Traslado'],
     113 => ['nombre' => 'Proveedor a Bodega', 'naturaleza' => 'Entrada'],
 ]);
+
+// ── Fecha base de inicio de los programas SAG ──────────────────
+// Antes de esta fecha no hay movimientos válidos en OIRSA para los PIPs.
+// Cualquier sync masivo (limpieza, histórico completo) parte desde aquí.
+// El sync incremental usa el MAX(synced_at) de la BD; si no hay data, usa esta fecha.
+define('OIRSA_FECHA_BASE', '2026-04-01');
 
 // ── Catálogo de etnias reconocidas en Honduras ─────────────────
 // Fuente: pueblos indígenas y afrohondureños reconocidos oficialmente

@@ -322,6 +322,85 @@ $(function () {
         });
     });
 
+    // ── SYNC PERSONALIZADA (dropdown opciones) ───────────────
+    // Lanza el modal con el modo elegido del dropdown
+    $(document).on('click', '[data-sync-modo]', function (e) {
+        e.preventDefault();
+        const modo = $(this).data('sync-modo');
+        const titulos = {
+            guiasa: 'Sincronizar una GUIASA especifica',
+            bodega: 'Sincronizar por bodega',
+            rango:  'Sincronizar por rango de fechas',
+            historico: 'Historico completo desde 2026-04-01'
+        };
+        const descs = {
+            guiasa: 'Solo trae movimientos de OIRSA cuyo numero de GUIASA contenga el valor ingresado.',
+            bodega: 'Solo trae movimientos donde la bodega (origen o destino) coincida con el CUE.',
+            rango:  'Trae movimientos cuya fecha de autorizacion este en el rango.',
+            historico: 'Re-sincronizacion completa desde la fecha base de los programas.'
+        };
+        $('#syncPersTitulo').text(titulos[modo] || 'Sincronizacion personalizada');
+        $('#syncPersDesc').text(descs[modo] || '');
+        $('#syncCampoGuiasa,#syncCampoBodega,#syncCampoRango,#syncCampoHistorico').hide();
+        if (modo === 'guiasa') $('#syncCampoGuiasa').show();
+        if (modo === 'bodega') $('#syncCampoBodega').show();
+        if (modo === 'rango')  {
+            const hoy = new Date();
+            const mesAtras = new Date(hoy.getTime() - 30*24*3600*1000);
+            $('#syncInputDesde').val(mesAtras.toISOString().slice(0,10));
+            $('#syncInputHasta').val(hoy.toISOString().slice(0,10));
+            $('#syncCampoRango').show();
+        }
+        if (modo === 'historico') $('#syncCampoHistorico').show();
+        $('#btnSyncPersConfirmar').data('modo', modo);
+        new bootstrap.Modal(document.getElementById('modalSyncPers')).show();
+    });
+
+    // Confirmar sync personalizada
+    $('#btnSyncPersConfirmar').on('click', function () {
+        const $btn = $(this);
+        const modo = $btn.data('modo');
+        const data = { modo: modo };
+
+        if (modo === 'guiasa') {
+            const g = ($('#syncInputGuiasa').val() || '').trim();
+            if (!g) { SAG.toast('Ingresa un numero de GUIASA.', 'warning'); return; }
+            data.guiasa_no = g;
+        } else if (modo === 'bodega') {
+            const c = ($('#syncInputBodega').val() || '').trim();
+            if (!c) { SAG.toast('Ingresa un CUE de bodega.', 'warning'); return; }
+            data.bodega_cue = c;
+        } else if (modo === 'rango') {
+            const d = $('#syncInputDesde').val();
+            const h = $('#syncInputHasta').val();
+            if (!d || !h) { SAG.toast('Completa ambas fechas.', 'warning'); return; }
+            if (d < '2026-04-01') { SAG.toast('La fecha desde no puede ser anterior a 2026-04-01.', 'warning'); return; }
+            data.desde = d;
+            data.hasta = h;
+        } else if (modo === 'historico') {
+            if (!confirm('Esto BORRARA todos los movimientos del programa y los re-descarga desde 2026-04-01. Continuar?')) return;
+            data.limpiar = 1;
+            data.tipos_movimiento = '111,112,113';
+        }
+
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Sincronizando...');
+        SAG.ajax({
+            url: '/entregas/sincronizarTrazaragro',
+            data: data,
+            success: r => {
+                $btn.prop('disabled', false).html('<i class="fas fa-rotate me-1"></i> Sincronizar');
+                bootstrap.Modal.getInstance(document.getElementById('modalSyncPers'))?.hide();
+                if (!r.success) { SAG.toast(r.message, 'error'); return; }
+                SAG.toast(r.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            },
+            error: () => {
+                $btn.prop('disabled', false).html('<i class="fas fa-rotate me-1"></i> Sincronizar');
+                SAG.toast('Error en la sincronizacion.', 'error');
+            }
+        });
+    });
+
     // ── INIT ─────────────────────────────────────────────────
     renderTabla();
 });
