@@ -331,6 +331,18 @@ $router->get('/presupuesto/documentos/ver',      'PresupuestoController', 'desca
 $router->get('/presupuesto/api/lineas',          'PresupuestoController', 'apiLineas');
 $router->post('/presupuesto/api/lineas',         'PresupuestoController', 'apiLineas');
 
+// ── Flota Vehicular ──────────────────────────────────────────
+$router->get('/flota',                            'FlotaController', 'index');
+$router->post('/flota/guardarVehiculo',           'FlotaController', 'guardarVehiculo');
+$router->post('/flota/eliminarVehiculo',          'FlotaController', 'eliminarVehiculo');
+$router->post('/flota/guardarViaje',              'FlotaController', 'guardarViaje');
+$router->post('/flota/cerrarViaje',               'FlotaController', 'cerrarViaje');
+$router->post('/flota/eliminarViaje',             'FlotaController', 'eliminarViaje');
+$router->post('/flota/guardarMantenimiento',      'FlotaController', 'guardarMantenimiento');
+$router->post('/flota/eliminarMantenimiento',     'FlotaController', 'eliminarMantenimiento');
+$router->post('/flota/guardarCombustible',        'FlotaController', 'guardarCombustible');
+$router->post('/flota/eliminarCombustible',       'FlotaController', 'eliminarCombustible');
+
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
 $router->get('/entregas/diag',                       'EntregasController', 'diag');

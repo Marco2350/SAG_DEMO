@@ -146,6 +146,36 @@ define('OIRSA_TIPOS_MOVIMIENTO', [
 // El sync incremental usa el MAX(synced_at) de la BD; si no hay data, usa esta fecha.
 define('OIRSA_FECHA_BASE', '2026-04-01');
 
+// ── Módulo Flota Vehicular ───────────────────────────────────
+// Catálogos definidos aquí (no en BD) para mantener el módulo simple.
+// Si en el futuro se necesita más flexibilidad, se migra a tabla.
+
+define('FLOTA_COMBUSTIBLES', [
+    'gasolina'  => 'Gasolina',
+    'diesel'    => 'Diésel',
+    'glp'       => 'GLP',
+    'electrico' => 'Eléctrico',
+    'hibrido'   => 'Híbrido',
+]);
+
+// Tipos de mantenimiento con su intervalo en km.
+// El cálculo de alertas usa cada_km para determinar el próximo servicio:
+// próximo = último_realizado + cada_km. Si km_actual ya lo superó → alerta.
+define('FLOTA_TIPOS_MANTENIMIENTO', [
+    'aceite'  => ['nombre' => 'Cambio de aceite',     'cada_km' => 5000],
+    'frenos'  => ['nombre' => 'Sistema de frenos',    'cada_km' => 20000],
+    'llantas' => ['nombre' => 'Llantas',              'cada_km' => 40000],
+    'general' => ['nombre' => 'Revisión general',     'cada_km' => 10000],
+    'bateria' => ['nombre' => 'Batería',              'cada_km' => 60000],
+    'filtro'  => ['nombre' => 'Filtro de aire',       'cada_km' => 10000],
+]);
+
+define('FLOTA_ESTADOS_VEHICULO', [
+    'activo' => 'Activo',
+    'taller' => 'En taller',
+    'baja'   => 'Dado de baja',
+]);
+
 // ── Catálogo de etnias reconocidas en Honduras ─────────────────
 // Fuente: pueblos indígenas y afrohondureños reconocidos oficialmente
 // + categorías generales (mestizo, ladino) + "otro" libre.

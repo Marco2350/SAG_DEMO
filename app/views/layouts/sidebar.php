@@ -146,8 +146,8 @@ function navGroupOpen(array $segments): string {
   </div>
 
   <!-- Administración Financiera -->
-  <div class="nav-group <?= navGroupOpen(['/presupuesto']) ?>" data-nav-group="administracion">
-    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/presupuesto']) ? 'true' : 'false' ?>">
+  <div class="nav-group <?= navGroupOpen(['/presupuesto', '/flota']) ?>" data-nav-group="administracion">
+    <button class="nav-group-toggle" type="button" aria-expanded="<?= navGroupOpen(['/presupuesto', '/flota']) ? 'true' : 'false' ?>">
       <span>Administración</span>
       <i class="fas fa-chevron-down" aria-hidden="true"></i>
     </button>
@@ -155,6 +155,10 @@ function navGroupOpen(array $segments): string {
       <a class="nav-item-s <?= navActive('/presupuesto') ?>" href="<?= BASE_URL ?>/presupuesto">
         <i class="fas fa-scale-balanced"></i>
         <span class="nav-label">Ejecución Presupuestaria</span>
+      </a>
+      <a class="nav-item-s <?= navActive('/flota') ?>" href="<?= BASE_URL ?>/flota">
+        <i class="fas fa-car"></i>
+        <span class="nav-label">Flota Vehicular</span>
       </a>
     </div>
   </div>
