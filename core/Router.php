@@ -85,6 +85,7 @@ class Router
             return;
         }
 
+        $controller->authorizeRouteAction($action, $_SERVER['REQUEST_METHOD'] ?? 'GET');
         call_user_func_array([$controller, $action], $params);
     }
 

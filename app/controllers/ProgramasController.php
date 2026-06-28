@@ -7,10 +7,17 @@ class ProgramasController extends Controller
 
         // Si ya tiene programa activo y no es selección forzada, ir al dashboard
         if (!empty($_SESSION['programa']) && empty($_GET['cambiar'])) {
-            $this->redirect('/dashboard');
+            $activoId = (string) ($_SESSION['programa']['id'] ?? '');
+            if (isset(PROGRAMAS[$activoId]) && $this->programaPermitido($activoId)) {
+                $this->redirect('/dashboard');
+            }
+            unset($_SESSION['programa']);
         }
 
-        $programas = PROGRAMAS;
+        $programas = array_filter(
+            PROGRAMAS,
+            fn(array $programa): bool => $this->programaPermitido((string) ($programa['id'] ?? '')),
+        );
 
         // Stats rápidas por programa (para mostrar en las tarjetas).
         // Todo vive en sag_main; se filtra por id_proyecto.
@@ -75,6 +82,16 @@ class ProgramasController extends Controller
 
         if (!isset($programas[$id])) {
             $this->error('Programa no válido.');
+            return;
+        }
+
+        if (!$this->programaPermitido((string) $id)) {
+            $this->logAction(
+                'ACCESO_PROGRAMA_DENEGADO',
+                'programas',
+                'Programa solicitado: ' . mb_substr((string) $id, 0, 20)
+            );
+            $this->error('No tiene autorización para ingresar a este programa.', 403);
             return;
         }
 

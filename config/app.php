@@ -216,7 +216,7 @@ define('TRAZARAGRO', [
     'username'      => Env::get('TRAZARAGRO_USERNAME', ''),   // ← usuario otorgado por OIRSA
     'password'      => Env::get('TRAZARAGRO_PASSWORD', ''),   // ← contraseña
     'client_id'     => Env::get('TRAZARAGRO_CLIENT_ID', 'TZWEB'),
-    'client_secret' => Env::get('TRAZARAGRO_CLIENT_SECRET', '44007759-8c91-4557-9347-53708a1bb5c5'),
+    'client_secret' => Env::get('TRAZARAGRO_CLIENT_SECRET', ''),
     'instance'      => Env::get('TRAZARAGRO_INSTANCE', 'HN'),
     'timeout'       => (int) Env::get('TRAZARAGRO_TIMEOUT', 30),
 ]);

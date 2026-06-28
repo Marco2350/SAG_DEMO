@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 004 — Crea sag_trazaragro_movimientos en cada BD de programa.
  * URL: http://localhost/sag_programas/migrar_004.php?modo=ejecutar

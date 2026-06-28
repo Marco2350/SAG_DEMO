@@ -1,5 +1,6 @@
 <?php
-require 'core/Env.php';
+require_once __DIR__ . '/_test_guard.php';
+require_once __DIR__ . '/core/Env.php';
 Env::load('.env');
 $pdo = new PDO('mysql:host=' . Env::get('DB_HOST') . ';dbname=' . Env::get('DB_NAME') . ';charset=utf8mb4',
     Env::get('DB_USER'), Env::get('DB_PASS'),

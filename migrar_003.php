@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 003 — Verificación e instalación.
  * URL: http://localhost/sag_programas/migrar_003.php

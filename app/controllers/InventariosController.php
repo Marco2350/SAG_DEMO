@@ -11,8 +11,6 @@
  *
  * Pendiente:
  *   - Cron para detectar líneas atrasadas (estado='atrasada')
- *   - Cuando una entrega es aprobada, descontar stock vía
- *     EntregasController -> InventariosController::registrarSalida()
  */
 class InventariosController extends Controller
 {
@@ -37,7 +35,7 @@ class InventariosController extends Controller
         $bodegas     = $this->getBodegas();
         $productos   = $this->getProductos();
 
-        $esAdmin = in_array($this->rolSlug(), ['admin', 'coordinador', 'admin_bodega'], true);
+        $esAdmin = Permisos::puedeEn('inventarios', ACC_EDITAR);
 
         $this->view('inventarios/index', compact(
             'pageTitle', 'cronogramas', 'stock', 'kardex',
@@ -67,7 +65,7 @@ class InventariosController extends Controller
 
     public function saveCronograma(): void
     {
-        $this->requireRole(['admin', 'coordinador', 'admin_bodega']);
+        $this->requirePermission('inventarios', ACC_EDITAR);
 
         $datos  = json_decode($this->getPost('datos', '[]'), true) ?: [];
         $lineas = json_decode($this->getPost('lineas', '[]'), true) ?: [];
@@ -133,7 +131,7 @@ class InventariosController extends Controller
 
     public function recibirLinea(): void
     {
-        $this->requireRole(['admin', 'coordinador', 'admin_bodega', 'tecnico']);
+        $this->requirePermission('inventarios', ACC_CARGAR);
 
         $idLinea  = (int) $this->getPost('id_linea', 0);
         $cantidad = (float) $this->getPost('cantidad', 0);
@@ -188,7 +186,7 @@ class InventariosController extends Controller
      */
     public function deleteCronograma(): void
     {
-        $this->requireRole(['admin', 'coordinador', 'admin_bodega']);
+        $this->requirePermission('inventarios', ACC_ELIMINAR);
 
         $id = (int) $this->getPost('id', 0);
         if ($id <= 0) { $this->error('Cronograma inválido.'); return; }
@@ -240,7 +238,7 @@ class InventariosController extends Controller
     /** Lee un Excel/CSV y devuelve líneas validadas para el formulario. */
     public function importarExcel(): void
     {
-        $this->requireRole(['admin', 'coordinador', 'admin_bodega']);
+        $this->requirePermission('inventarios', ACC_CARGAR);
         if (empty($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
             $this->error('No se recibió el archivo.'); return;
         }
@@ -248,10 +246,22 @@ class InventariosController extends Controller
             $this->error('El archivo no puede superar 5 MB.'); return;
         }
         $ext = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
+        $tmp = $_FILES['archivo']['tmp_name'];
+        if (!is_uploaded_file($tmp)) {
+            $this->error('La carga del archivo no es válida.'); return;
+        }
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: '';
+        $mimesPermitidos = [
+            'csv' => ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel'],
+            'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
+        ];
+        if (!isset($mimesPermitidos[$ext]) || !in_array($mime, $mimesPermitidos[$ext], true)) {
+            $this->error('El contenido del archivo no coincide con un CSV o XLSX válido.'); return;
+        }
         try {
             $rows = $ext === 'csv'
-                ? $this->parsearCsv($_FILES['archivo']['tmp_name'])
-                : ($ext === 'xlsx' ? $this->parsearXlsx($_FILES['archivo']['tmp_name']) : []);
+                ? $this->parsearCsv($tmp)
+                : ($ext === 'xlsx' ? $this->parsearXlsx($tmp) : []);
         } catch (Throwable $e) {
             error_log('InventariosController::importarExcel - ' . $e->getMessage());
             $this->error('No se pudo leer el archivo. Use la plantilla indicada.'); return;
@@ -315,16 +325,125 @@ class InventariosController extends Controller
      */
     public static function registrarSalida(int $idEntrega, int $idBodega, array $productos): array
     {
-        // MOCK: en producción aquí se validaría stock y se haría INSERT al kardex
-        $ids = [];
-        foreach ($productos as $p) {
-            $ids[] = rand(100000, 999999);
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
+        if (!$db->columnaExiste('sag_inventario_movimientos', 'referencia_externa')) {
+            return [
+                'ok' => false,
+                'msg' => 'Falta aplicar migracion_022_inventario_oirsa.sql.',
+                'movimientos' => [],
+            ];
         }
-        return [
-            'ok'          => true,
-            'msg'         => count($productos) . " salidas de stock registradas (MOCK) por entrega #{$idEntrega}",
-            'movimientos' => $ids,
-        ];
+
+        $cantidades = [];
+        foreach ($productos as $producto) {
+            $idProducto = (int) ($producto['id_producto'] ?? 0);
+            $cantidad   = (float) ($producto['cantidad'] ?? 0);
+            if ($idProducto > 0 && $cantidad > 0) {
+                $cantidades[$idProducto] = ($cantidades[$idProducto] ?? 0) + $cantidad;
+            }
+        }
+        if ($idEntrega <= 0 || !$cantidades) {
+            return ['ok' => false, 'msg' => 'La entrega no contiene productos válidos.', 'movimientos' => []];
+        }
+
+        $propia = !$db->inTransaction();
+        try {
+            if ($propia) $db->beginTransaction();
+            $entrega = $db->fetchOne(
+                "SELECT id_entrega,id_bodega,stock_descontado
+                   FROM sag_entregas
+                  WHERE id_entrega=? AND id_proyecto=?
+                  FOR UPDATE",
+                [$idEntrega, $pid]
+            );
+            if (!$entrega) {
+                throw new \InvalidArgumentException('La entrega no pertenece al programa activo.');
+            }
+            $bodegaEntrega = (int) $entrega['id_bodega'];
+            if ($idBodega > 0 && $idBodega !== $bodegaEntrega) {
+                throw new \InvalidArgumentException('La bodega no corresponde a la entrega.');
+            }
+            $idBodega = $bodegaEntrega;
+
+            if ((int) $entrega['stock_descontado'] === 1) {
+                $existentes = $db->fetchAll(
+                    "SELECT id_movimiento
+                       FROM sag_inventario_movimientos
+                      WHERE id_proyecto=? AND origen='entrega' AND id_origen=?",
+                    [$pid, $idEntrega]
+                );
+                if ($propia) $db->commit();
+                return [
+                    'ok' => true,
+                    'msg' => 'El inventario de esta entrega ya había sido descontado.',
+                    'movimientos' => array_map('intval', array_column($existentes, 'id_movimiento')),
+                ];
+            }
+
+            $ids = [];
+            foreach ($cantidades as $idProducto => $cantidad) {
+                $producto = $db->fetchOne(
+                    "SELECT id_producto
+                       FROM sag_inventario_productos
+                      WHERE id_producto=? AND id_proyecto=? AND activo=1",
+                    [$idProducto, $pid]
+                );
+                if (!$producto) {
+                    throw new \InvalidArgumentException("Producto #{$idProducto} no válido para el programa.");
+                }
+
+                $movimientos = $db->fetchAll(
+                    "SELECT tipo,cantidad
+                       FROM sag_inventario_movimientos
+                      WHERE id_proyecto=? AND id_producto=? AND id_bodega=?
+                      FOR UPDATE",
+                    [$pid, $idProducto, $idBodega]
+                );
+                $saldo = 0.0;
+                foreach ($movimientos as $movimiento) {
+                    $valor = (float) $movimiento['cantidad'];
+                    $saldo += $movimiento['tipo'] === 'salida' ? -$valor : $valor;
+                }
+                if ($cantidad > $saldo) {
+                    throw new \InvalidArgumentException(
+                        "Stock insuficiente para el producto #{$idProducto}. Disponible: {$saldo}."
+                    );
+                }
+
+                $referencia = "entrega:{$idEntrega}:producto:{$idProducto}";
+                $db->execute(
+                    "INSERT INTO sag_inventario_movimientos
+                     (id_proyecto,fecha,tipo,id_producto,id_bodega,cantidad,saldo_resultante,
+                      origen,id_origen,referencia_externa,descripcion,created_by)
+                     VALUES (?,NOW(),'salida',?,?,?,?, 'entrega',?,?,?,?)",
+                    [
+                        $pid, $idProducto, $idBodega, $cantidad, $saldo - $cantidad,
+                        $idEntrega, $referencia, "Salida por entrega #{$idEntrega}",
+                        $_SESSION['user']['id_usuario'] ?? null,
+                    ]
+                );
+                $ids[] = (int) $db->lastInsertId();
+            }
+
+            $db->execute(
+                "UPDATE sag_entregas
+                    SET stock_descontado=1
+                  WHERE id_entrega=? AND id_proyecto=?",
+                [$idEntrega, $pid]
+            );
+            if ($propia) $db->commit();
+            return [
+                'ok' => true,
+                'msg' => count($ids) . " salidas registradas por la entrega #{$idEntrega}.",
+                'movimientos' => $ids,
+            ];
+        } catch (\Throwable $e) {
+            if ($propia && $db->inTransaction()) $db->rollback();
+            if (!$propia) throw $e;
+            error_log('InventariosController::registrarSalida — ' . $e->getMessage());
+            return ['ok' => false, 'msg' => $e->getMessage(), 'movimientos' => []];
+        }
     }
 
     // ════════════════════════════════════════════════════════════
@@ -508,138 +627,6 @@ class InventariosController extends Controller
             if ($d && $d->format($formato) === $valor) return $d->format('Y-m-d');
         }
         return null;
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  MOCK DATA
-    // ════════════════════════════════════════════════════════════
-    private function mockProveedores(): array
-    {
-        return [
-            ['id_proveedor' => 1, 'nombre' => 'Agroinsumos del Pacífico S. de R.L.', 'rtn' => '08019007654321'],
-            ['id_proveedor' => 2, 'nombre' => 'Distribuidora Granos del Norte',      'rtn' => '05019007891234'],
-            ['id_proveedor' => 3, 'nombre' => 'Fertilizantes Honduras S.A.',          'rtn' => '08019005566778'],
-            ['id_proveedor' => 4, 'nombre' => 'Suministros Veterinarios Centroamericanos', 'rtn' => '15019003344556'],
-        ];
-    }
-
-    private function mockBodegas(): array
-    {
-        return [
-            ['id_bodega' => 1, 'codigo' => 'FM01', 'nombre' => 'Bodega Central FM-01',     'departamento' => 'Francisco Morazán'],
-            ['id_bodega' => 2, 'codigo' => 'FM02', 'nombre' => 'Bodega Valle FM-02',       'departamento' => 'Francisco Morazán'],
-            ['id_bodega' => 3, 'codigo' => 'CP01', 'nombre' => 'Bodega Santa Rosa CP-01',  'departamento' => 'Copán'],
-            ['id_bodega' => 4, 'codigo' => 'CP02', 'nombre' => 'Bodega La Entrada CP-02',  'departamento' => 'Copán'],
-            ['id_bodega' => 5, 'codigo' => 'OL01', 'nombre' => 'Bodega Juticalpa OL-01',  'departamento' => 'Olancho'],
-            ['id_bodega' => 6, 'codigo' => 'OL02', 'nombre' => 'Bodega Campamento OL-02', 'departamento' => 'Olancho'],
-        ];
-    }
-
-    private function mockProductos(): array
-    {
-        return [
-            ['id_producto' => 1, 'codigo' => 'INS-FERT-001', 'nombre' => 'Fertilizante 18-46-0',    'unidad' => 'saco',   'presentacion' => 'saco 100 lb'],
-            ['id_producto' => 2, 'codigo' => 'INS-FERT-002', 'nombre' => 'Urea 46%',                 'unidad' => 'saco',   'presentacion' => 'saco 100 lb'],
-            ['id_producto' => 3, 'codigo' => 'INS-SEM-001',  'nombre' => 'Semilla de maíz híbrido', 'unidad' => 'bolsa',  'presentacion' => 'bolsa 20 kg'],
-            ['id_producto' => 4, 'codigo' => 'INS-SEM-002',  'nombre' => 'Semilla de frijol rojo',  'unidad' => 'quintal','presentacion' => 'quintal 100 lb'],
-            ['id_producto' => 5, 'codigo' => 'INS-VET-001',  'nombre' => 'Vacuna bovina triple',     'unidad' => 'dosis',  'presentacion' => 'frasco 50 dosis'],
-        ];
-    }
-
-    private function mockCronogramas(): array
-    {
-        return [
-            [
-                'id_cronograma'    => 1,
-                'codigo'           => 'CRON-PIPC-2026-0001',
-                'proveedor'        => 'Agroinsumos del Pacífico S. de R.L.',
-                'id_proveedor'     => 1,
-                'num_contrato'     => 'CT-2026-PIPC-014',
-                'num_orden_compra' => 'OC-2026-00125',
-                'monto_total'      => 1850000.00,
-                'fecha_firma'      => '2026-03-15',
-                'fecha_inicio'     => '2026-04-01',
-                'fecha_fin'        => '2026-08-30',
-                'estado'           => 'vigente',
-                'descripcion'      => 'Suministro de fertilizantes para temporada de cafetales 2026',
-                'lineas' => [
-                    ['id_linea'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_producto'=>1, 'unidad'=>'saco', 'bodega'=>'Bodega Central FM-01', 'id_bodega'=>1,
-                     'cantidad_programada'=>500, 'cantidad_recibida'=>500, 'fecha_programada'=>'2026-04-15', 'fecha_recibida'=>'2026-04-15', 'estado'=>'recibida'],
-                    ['id_linea'=>2, 'producto'=>'Fertilizante 18-46-0', 'id_producto'=>1, 'unidad'=>'saco', 'bodega'=>'Bodega Santa Rosa CP-01', 'id_bodega'=>3,
-                     'cantidad_programada'=>800, 'cantidad_recibida'=>800, 'fecha_programada'=>'2026-04-22', 'fecha_recibida'=>'2026-04-23', 'estado'=>'recibida'],
-                    ['id_linea'=>3, 'producto'=>'Urea 46%',              'id_producto'=>2, 'unidad'=>'saco', 'bodega'=>'Bodega Santa Rosa CP-01', 'id_bodega'=>3,
-                     'cantidad_programada'=>600, 'cantidad_recibida'=>350, 'fecha_programada'=>'2026-05-10', 'fecha_recibida'=>'2026-05-12', 'estado'=>'parcial'],
-                    ['id_linea'=>4, 'producto'=>'Urea 46%',              'id_producto'=>2, 'unidad'=>'saco', 'bodega'=>'Bodega Juticalpa OL-01', 'id_bodega'=>5,
-                     'cantidad_programada'=>400, 'cantidad_recibida'=>0,   'fecha_programada'=>'2026-06-05', 'fecha_recibida'=>null,       'estado'=>'pendiente'],
-                ],
-            ],
-            [
-                'id_cronograma'    => 2,
-                'codigo'           => 'CRON-PIPC-2026-0002',
-                'proveedor'        => 'Distribuidora Granos del Norte',
-                'id_proveedor'     => 2,
-                'num_contrato'     => 'CT-2026-PIPC-018',
-                'num_orden_compra' => 'OC-2026-00147',
-                'monto_total'      => 920000.00,
-                'fecha_firma'      => '2026-04-02',
-                'fecha_inicio'     => '2026-04-20',
-                'fecha_fin'        => '2026-07-15',
-                'estado'           => 'vigente',
-                'descripcion'      => 'Semilla certificada para siembra de primera',
-                'lineas' => [
-                    ['id_linea'=>5, 'producto'=>'Semilla de maíz híbrido', 'id_producto'=>3, 'unidad'=>'bolsa', 'bodega'=>'Bodega Valle FM-02', 'id_bodega'=>2,
-                     'cantidad_programada'=>300, 'cantidad_recibida'=>300, 'fecha_programada'=>'2026-04-28', 'fecha_recibida'=>'2026-04-30', 'estado'=>'recibida'],
-                    ['id_linea'=>6, 'producto'=>'Semilla de frijol rojo',  'id_producto'=>4, 'unidad'=>'quintal','bodega'=>'Bodega La Entrada CP-02', 'id_bodega'=>4,
-                     'cantidad_programada'=>180, 'cantidad_recibida'=>0,   'fecha_programada'=>'2026-05-15', 'fecha_recibida'=>null,       'estado'=>'atrasada'],
-                ],
-            ],
-            [
-                'id_cronograma'    => 3,
-                'codigo'           => 'CRON-PIPC-2026-0003',
-                'proveedor'        => 'Fertilizantes Honduras S.A.',
-                'id_proveedor'     => 3,
-                'num_contrato'     => null,
-                'num_orden_compra' => 'OC-2026-00198',
-                'monto_total'      => 425000.00,
-                'fecha_firma'      => '2026-05-05',
-                'fecha_inicio'     => '2026-05-20',
-                'fecha_fin'        => '2026-06-30',
-                'estado'           => 'borrador',
-                'descripcion'      => 'Refuerzo de inventario bodegas Olancho',
-                'lineas' => [
-                    ['id_linea'=>7, 'producto'=>'Fertilizante 18-46-0', 'id_producto'=>1, 'unidad'=>'saco', 'bodega'=>'Bodega Campamento OL-02', 'id_bodega'=>6,
-                     'cantidad_programada'=>250, 'cantidad_recibida'=>0, 'fecha_programada'=>'2026-05-25', 'fecha_recibida'=>null, 'estado'=>'pendiente'],
-                ],
-            ],
-        ];
-    }
-
-    private function mockStockPorBodega(): array
-    {
-        // saldo actual por (bodega, producto) — calculado del kardex en producción
-        return [
-            ['id_bodega'=>1, 'bodega'=>'Bodega Central FM-01',    'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0',    'unidad'=>'saco',    'saldo'=>460],
-            ['id_bodega'=>2, 'bodega'=>'Bodega Valle FM-02',      'id_producto'=>3, 'producto'=>'Semilla de maíz híbrido', 'unidad'=>'bolsa',   'saldo'=>280],
-            ['id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01', 'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0',    'unidad'=>'saco',    'saldo'=>720],
-            ['id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01', 'id_producto'=>2, 'producto'=>'Urea 46%',                 'unidad'=>'saco',    'saldo'=>290],
-            ['id_bodega'=>4, 'bodega'=>'Bodega La Entrada CP-02', 'id_producto'=>4, 'producto'=>'Semilla de frijol rojo',  'unidad'=>'quintal', 'saldo'=>0],
-            ['id_bodega'=>5, 'bodega'=>'Bodega Juticalpa OL-01', 'id_producto'=>2, 'producto'=>'Urea 46%',                 'unidad'=>'saco',    'saldo'=>0],
-            ['id_bodega'=>6, 'bodega'=>'Bodega Campamento OL-02','id_producto'=>1, 'producto'=>'Fertilizante 18-46-0',    'unidad'=>'saco',    'saldo'=>0],
-        ];
-    }
-
-    private function mockKardex(): array
-    {
-        return [
-            ['id_movimiento'=>1, 'fecha'=>'2026-04-15 09:20:00', 'tipo'=>'entrada', 'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>1, 'bodega'=>'Bodega Central FM-01', 'cantidad'=>500, 'saldo'=>500, 'origen'=>'cronograma', 'id_origen'=>1, 'descripcion'=>'Recepción CRON-PIPC-2026-0001 línea 1'],
-            ['id_movimiento'=>2, 'fecha'=>'2026-04-23 14:45:00', 'tipo'=>'entrada', 'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01','cantidad'=>800, 'saldo'=>800, 'origen'=>'cronograma', 'id_origen'=>2, 'descripcion'=>'Recepción CRON-PIPC-2026-0001 línea 2'],
-            ['id_movimiento'=>3, 'fecha'=>'2026-04-30 08:10:00', 'tipo'=>'entrada', 'id_producto'=>3, 'producto'=>'Semilla maíz híbrido',  'id_bodega'=>2, 'bodega'=>'Bodega Valle FM-02',      'cantidad'=>300, 'saldo'=>300, 'origen'=>'cronograma', 'id_origen'=>5, 'descripcion'=>'Recepción CRON-PIPC-2026-0002 línea 1'],
-            ['id_movimiento'=>4, 'fecha'=>'2026-05-08 10:30:00', 'tipo'=>'salida',  'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>1, 'bodega'=>'Bodega Central FM-01', 'cantidad'=>4,   'saldo'=>496, 'origen'=>'entrega',    'id_origen'=>1001, 'descripcion'=>'Entrega ENT-1001 (María C. López)'],
-            ['id_movimiento'=>5, 'fecha'=>'2026-05-08 11:00:00', 'tipo'=>'salida',  'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>1, 'bodega'=>'Bodega Central FM-01', 'cantidad'=>4,   'saldo'=>492, 'origen'=>'entrega',    'id_origen'=>1002, 'descripcion'=>'Entrega ENT-1002 (Juan C. Hernández, parcial)'],
-            ['id_movimiento'=>6, 'fecha'=>'2026-05-12 09:00:00', 'tipo'=>'entrada', 'id_producto'=>2, 'producto'=>'Urea 46%',              'id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01','cantidad'=>350, 'saldo'=>350, 'origen'=>'cronograma', 'id_origen'=>3, 'descripcion'=>'Recepción parcial CRON-PIPC-2026-0001 línea 3'],
-            ['id_movimiento'=>7, 'fecha'=>'2026-05-08 09:00:00', 'tipo'=>'salida',  'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01','cantidad'=>8,   'saldo'=>792, 'origen'=>'entrega',    'id_origen'=>1005, 'descripcion'=>'Entrega ENT-1005 (Ana Lucía Vásquez)'],
-            ['id_movimiento'=>8, 'fecha'=>'2026-05-08 11:30:00', 'tipo'=>'salida',  'id_producto'=>1, 'producto'=>'Fertilizante 18-46-0', 'id_bodega'=>3, 'bodega'=>'Bodega Santa Rosa CP-01','cantidad'=>4,   'saldo'=>788, 'origen'=>'entrega',    'id_origen'=>1006, 'descripcion'=>'Entrega ENT-1006 (Manuel J. Ramos)'],
-        ];
     }
 
     // ════════════════════════════════════════════════════════════

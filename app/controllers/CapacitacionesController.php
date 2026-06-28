@@ -280,6 +280,7 @@ class CapacitacionesController extends Controller
     /** POST multipart — sube el archivo de evidencia */
     public function subirEvidencia(): void
     {
+        $this->requirePermission('capacitaciones', ACC_CARGAR);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id = (int)($_POST['id_capacitacion'] ?? 0);
         if (!$id) { $this->error('Capacitación no especificada.'); return; }
@@ -298,6 +299,7 @@ class CapacitacionesController extends Controller
     /** POST — cambia el estado de validación */
     public function validarEvidencia(): void
     {
+        $this->requirePermission('capacitaciones', ACC_APROBAR);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id     = (int) $this->getPost('id_capacitacion', 0);
         $estado = $this->getPost('estado', '');
@@ -311,6 +313,7 @@ class CapacitacionesController extends Controller
     /** GET — descarga/preview del archivo */
     public function evidencia(): void
     {
+        $this->requirePermission('capacitaciones', ACC_VER);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id = (int)($_GET['id'] ?? 0);
         EvidenciaService::servirArchivo('sag_capacitaciones', $id);

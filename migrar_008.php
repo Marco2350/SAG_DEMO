@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 008 — Roles + programa_asignado (R-032 / R-033)
  * Esta migración aplica SOLO en sag_main (no en las BDs de PIP).

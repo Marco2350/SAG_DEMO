@@ -9,12 +9,10 @@
 class CatalogosController extends Controller
 {
     // Debe coincidir con MantenimientoController::ROLES_CATALOGOS
-    private const ROLES_CATALOGOS = ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'];
-
     public function __construct()
     {
         $this->requirePrograma();
-        $this->requireRole(self::ROLES_CATALOGOS);
+        $this->requirePermission('catalogos', ACC_VER);
     }
 
     public function tecnicos(): void

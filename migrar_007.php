@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 007 — es_externo + id_beneficiario en sag_capacitaciones_participantes.
  * URL: http://localhost/sag_programas/migrar_007.php?modo=ejecutar

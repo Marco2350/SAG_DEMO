@@ -12,9 +12,7 @@
 class PresupuestoController extends Controller
 {
     // Roles con acceso total al módulo
-    private const ROLES_ADMIN = ['admin', 'coordinador'];
     // Roles que pueden dar visto bueno (nivel 1 viáticos)
-    private const ROLES_JEFE  = ['admin', 'coordinador', 'jefe'];
     // Formatos admitidos por los formularios de respaldo y autorización.
     private const TIPOS_DOCUMENTO_PRESUPUESTO = ['pdf', 'doc', 'docx'];
 
@@ -31,12 +29,12 @@ class PresupuestoController extends Controller
 
     private function esAdmin(): bool
     {
-        return in_array($this->rolActual(), self::ROLES_ADMIN);
+        return Permisos::puedeEn('presupuesto', ACC_ELIMINAR);
     }
 
     private function esJefeOSuperior(): bool
     {
-        return in_array($this->rolActual(), self::ROLES_JEFE);
+        return Permisos::puedeEn('presupuesto', ACC_APROBAR);
     }
 
     private function userId(): int
@@ -49,8 +47,16 @@ class PresupuestoController extends Controller
     {
         if (empty($_FILES[$campo]['name'])) return null;
         $file    = $_FILES[$campo];
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || empty($file['tmp_name'])
+            || !is_uploaded_file($file['tmp_name'])) {
+            throw new InvalidArgumentException('La carga del archivo no es válida o quedó incompleta.');
+        }
+        if (!in_array($carpeta, ['presupuesto', 'compras', 'viaticos', 'documentos'], true)) {
+            throw new InvalidArgumentException('Destino de archivo no permitido.');
+        }
         $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, $tiposPermitidos)) {
+        if (!in_array($ext, $tiposPermitidos, true)) {
             throw new InvalidArgumentException(
                 'Tipo de archivo no permitido. Formatos aceptados: ' . strtoupper(implode(', ', $tiposPermitidos)) . '.'
             );
@@ -58,9 +64,25 @@ class PresupuestoController extends Controller
         if ($file['size'] > 10 * 1024 * 1024) { // 10 MB max
             throw new InvalidArgumentException('El archivo supera el tamaño máximo de 10 MB.');
         }
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']) ?: '';
+        $mimesPorExtension = [
+            'pdf'  => ['application/pdf'],
+            'jpg'  => ['image/jpeg'],
+            'jpeg' => ['image/jpeg'],
+            'png'  => ['image/png'],
+            'doc'  => ['application/msword', 'application/x-ole-storage', 'application/CDFV2', 'application/octet-stream'],
+            'xls'  => ['application/vnd.ms-excel', 'application/x-ole-storage', 'application/CDFV2', 'application/octet-stream'],
+            'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip'],
+            'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
+        ];
+        if (!isset($mimesPorExtension[$ext]) || !in_array($mime, $mimesPorExtension[$ext], true)) {
+            throw new InvalidArgumentException('El contenido del archivo no coincide con su extensión.');
+        }
         $nombre  = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
         $destDir = ROOT_PATH . '/public/uploads/' . $carpeta . '/';
-        if (!is_dir($destDir)) mkdir($destDir, 0755, true);
+        if (!is_dir($destDir) && !mkdir($destDir, 0755, true)) {
+            throw new RuntimeException('No se pudo preparar el directorio de archivos.');
+        }
         if (!move_uploaded_file($file['tmp_name'], $destDir . $nombre)) {
             throw new Exception('Error al guardar el archivo en el servidor.');
         }

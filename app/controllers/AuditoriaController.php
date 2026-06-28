@@ -7,12 +7,10 @@
  */
 class AuditoriaController extends Controller
 {
-    private const ROLES_AUDITORIA = ['admin', 'super_admin'];
-
     public function __construct()
     {
         $this->requirePrograma();
-        $this->requireRole(self::ROLES_AUDITORIA);
+        $this->requirePermission('auditoria', ACC_VER);
     }
 
     /** Resumen para los cards superiores (compartido por index y listar). */

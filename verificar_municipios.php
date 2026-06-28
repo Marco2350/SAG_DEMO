@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * R-014: Verificar que los 298 municipios de Honduras estén disponibles
  * y correctamente relacionados con su departamento.

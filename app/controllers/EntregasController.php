@@ -16,6 +16,8 @@
  */
 class EntregasController extends Controller
 {
+    private array $resumenInventarioSync = [];
+
     public function __construct()
     {
         $this->requirePrograma();
@@ -45,7 +47,7 @@ class EntregasController extends Controller
         // Para badge en sidebar — actualiza el contador de alertas en sesión
         $_SESSION['entregas_alertas_count'] = $kpis['con_alertas'] ?? 0;
 
-        $esAdmin = in_array(($_SESSION['user']['rol_slug'] ?? ''), ['admin', 'coordinador']);
+        $esAdmin = Permisos::puedeEn('entregas', ACC_APROBAR);
 
         $this->view('entregas/index', compact(
             'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
@@ -597,41 +599,55 @@ class EntregasController extends Controller
     }
 
     // ════════════════════════════════════════════════════════════
-    //  DESCUENTO DE INVENTARIO (stub — pendiente módulo Inventarios real)
+    //  PROYECCIÓN DE MOVIMIENTOS OIRSA AL KARDEX
     // ════════════════════════════════════════════════════════════
 
     /**
-     * STUB: cuando una entrega tiene Código de Trazabilidad (= confirmada en OIRSA)
-     * deberíamos descontar el insumo del stock de la bodega de origen.
-     *
-     * Para que esto funcione completo necesitamos:
-     *  1) Mapear sag_bodegas con los SourceEndpointCode de OIRSA (CUE)
-     *  2) Mantener stock real en sag_inventario_movimientos
-     *  3) Cablear InventariosController::registrarSalida() — hoy es mock
-     *
-     * Por ahora SOLO registramos en sag_logs los movimientos que YA están
-     * confirmados, para tener trazabilidad de qué debería haberse descontado.
+     * Proyecta entradas, salidas y traslados confirmados al kardex.
+     * La referencia externa impide duplicar movimientos al resincronizar.
      */
-    private function prepararDescuentoInventario(array $movs): void
+    private function prepararDescuentoInventario(array $movs): array
     {
-        try {
-            $db = Database::programa();
-        } catch (\Throwable $e) {
-            return;
+        require_once ROOT_PATH . '/core/InventarioOirsaService.php';
+        $resumen = InventarioOirsaService::sincronizar(
+            $movs,
+            (int) ($_SESSION['user']['id_usuario'] ?? 0) ?: null
+        );
+
+        if (!$this->resumenInventarioSync) {
+            $this->resumenInventarioSync = $resumen;
+        } else {
+            foreach ([
+                'insertados', 'actualizados', 'existentes', 'anulados',
+                'omitidos', 'sin_bodega', 'sin_producto',
+                'saldos_negativos', 'errores',
+            ] as $campo) {
+                $this->resumenInventarioSync[$campo] =
+                    (int) ($this->resumenInventarioSync[$campo] ?? 0)
+                    + (int) ($resumen[$campo] ?? 0);
+            }
+            $this->resumenInventarioSync['configurado'] =
+                !empty($this->resumenInventarioSync['configurado'])
+                && !empty($resumen['configurado']);
+            $this->resumenInventarioSync['detalles'] = array_values(array_unique(array_merge(
+                $this->resumenInventarioSync['detalles'] ?? [],
+                $resumen['detalles'] ?? []
+            )));
         }
-        $confirmados = 0;
-        foreach ($movs as $m) {
-            if (empty($m['codigo_trazabilidad'])) continue;
-            $confirmados++;
-            // TODO: cuando InventariosController esté real,
-            //       llamar a registrarSalida(bodega, producto, cantidad, ref_movement_id)
-        }
-        if ($confirmados > 0) {
+
+        if (empty($resumen['configurado'])
+            || ($resumen['insertados'] ?? 0) > 0
+            || ($resumen['actualizados'] ?? 0) > 0
+            || ($resumen['anulados'] ?? 0) > 0
+            || ($resumen['sin_bodega'] ?? 0) > 0
+            || ($resumen['sin_producto'] ?? 0) > 0) {
             $this->logAction(
-                'PENDIENTE_DESCUENTO_INV', 'entregas',
-                "Movimientos con código de trazabilidad que deberían descontar stock: {$confirmados}"
+                'SYNC_INVENTARIO_OIRSA',
+                'inventarios',
+                json_encode($resumen, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             );
         }
+        return $resumen;
     }
 
     // ════════════════════════════════════════════════════════════
@@ -640,6 +656,7 @@ class EntregasController extends Controller
     public function sincronizarTrazaragro(): void
     {
         try {
+            $this->resumenInventarioSync = [];
             // ── Seguridad: CSRF + autorización por rol ──
             // Solo Super Admin, Coord Nacional y Coord PIP pueden disparar sync,
             // porque la operación trae PII de productores (DNI, nombres) desde OIRSA.
@@ -937,6 +954,22 @@ class EntregasController extends Controller
             if ($datosIncompletos) {
                 $resumen .= ' · ADVERTENCIA: hay salidas 111 sin recepciones 113 en BD';
             }
+            if ($this->resumenInventarioSync) {
+                if (empty($this->resumenInventarioSync['configurado'])) {
+                    $resumen .= ' · Inventario pendiente de migración 022';
+                } else {
+                    $movInv = (int) ($this->resumenInventarioSync['insertados'] ?? 0)
+                            + (int) ($this->resumenInventarioSync['actualizados'] ?? 0);
+                    if ($movInv > 0) {
+                        $resumen .= " · {$movInv} movimientos aplicados al inventario";
+                    }
+                    $sinMapeo = (int) ($this->resumenInventarioSync['sin_bodega'] ?? 0)
+                              + (int) ($this->resumenInventarioSync['sin_producto'] ?? 0);
+                    if ($sinMapeo > 0) {
+                        $resumen .= " · {$sinMapeo} movimientos sin mapeo de inventario";
+                    }
+                }
+            }
 
             $this->logAction('SYNC_TRAZARAGRO', 'entregas',
                 "filtro=({$filtroAplicado}) · {$resumen}");
@@ -953,6 +986,7 @@ class EntregasController extends Controller
                 'por_tipo'         => $porTipo,
                 'conteos_bd'       => $conteosBd,
                 'datos_incompletos'=> $datosIncompletos,
+                'inventario'       => $this->resumenInventarioSync,
                 'modo'             => $ping['mode'],
                 'rango'            => ['desde' => $desde, 'hasta' => $hasta],
             ]);
@@ -1736,18 +1770,6 @@ class EntregasController extends Controller
                 'php_version'  => PHP_VERSION,
                 'curl_version' => function_exists('curl_version') ? (curl_version()['version'] ?? '?') : 'sin cURL',
             ],
-        ]);
-    }
-
-
-    // ════════════════════════════════════════════════════════════
-    //  ENDPOINTS LEGACY (mantenidos por compatibilidad)
-    // ════════════════════════════════════════════════════════════
-    public function sincronizar(): void
-    {
-        // KoBo legacy — mock; se implementará cuando KoboClient esté listo
-        $this->success('Sincronización con KoBo aún no implementada (mock)', [
-            'origen' => 'kobo', 'mock' => true,
         ]);
     }
 

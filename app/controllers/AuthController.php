@@ -78,6 +78,9 @@ class AuthController extends Controller
                 'id_rol'      => $user['id_rol'],
                 'rol_slug'    => $user['rol_slug'],
                 'rol_nombre'  => $user['rol_nombre'],
+                'programa_asignado' => ($user['programa_asignado'] ?? '') !== ''
+                    ? strtolower(trim((string) $user['programa_asignado']))
+                    : null,
                 'initials'    => strtoupper(substr($user['nombre'], 0, 1) . substr($user['apellido'], 0, 1)),
             ];
             $_SESSION['_last_activity'] = time();
@@ -102,6 +105,17 @@ class AuthController extends Controller
         $this->logAction('LOGOUT', 'auth');
         session_unset();
         session_destroy();
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(SESSION_NAME, '', [
+                'expires' => time() - 42000,
+                'path' => $params['path'] ?: '/',
+                'domain' => $params['domain'] ?? '',
+                'secure' => (bool) ($params['secure'] ?? false),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
         $this->redirect('/auth/login');
     }
 }

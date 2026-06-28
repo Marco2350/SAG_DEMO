@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Diagnóstico del nuevo flujo OIRSA (sag_trazaragro_movimientos).
  * URL: http://localhost/sag_programas/test_entregas_db.php

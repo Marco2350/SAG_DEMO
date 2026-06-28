@@ -10,22 +10,22 @@ RewriteEngine On
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
-<FilesMatch "\.(env|env\..*|ini|log|sql|bak|sqlite|sqlite3)$">
+<FilesMatch "\.(env|env\..*|ini|log|sql|bak|sqlite|sqlite3|md|txt)$">
     Require all denied
 </FilesMatch>
 <FilesMatch "(composer\.(json|lock)|package(-lock)?\.json|yarn\.lock)$">
     Require all denied
 </FilesMatch>
 
-# Diagnósticos _test_*: SÓLO accesibles desde la misma máquina (localhost).
-# Doble defensa: además de esto, cada _test_*.php incluye _test_guard.php
-# que también valida APP_ENV=development. En producción NUNCA se sirven.
-<FilesMatch "^_test_">
+# Herramientas de diagnóstico, prueba y migración: solo localhost.
+# Cada script incluye además _test_guard.php, que exige APP_ENV=development
+# y valida IP + host local como defensa si Apache ignora este archivo.
+<FilesMatch "^(_?(test|diag|migrar|check)_|verificar_).*\.php$">
     Require local
 </FilesMatch>
 
 # Bloquear acceso directo a directorios sensibles
-RewriteRule ^(core|config|app/models|app/controllers|logs|storage|database|vendor|tests)/ - [F,L]
+RewriteRule ^(core|config|app/models|app/controllers|logs|storage|database|vendor|tests|public/uploads|uploads)/ - [F,L]
 
 # No redirigir archivos y carpetas reales (css, js, img, etc.)
 RewriteCond %{REQUEST_FILENAME} !-f

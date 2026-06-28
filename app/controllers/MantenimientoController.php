@@ -2,14 +2,11 @@
 class MantenimientoController extends Controller
 {
     // Roles con acceso a catálogos del programa (técnicos, temas, cultivos, tipos AT)
-    private const ROLES_CATALOGOS = ['admin', 'super_admin', 'coordinador', 'coord_nacional', 'coord_pip'];
     // Roles que pueden administrar usuarios y roles del sistema
-    private const ROLES_USUARIOS  = ['admin', 'super_admin'];
-
     public function __construct()
     {
         $this->requirePrograma();
-        $this->requireRole(self::ROLES_CATALOGOS);
+        $this->requirePermission('mantenimiento', ACC_VER);
     }
 
     public function index(): void
@@ -275,7 +272,7 @@ class MantenimientoController extends Controller
 
     public function saveUsuario(): void
     {
-        $this->requireRole(self::ROLES_USUARIOS);
+        $this->requireRole(['admin', 'super_admin', 'administrador']);
 
         $id       = (int) $this->getPost('id_usuario', 0);
         $nombre   = trim($this->getPost('nombre', ''));
@@ -331,7 +328,7 @@ class MantenimientoController extends Controller
 
     public function deleteUsuario(): void
     {
-        $this->requireRole(self::ROLES_USUARIOS);
+        $this->requireRole(['admin', 'super_admin', 'administrador']);
 
         $id = (int) $this->getPost('id', 0);
         if ($id === ($_SESSION['user']['id_usuario'] ?? 0)) {
@@ -423,6 +420,7 @@ class MantenimientoController extends Controller
     {
         $id           = (int) $this->getPost('id_producto', 0);
         $codigo       = strtoupper(trim($this->getPost('codigo', '')));
+        $oirsaCodigo  = strtoupper(trim($this->getPost('oirsa_codigo', '')));
         $nombre       = trim($this->getPost('nombre', ''));
         $descripcion  = trim($this->getPost('descripcion', ''));
         $unidad       = trim($this->getPost('unidad', 'unidad')) ?: 'unidad';
@@ -433,6 +431,7 @@ class MantenimientoController extends Controller
         if (!$codigo) { $this->error('El código es obligatorio.'); return; }
         if (!$nombre) { $this->error('El nombre del producto es obligatorio.'); return; }
         if (strlen($codigo) > 40) { $this->error('El código no puede exceder 40 caracteres.'); return; }
+        if (strlen($oirsaCodigo) > 80) { $this->error('El código OIRSA no puede exceder 80 caracteres.'); return; }
 
         $precioNum = null;
         if ($precio !== '' && $precio !== null) {
@@ -456,6 +455,20 @@ class MantenimientoController extends Controller
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
+            if ($db->columnaExiste('sag_inventario_productos', 'oirsa_codigo')) {
+                if ($oirsaCodigo !== '') {
+                    $dupOirsa = $db->fetchOne(
+                        "SELECT id_producto FROM sag_inventario_productos
+                          WHERE id_proyecto=? AND oirsa_codigo=? AND id_producto<>?",
+                        [$pid, $oirsaCodigo, $id]
+                    );
+                    if ($dupOirsa) {
+                        $this->error('Ese código OIRSA ya está asignado a otro producto.');
+                        return;
+                    }
+                }
+                $data['oirsa_codigo'] = $oirsaCodigo ?: null;
+            }
 
             // Verificar unicidad del código dentro del proyecto
             $dup = $db->fetchOne(
@@ -506,6 +519,7 @@ class MantenimientoController extends Controller
     {
         $id             = (int) $this->getPost('id_bodega', 0);
         $codigo         = strtoupper(trim($this->getPost('codigo', '')));
+        $oirsaCue       = strtoupper(trim($this->getPost('oirsa_cue', '')));
         $nombre         = trim($this->getPost('nombre', ''));
         $idDepartamento = ((int) $this->getPost('id_departamento', 0)) ?: null;
         $idMunicipio    = ((int) $this->getPost('id_municipio', 0)) ?: null;
@@ -518,6 +532,7 @@ class MantenimientoController extends Controller
         if (!$codigo) { $this->error('El código de bodega es obligatorio.'); return; }
         if (!$nombre) { $this->error('El nombre de la bodega es obligatorio.'); return; }
         if (strlen($codigo) > 20) { $this->error('El código no puede exceder 20 caracteres.'); return; }
+        if (strlen($oirsaCue) > 60) { $this->error('El CUE OIRSA no puede exceder 60 caracteres.'); return; }
         if ($telefono !== '' && strlen($telefono) !== 8) {
             $this->error('El teléfono debe tener 8 dígitos (formato Honduras).'); return;
         }
@@ -548,6 +563,20 @@ class MantenimientoController extends Controller
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
+            if ($db->columnaExiste('sag_bodegas', 'oirsa_cue')) {
+                if ($oirsaCue !== '') {
+                    $dupOirsa = $db->fetchOne(
+                        "SELECT id_bodega FROM sag_bodegas
+                          WHERE id_proyecto=? AND oirsa_cue=? AND id_bodega<>?",
+                        [$pid, $oirsaCue, $id]
+                    );
+                    if ($dupOirsa) {
+                        $this->error('Ese CUE OIRSA ya está asignado a otra bodega.');
+                        return;
+                    }
+                }
+                $data['oirsa_cue'] = $oirsaCue ?: null;
+            }
 
             // Verificar unicidad del código dentro del proyecto
             $dup = $db->fetchOne(

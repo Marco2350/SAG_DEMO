@@ -379,10 +379,31 @@ class FlotaController extends Controller
                 return;
             }
 
+            // Una baja lógica conserva la placa y su historial. Si intentan
+            // registrar nuevamente esa placa, se reactiva el mismo expediente.
+            $reactivado = false;
+            if ($id === 0) {
+                $existente = $db->fetchOne(
+                    "SELECT id_vehiculo, activo
+                       FROM sag_flota_vehiculos
+                      WHERE id_proyecto = ? AND placa = ?
+                      LIMIT 1",
+                    [$pid, $datos['placa']]
+                );
+                if ($existente) {
+                    if ((int)$existente['activo'] === 1) {
+                        $this->error('Ya existe un vehículo activo con esa placa.');
+                        return;
+                    }
+                    $id = (int)$existente['id_vehiculo'];
+                    $reactivado = true;
+                }
+            }
+
             if ($id > 0) {
                 // UPDATE
                 $sets = array_map(fn($k) => "{$k} = :{$k}", array_keys($datos));
-                $sql  = "UPDATE sag_flota_vehiculos SET " . implode(', ', $sets) . "
+                $sql  = "UPDATE sag_flota_vehiculos SET " . implode(', ', $sets) . ", activo = 1
                           WHERE id_vehiculo = :id AND id_proyecto = :pid";
                 $params = $datos + [':id' => $id, ':pid' => $pid];
                 $params = array_combine(
@@ -391,8 +412,12 @@ class FlotaController extends Controller
                 );
                 $db->execute($sql, $params);
                 $this->guardarProgramacion($id, $datos['km_actual']);
-                $this->logAction('FLOTA_UPD_VEHICULO', 'flota', "#{$id} placa={$datos['placa']}");
-                $this->success("Vehículo actualizado.", ['id' => $id]);
+                $accion = $reactivado ? 'FLOTA_REACTIVA_VEHICULO' : 'FLOTA_UPD_VEHICULO';
+                $this->logAction($accion, 'flota', "#{$id} placa={$datos['placa']}");
+                $this->success(
+                    $reactivado ? 'Vehículo reactivado y actualizado.' : 'Vehículo actualizado.',
+                    ['id' => $id, 'reactivado' => $reactivado]
+                );
             } else {
                 // INSERT
                 $datos['id_proyecto'] = $pid;

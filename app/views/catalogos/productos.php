@@ -39,7 +39,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
       <table id="tablaProductos" class="sag-table" style="width:100%;">
         <thead>
           <tr>
-            <th>#</th><th>Código</th><th>Nombre</th>
+            <th>#</th><th>Código</th><th>Código OIRSA</th><th>Nombre</th>
             <th>Categoría</th><th>Unidad</th><th>Presentación</th>
             <th class="text-end">Precio Unit. (L.)</th>
             <th>Estado</th><th style="width:100px;">Acciones</th>
@@ -50,6 +50,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
           <tr>
             <td><?= (int) $p['id_producto'] ?></td>
             <td><span class="badge bg-secondary"><?= htmlspecialchars($p['codigo']) ?></span></td>
+            <td><?= !empty($p['oirsa_codigo']) ? '<span class="badge bg-info text-dark">' . htmlspecialchars($p['oirsa_codigo']) . '</span>' : '<span class="muted">Sin mapear</span>' ?></td>
             <td>
               <strong><?= htmlspecialchars($p['nombre']) ?></strong>
               <?php if (!empty($p['descripcion'])): ?>
@@ -68,6 +69,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
                       data-row="<?= htmlspecialchars(json_encode([
                         'id'              => (int) $p['id_producto'],
                         'codigo'          => $p['codigo'],
+                        'oirsa_codigo'    => $p['oirsa_codigo'] ?? '',
                         'nombre'          => $p['nombre'],
                         'descripcion'     => $p['descripcion'] ?? '',
                         'unidad'          => $p['unidad'] ?? 'unidad',
@@ -113,7 +115,12 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
               <label class="form-label-b">Código <span class="req">*</span></label>
               <input type="text" class="fc" id="catCodigo" name="codigo" placeholder="Ej. SEM-MAIZ-01" maxlength="40" style="text-transform:uppercase"/>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-3">
+              <label class="form-label-b">Código OIRSA</label>
+              <input type="text" class="fc" id="catOirsaCodigo" name="oirsa_codigo" placeholder="ProductTypeCode" maxlength="80" style="text-transform:uppercase"/>
+              <small class="muted">Vincula el producto con el objeto trazable.</small>
+            </div>
+            <div class="col-md-3">
               <label class="form-label-b">Nombre del producto <span class="req">*</span></label>
               <input type="text" class="fc" id="catNombre" name="nombre" placeholder="Ej. Semilla de maíz híbrido" maxlength="200"/>
             </div>

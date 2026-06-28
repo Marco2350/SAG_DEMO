@@ -287,6 +287,7 @@ class AsistenciaTecnicaController extends Controller
 
     public function subirEvidencia(): void
     {
+        $this->requirePermission('asistencia', ACC_CARGAR);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id = (int)($_POST['id_at'] ?? 0);
         if (!$id) { $this->error('Asistencia técnica no especificada.'); return; }
@@ -304,6 +305,7 @@ class AsistenciaTecnicaController extends Controller
 
     public function validarEvidencia(): void
     {
+        $this->requirePermission('asistencia', ACC_APROBAR);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id     = (int) $this->getPost('id_at', 0);
         $estado = $this->getPost('estado', '');
@@ -316,6 +318,7 @@ class AsistenciaTecnicaController extends Controller
 
     public function evidencia(): void
     {
+        $this->requirePermission('asistencia', ACC_VER);
         require_once ROOT_PATH . '/core/EvidenciaService.php';
         $id = (int)($_GET['id'] ?? 0);
         EvidenciaService::servirArchivo('sag_asistencias_tecnicas', $id);

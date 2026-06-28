@@ -298,8 +298,22 @@ class BeneficiariosController extends Controller
         if (empty($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
             $this->error('No se recibió archivo o hubo un error en la subida.'); return;
         }
+        if ($_FILES['archivo']['size'] > 5 * 1024 * 1024) {
+            $this->error('El archivo no puede superar 5 MB.'); return;
+        }
         $ext  = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
         $tmp  = $_FILES['archivo']['tmp_name'];
+        if (!is_uploaded_file($tmp)) {
+            $this->error('La carga del archivo no es válida.'); return;
+        }
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: '';
+        $mimesPermitidos = [
+            'csv' => ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel'],
+            'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
+        ];
+        if (!isset($mimesPermitidos[$ext]) || !in_array($mime, $mimesPermitidos[$ext], true)) {
+            $this->error('El contenido del archivo no coincide con un CSV o XLSX válido.'); return;
+        }
 
         $registros = [];
         try {

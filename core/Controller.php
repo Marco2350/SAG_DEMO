@@ -82,6 +82,211 @@ abstract class Controller
             }
             $this->redirect('/programas');
         }
+
+        $programaId = (string) ($_SESSION['programa']['id'] ?? '');
+        if (!isset(PROGRAMAS[$programaId]) || !$this->programaPermitido($programaId)) {
+            unset($_SESSION['programa']);
+            if ($this->isAjax()) {
+                $this->error('No tiene autorización para operar este programa.', 403);
+            }
+            $this->redirect('/programas');
+        }
+
+        $this->requireModuleAccess();
+    }
+
+    /**
+     * Devuelve el programa asignado o NULL cuando el usuario tiene alcance global.
+     * Sincroniza las sesiones creadas antes de que este control fuera desplegado.
+     */
+    protected function programaAsignado(): ?string
+    {
+        if (!array_key_exists('programa_asignado', $_SESSION['user'] ?? [])) {
+            $idUsuario = (int) ($_SESSION['user']['id_usuario'] ?? 0);
+            if (!$idUsuario) {
+                return '__sin_autorizacion__';
+            }
+
+            try {
+                $row = Database::main()->fetchOne(
+                    "SELECT programa_asignado
+                     FROM sag_usuarios
+                     WHERE id_usuario = ? AND activo = 1",
+                    [$idUsuario]
+                );
+                if (!$row) {
+                    return '__sin_autorizacion__';
+                }
+
+                $valor = trim((string) ($row['programa_asignado'] ?? ''));
+                $_SESSION['user']['programa_asignado'] = $valor !== ''
+                    ? strtolower($valor)
+                    : null;
+            } catch (\Throwable $e) {
+                error_log('Controller::programaAsignado — ' . $e->getMessage());
+                return '__sin_autorizacion__';
+            }
+        }
+
+        $asignado = $_SESSION['user']['programa_asignado'];
+        if ($asignado === null || $asignado === '') {
+            return null;
+        }
+        return strtolower(trim((string) $asignado));
+    }
+
+    /** Verifica si el usuario puede operar el programa indicado. */
+    protected function programaPermitido(string $programaId): bool
+    {
+        $asignado = $this->programaAsignado();
+        return $asignado === null || hash_equals($asignado, strtolower($programaId));
+    }
+
+    /** Bloquea el acceso directo a módulos que el rol no puede consultar. */
+    private function requireModuleAccess(): void
+    {
+        Permisos::init();
+
+        $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        $basePath = rtrim((string) parse_url(BASE_URL, PHP_URL_PATH), '/');
+        if ($basePath !== '' && str_starts_with($path, $basePath)) {
+            $path = substr($path, strlen($basePath));
+        }
+        $segmento = explode('/', trim($path, '/'))[0] ?? '';
+        $modulo = MODULOS_RUTA[$segmento] ?? null;
+
+        // API y rutas internas sin módulo propio conservan la autorización
+        // específica de su controlador.
+        if ($modulo === null || Permisos::puedeEn($modulo, ACC_VER)) {
+            return;
+        }
+
+        $this->logAction('ACCESO_MODULO_DENEGADO', $modulo, 'Ruta: ' . mb_substr($path, 0, 150));
+        if ($this->isAjax()) {
+            $this->error('No tiene permisos para acceder a este módulo.', 403);
+        }
+        http_response_code(403);
+        echo 'No tiene permisos para acceder a este módulo.';
+        exit;
+    }
+
+    /** Autoriza una acción concreta usando la matriz central. */
+    protected function requirePermission(string $modulo, string $accion = ACC_VER): void
+    {
+        $this->requirePrograma();
+        if (Permisos::puedeEn($modulo, $accion)) {
+            return;
+        }
+
+        $this->logAction(
+            'ACCION_DENEGADA',
+            $modulo,
+            'Acción: ' . mb_substr($accion, 0, 30)
+        );
+        if ($this->isAjax()) {
+            $this->error('No tiene permisos para realizar esta acción.', 403);
+        }
+        http_response_code(403);
+        echo 'No tiene permisos para realizar esta acción.';
+        exit;
+    }
+
+    /**
+     * Middleware invocado por Router para aplicar permisos de acción a todas
+     * las rutas registradas y también a las resueltas dinámicamente.
+     */
+    public function authorizeRouteAction(string $action, string $method): void
+    {
+        if (empty($_SESSION['programa'])) {
+            return;
+        }
+
+        Permisos::init();
+        $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        $basePath = rtrim((string) parse_url(BASE_URL, PHP_URL_PATH), '/');
+        if ($basePath !== '' && str_starts_with($path, $basePath)) {
+            $path = substr($path, strlen($basePath));
+        }
+        $segmento = explode('/', trim($path, '/'))[0] ?? '';
+        $modulo = MODULOS_RUTA[$segmento] ?? null;
+        if ($modulo === null) {
+            return;
+        }
+
+        $accion = $this->permissionForAction($action, strtoupper($method));
+        if (Permisos::puedeEn($modulo, $accion)) {
+            return;
+        }
+
+        $this->logAction(
+            'ACCION_DENEGADA',
+            $modulo,
+            'Acción: ' . mb_substr($action, 0, 60) . ' · Permiso: ' . $accion
+        );
+        if ($this->isAjax()) {
+            $this->error('No tiene permisos para realizar esta acción.', 403);
+        }
+        http_response_code(403);
+        echo 'No tiene permisos para realizar esta acción.';
+        exit;
+    }
+
+    /** Traduce una acción de controlador al permiso funcional correspondiente. */
+    private function permissionForAction(string $action, string $method): string
+    {
+        if ($method === 'GET') {
+            if (in_array($action, [
+                'diag', 'diagnosticoApi', 'probarApi',
+                'descubrirTiposMovimientos', 'descubrirRubrosOirsa',
+            ], true)) {
+                return ACC_CARGAR;
+            }
+            return in_array($action, ['exportar', 'generar'], true)
+                ? ACC_EXPORTAR
+                : ACC_VER;
+        }
+
+        $lectura = [
+            'listar', 'get', 'checkNombre', 'miembros', 'buscarPorDNI',
+            'contar', 'datos', 'detalle', 'getPresupuesto', 'listarLineas',
+            'listarModificaciones', 'listarCompras', 'getCompra',
+            'listarViaticos', 'getViatico', 'listarGastos', 'getGasto',
+            'listarDocumentos', 'apiLineas', 'listarCronogramas',
+            'getCronograma', 'kardex', 'stockPorBodega', 'apiLista',
+        ];
+        if (in_array($action, $lectura, true)) {
+            return ACC_VER;
+        }
+
+        if (str_contains(strtolower($action), 'delete')
+            || str_contains(strtolower($action), 'eliminar')) {
+            return ACC_ELIMINAR;
+        }
+
+        $aprobacion = [
+            'estado', 'finalizar', 'validarEvidencia', 'autorizarPresupuesto',
+            'estadoCompra', 'vistoBoeno', 'aprobarViatico', 'liquidarViatico',
+            'estadoGasto', 'aprobar', 'rechazar', 'cerrarViaje',
+        ];
+        if (in_array($action, $aprobacion, true)) {
+            return ACC_APROBAR;
+        }
+
+        $carga = [
+            'masivo', 'subirEvidencia', 'importarExcel', 'recibirLinea',
+            'sincronizar', 'sincronizarTrazaragro',
+        ];
+        if (in_array($action, $carga, true)) {
+            return ACC_CARGAR;
+        }
+
+        if (in_array($action, ['generar', 'exportar'], true)) {
+            return ACC_EXPORTAR;
+        }
+
+        // Las acciones POST desconocidas fallan de forma segura exigiendo
+        // edición en lugar de quedar abiertas por omisión.
+        return ACC_EDITAR;
     }
 
     /** Devuelve el slug del rol del usuario logueado */

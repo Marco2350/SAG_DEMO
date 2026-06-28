@@ -86,6 +86,7 @@ class Database
     public function beginTransaction(): void { $this->pdo->beginTransaction(); }
     public function commit(): void           { $this->pdo->commit(); }
     public function rollback(): void         { $this->pdo->rollBack(); }
+    public function inTransaction(): bool    { return $this->pdo->inTransaction(); }
 
     /**
      * Verifica si una tabla existe en la base actual.
@@ -105,6 +106,24 @@ class Database
                   LIMIT 1"
             );
             $stmt->execute([$nombre]);
+            return (bool) $stmt->fetch(PDO::FETCH_NUM);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Verifica si una columna existe en una tabla de la base activa. */
+    public function columnaExiste(string $tabla, string $columna): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT 1 FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ?
+                    AND COLUMN_NAME = ?
+                  LIMIT 1"
+            );
+            $stmt->execute([$tabla, $columna]);
             return (bool) $stmt->fetch(PDO::FETCH_NUM);
         } catch (\Throwable $e) {
             return false;

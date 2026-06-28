@@ -110,6 +110,7 @@ $(function () {
                 tituloEditar: '<i class="fas fa-pen me-2"></i>Editar Producto',
                 fill: function (r) {
                     $('#catCodigo').val(r.codigo);
+                    $('#catOirsaCodigo').val(r.oirsa_codigo || '');
                     $('#catNombre').val(r.nombre);
                     $('#catDescripcion').val(r.descripcion);
                     $('#catUnidad').val(r.unidad || 'unidad');
@@ -127,6 +128,7 @@ $(function () {
                 tituloEditar: '<i class="fas fa-pen me-2"></i>Editar Bodega',
                 fill: function (r) {
                     $('#catCodigo').val(r.codigo);
+                    $('#catOirsaCue').val(r.oirsa_cue || '');
                     $('#catNombre').val(r.nombre);
                     $('#catDep').val(r.id_departamento || '');
                     cargarMunicipios(r.id_departamento, r.id_municipio);

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 006 — Evidencias documentales (R-027 / R-028)
  * Agrega las columnas evidencia_* a sag_capacitaciones y sag_asistencias_tecnicas.

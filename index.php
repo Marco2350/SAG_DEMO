@@ -20,6 +20,20 @@ spl_autoload_register(function (string $class): void {
 
 // Sesión
 session_name(SESSION_NAME);
+$sessionSecure = str_starts_with(strtolower(BASE_URL), 'https://')
+    || (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off');
+$sessionPath = parse_url(BASE_URL, PHP_URL_PATH) ?: '/';
+ini_set('session.use_only_cookies', '1');
+ini_set('session.use_strict_mode', '1');
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => rtrim($sessionPath, '/') . '/',
+    'secure' => $sessionSecure,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
 
 // Mantener la identidad visual del programa activo sincronizada con la configuración.
@@ -46,6 +60,13 @@ if (isset($_SESSION['user'], $_SESSION['_last_activity'])) {
     if (time() - $_SESSION['_last_activity'] > SESSION_TIMEOUT) {
         session_unset();
         session_destroy();
+        setcookie(SESSION_NAME, '', [
+            'expires' => time() - 42000,
+            'path' => rtrim($sessionPath, '/') . '/',
+            'secure' => $sessionSecure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
         header('Location: ' . BASE_URL . '/auth/login?timeout=1');
         exit;
     }

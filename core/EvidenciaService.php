@@ -42,6 +42,9 @@ class EvidenciaService
         if (!isset(self::TABLAS_PERMITIDAS[$tabla])) {
             return ['ok' => false, 'msg' => 'Tabla no permitida'];
         }
+        if ($idRegistro <= 0) {
+            return ['ok' => false, 'msg' => 'Registro no válido'];
+        }
         if (!is_array($file) || empty($file['tmp_name'])) {
             return ['ok' => false, 'msg' => 'No se recibió archivo'];
         }
@@ -57,6 +60,25 @@ class EvidenciaService
             return ['ok' => false, 'msg' => 'Tipo de archivo no permitido: ' . $mime . '. Aceptados: PDF, Excel, JPG, PNG.'];
         }
         $ext = self::TIPOS_PERMITIDOS[$mime];
+
+        // El ID por sí solo nunca autoriza acceso a otro programa.
+        try {
+            $db  = Database::programa();
+            $pk  = self::TABLAS_PERMITIDAS[$tabla];
+            $pid = Database::proyectoId();
+            $row = $db->fetchOne(
+                "SELECT evidencia_archivo
+                 FROM {$tabla}
+                 WHERE {$pk} = ? AND id_proyecto = ? AND activo = 1",
+                [$idRegistro, $pid]
+            );
+            if (!$row) {
+                return ['ok' => false, 'msg' => 'El registro no existe en el programa activo'];
+            }
+        } catch (\Throwable $e) {
+            error_log('EvidenciaService::guardarEvidencia verificación — ' . $e->getMessage());
+            return ['ok' => false, 'msg' => 'No se pudo verificar el registro solicitado'];
+        }
 
         // Directorio destino
         $base = defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__);
@@ -76,17 +98,7 @@ class EvidenciaService
 
         // Persistir en BD
         try {
-            $db = Database::programa();
-            $pk = self::TABLAS_PERMITIDAS[$tabla];
-
-            // Borrar archivo viejo si existía
-            $row = $db->fetchOne("SELECT evidencia_archivo FROM {$tabla} WHERE {$pk} = ?", [$idRegistro]);
-            if (!empty($row['evidencia_archivo'])) {
-                $oldFile = $dir . '/' . basename($row['evidencia_archivo']);
-                if (is_file($oldFile)) @unlink($oldFile);
-            }
-
-            $db->execute(
+            $afectados = $db->execute(
                 "UPDATE {$tabla} SET
                     evidencia_archivo = ?,
                     evidencia_nombre_original = ?,
@@ -96,16 +108,25 @@ class EvidenciaService
                     evidencia_subida_por = ?,
                     evidencia_estado = 'cargada',
                     evidencia_observaciones = ?
-                 WHERE {$pk} = ?",
+                 WHERE {$pk} = ? AND id_proyecto = ? AND activo = 1",
                 [
                     $fileName, $file['name'], $mime, (int)$file['size'],
-                    $idUsuario, $observaciones, $idRegistro,
+                    $idUsuario, $observaciones, $idRegistro, $pid,
                 ]
             );
+            if ($afectados !== 1) {
+                throw new \RuntimeException('El registro dejó de estar disponible durante la carga');
+            }
         } catch (\Throwable $e) {
             @unlink($destPath);
             error_log('EvidenciaService::guardarEvidencia — ' . $e->getMessage());
             return ['ok' => false, 'msg' => 'Error al guardar la evidencia en la base de datos. Revise el log del servidor.'];
+        }
+
+        // El archivo anterior se elimina únicamente después de persistir el nuevo.
+        if (!empty($row['evidencia_archivo'])) {
+            $oldFile = $dir . '/' . basename($row['evidencia_archivo']);
+            if (is_file($oldFile)) @unlink($oldFile);
         }
 
         return [
@@ -128,11 +149,23 @@ class EvidenciaService
             return ['ok' => false, 'msg' => 'Estado no válido'];
         }
         try {
-            $db = Database::programa();
-            $pk = self::TABLAS_PERMITIDAS[$tabla];
+            $db  = Database::programa();
+            $pk  = self::TABLAS_PERMITIDAS[$tabla];
+            $pid = Database::proyectoId();
+            $row = $db->fetchOne(
+                "SELECT evidencia_archivo
+                 FROM {$tabla}
+                 WHERE {$pk} = ? AND id_proyecto = ? AND activo = 1",
+                [$idRegistro, $pid]
+            );
+            if (!$row || empty($row['evidencia_archivo'])) {
+                return ['ok' => false, 'msg' => 'No existe evidencia para validar en el programa activo'];
+            }
             $db->execute(
-                "UPDATE {$tabla} SET evidencia_estado = ?, evidencia_observaciones = ? WHERE {$pk} = ?",
-                [$nuevoEstado, $observaciones, $idRegistro]
+                "UPDATE {$tabla}
+                 SET evidencia_estado = ?, evidencia_observaciones = ?
+                 WHERE {$pk} = ? AND id_proyecto = ? AND activo = 1",
+                [$nuevoEstado, $observaciones, $idRegistro, $pid]
             );
             return ['ok' => true, 'msg' => "Evidencia marcada como {$nuevoEstado}."];
         } catch (\Throwable $e) {
@@ -149,12 +182,14 @@ class EvidenciaService
     {
         if (!isset(self::TABLAS_PERMITIDAS[$tabla])) { http_response_code(403); exit; }
         try {
-            $db = Database::programa();
-            $pk = self::TABLAS_PERMITIDAS[$tabla];
+            $db  = Database::programa();
+            $pk  = self::TABLAS_PERMITIDAS[$tabla];
+            $pid = Database::proyectoId();
             $row = $db->fetchOne(
                 "SELECT evidencia_archivo, evidencia_nombre_original, evidencia_mime
-                 FROM {$tabla} WHERE {$pk} = ?",
-                [$idRegistro]
+                 FROM {$tabla}
+                 WHERE {$pk} = ? AND id_proyecto = ? AND activo = 1",
+                [$idRegistro, $pid]
             );
         } catch (\Throwable $e) {
             http_response_code(500); exit;
@@ -165,8 +200,10 @@ class EvidenciaService
         $path = $base . '/uploads/evidencias/' . basename($row['evidencia_archivo']);
         if (!is_file($path)) { http_response_code(404); echo 'Archivo no encontrado.'; exit; }
 
+        $nombreDescarga = basename((string) ($row['evidencia_nombre_original'] ?: basename($path)));
+        $nombreDescarga = str_replace(["\r", "\n", '"'], '', $nombreDescarga);
         header('Content-Type: ' . ($row['evidencia_mime'] ?: 'application/octet-stream'));
-        header('Content-Disposition: inline; filename="' . ($row['evidencia_nombre_original'] ?: basename($path)) . '"');
+        header('Content-Disposition: inline; filename="' . $nombreDescarga . '"');
         header('Content-Length: ' . filesize($path));
         header('Cache-Control: private, max-age=300');
         readfile($path);

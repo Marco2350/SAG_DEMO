@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Test directo de TrazaragroClient — borrar después de diagnóstico.
  * URL: http://localhost/sag_programas/test_trazaragro.php

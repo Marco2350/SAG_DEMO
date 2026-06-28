@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Migración 005 — Agrega columnas representante_dni, latitud y longitud a sag_organizaciones.
  * URL: http://localhost/sag_programas/migrar_005.php?modo=ejecutar

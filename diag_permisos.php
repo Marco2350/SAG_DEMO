@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/_test_guard.php';
 /**
  * Diagnóstico de permisos: muestra el rol del usuario actual y qué puede hacer.
  * URL: http://localhost/sag_programas/diag_permisos.php

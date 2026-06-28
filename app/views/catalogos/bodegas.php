@@ -39,7 +39,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
       <table id="tablaBodegas" class="sag-table" style="width:100%;">
         <thead>
           <tr>
-            <th>#</th><th>Código</th><th>Nombre</th>
+            <th>#</th><th>Código</th><th>CUE OIRSA</th><th>Nombre</th>
             <th>Ubicación</th><th>Responsable</th>
             <th>Teléfono</th><th class="text-end">Capacidad</th>
             <th>Estado</th><th style="width:100px;">Acciones</th>
@@ -50,6 +50,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
           <tr>
             <td><?= (int) $b['id_bodega'] ?></td>
             <td><span class="badge bg-secondary"><?= htmlspecialchars($b['codigo']) ?></span></td>
+            <td><?= !empty($b['oirsa_cue']) ? '<span class="badge bg-info text-dark">' . htmlspecialchars($b['oirsa_cue']) . '</span>' : '<span class="muted">Sin mapear</span>' ?></td>
             <td>
               <strong><?= htmlspecialchars($b['nombre']) ?></strong>
               <?php if (!empty($b['direccion'])): ?>
@@ -72,6 +73,7 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
                       data-row="<?= htmlspecialchars(json_encode([
                         'id'              => (int) $b['id_bodega'],
                         'codigo'          => $b['codigo'],
+                        'oirsa_cue'       => $b['oirsa_cue'] ?? '',
                         'nombre'          => $b['nombre'],
                         'id_departamento' => (int) ($b['id_departamento'] ?? 0),
                         'id_municipio'    => (int) ($b['id_municipio'] ?? 0),
@@ -119,7 +121,12 @@ $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/catalogos.js?
               <label class="form-label-b">Código <span class="req">*</span></label>
               <input type="text" class="fc" id="catCodigo" name="codigo" placeholder="Ej. BOD-FM-01" maxlength="20" style="text-transform:uppercase"/>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-3">
+              <label class="form-label-b">CUE OIRSA</label>
+              <input type="text" class="fc" id="catOirsaCue" name="oirsa_cue" placeholder="SourceEndpointCode" maxlength="60" style="text-transform:uppercase"/>
+              <small class="muted">Código de establecimiento usado por OIRSA.</small>
+            </div>
+            <div class="col-md-3">
               <label class="form-label-b">Nombre de la bodega <span class="req">*</span></label>
               <input type="text" class="fc" id="catNombre" name="nombre" placeholder="Ej. Bodega Central Francisco Morazán" maxlength="200"/>
             </div>
