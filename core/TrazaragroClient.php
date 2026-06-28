@@ -311,6 +311,21 @@ class TrazaragroClient
             $cue = strtolower(addslashes($filtros['cue']));
             $parts[] = "(substringof('{$cue}',tolower(SourceEndpointCode)) or substringof('{$cue}',tolower(DestinyEndpointCode)))";
         }
+        // ── Filtro por DEPARTAMENTO (origen O destino) ─────────────
+        // OIRSA llama "Location1" al departamento dentro de la jerarquía geográfica.
+        // SourceLocation1 = depto origen · DestinyLocation1 = depto destino.
+        //
+        // OPTIMIZACIÓN (junio 2026):
+        //   Antes: substringof('choluteca', tolower(SourceLocation1))
+        //          → full scan en el catálogo entero, MUY lento con +500k filas
+        //   Ahora: tolower(SourceLocation1) eq 'choluteca'
+        //          → coincidencia exacta, usa índices del backend OIRSA
+        //   El tolower() en ambos lados permite que 'Choluteca' matchee también
+        //   'CHOLUTECA' o 'choluteca' sin importar capitalización.
+        if (!empty($filtros['departamento'])) {
+            $dep = strtolower(addslashes($filtros['departamento']));
+            $parts[] = "(tolower(SourceLocation1) eq '{$dep}' or tolower(DestinyLocation1) eq '{$dep}')";
+        }
         // Filtro por rubro — preferimos ID numérico (fuente de verdad OIRSA):
         //   2371=Café · 2373=Pecuario · 2374=Pesquero · 2375=Agrícola
         // Si llega 'rubroIds' (array), genera OR. Si solo 'rubroId', filtro exacto.
@@ -343,14 +358,16 @@ class TrazaragroClient
         }
 
         // ── Paginación ──────────────────────────────────────────────
-        // Tamaño de página = 500.000 (alineado con el Power Query oficial SAG).
-        // Cada página = una petición HTTP a OIRSA. Si el caller pide N > pageSize
-        // paginamos con $skip. Si pide N <= pageSize, una sola petición.
-        // OJO: una respuesta de 500K registros puede pesar varios MB y tardar
-        // 1-3 minutos. El controlador debe subir el timeout y memory_limit.
+        // Tamaño de página = 10.000 (junio 2026 — Opción A del análisis).
+        // Antes era 500.000 alineado con el Power Query oficial, pero a partir
+        // de los +500K registros OIRSA tardaba >30 min en armar el JSON de
+        // una sola página y PHP cortaba sin guardar nada.
+        // Con 10K por petición: cada request tarda 10-30s, y el bucle
+        // acumula múltiples páginas hasta agotar la data. Si una página falla,
+        // las anteriores ya están persistidas (UPSERT idempotente).
         $filtroOData = implode(' and ', $parts);
         $endpoint    = '/Services/odata/QueryMovementNationalPrograms?';
-        $pageSize    = 500000;                    // = Power Query M oficial
+        $pageSize    = 10000;                     // antes 500.000 — ver bloque arriba
         $maxItems    = $top;                      // objetivo total
         $normalized  = [];
         $pages       = 0;

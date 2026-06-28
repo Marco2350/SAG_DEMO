@@ -37,6 +37,10 @@ class EntregasController extends Controller
         $kpis               = $this->calcularKpis($movimientos);
         $catalogos          = $this->cargarCatalogosFiltros();
         $conteosOirsaTipos  = $this->conteosTrazaragroPorTipo();
+        // FASE 3 — fecha/hora de la última sincronización con OIRSA del programa actual.
+        // Se muestra como chip junto al botón "Sincronizar" para que el usuario
+        // sepa qué tan fresca está la data antes de decidir sincronizar.
+        $ultimaSyncedAt     = $this->ultimaFechaAutorizacionDelPrograma();
 
         // Para badge en sidebar — actualiza el contador de alertas en sesión
         $_SESSION['entregas_alertas_count'] = $kpis['con_alertas'] ?? 0;
@@ -46,7 +50,7 @@ class EntregasController extends Controller
         $this->view('entregas/index', compact(
             'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
             'reporteDepartamentos', 'reporteProductores', 'reporteBodegas',
-            'anomalias', 'conteosOirsaTipos'
+            'anomalias', 'conteosOirsaTipos', 'ultimaSyncedAt'
         ));
     }
 
@@ -644,7 +648,9 @@ class EntregasController extends Controller
 
             // El sync con OIRSA puede tardar varios minutos. Subimos los límites
             // SOLO para esta petición; no afectan al resto del sitio.
-            @set_time_limit(1800);                 // 30 minutos máx
+            // 60 min con paginación 10k = margen amplio para histórico completo
+            // de cada programa (~80k movimientos por programa = 5-10 min reales).
+            @set_time_limit(3600);                 // 60 minutos máx (era 1800/30 min)
             @ini_set('memory_limit', '2048M');     // 2 GB — antes 1 GB se agotaba con >50K filas
             @ignore_user_abort(true);
 
@@ -674,14 +680,16 @@ class EntregasController extends Controller
             //   · bodega      → filtra por CUE (origen o destino) = bodega_cue del POST
             // Si el modo es 'guiasa' o 'bodega', no aplicamos limpieza ni filtro de rubro
             // (el filtro específico es más restrictivo que el rubro).
-            $modosValidos = ['incremental', 'historico', 'rango', 'guiasa', 'bodega'];
+            $modosValidos = ['incremental', 'historico', 'rango', 'guiasa', 'bodega', 'departamento'];
             $modo = strtolower(trim((string)$this->getPost('modo', 'incremental')));
             if (!in_array($modo, $modosValidos, true)) $modo = 'incremental';
-            $guiasaNo  = trim((string)$this->getPost('guiasa_no', ''));
-            $bodegaCue = trim((string)$this->getPost('bodega_cue', ''));
+            $guiasaNo     = trim((string)$this->getPost('guiasa_no', ''));
+            $bodegaCue    = trim((string)$this->getPost('bodega_cue', ''));
+            $departamento = trim((string)$this->getPost('departamento', ''));
             // Validaciones de modo: si falta el input requerido, degradar a incremental
-            if ($modo === 'guiasa' && $guiasaNo === '') $modo = 'incremental';
-            if ($modo === 'bodega' && $bodegaCue === '') $modo = 'incremental';
+            if ($modo === 'guiasa'       && $guiasaNo     === '') $modo = 'incremental';
+            if ($modo === 'bodega'       && $bodegaCue    === '') $modo = 'incremental';
+            if ($modo === 'departamento' && $departamento === '') $modo = 'incremental';
             // 'historico' es equivalente a Shift+Clic siempre que tenga permiso
             if ($modo === 'historico' && $puedeLimpiar) $limpiar = true;
 
@@ -745,7 +753,7 @@ class EntregasController extends Controller
                 $fetchArgsBase['desde'] = $fechaBase;
                 $fetchArgsBase['hasta'] = date('Y-m-d');
             } else {
-                // Modos incremental / historico / rango usan el filtro de rubro habitual.
+                // Modos incremental / historico / rango / departamento usan el filtro de rubro habitual.
                 // Orden de precedencia: lista de IDs > ID único > texto
                 if (is_array($rubroIds) && !empty($rubroIds)) {
                     $fetchArgsBase['rubroIds'] = $rubroIds;
@@ -758,6 +766,16 @@ class EntregasController extends Controller
                     $filtroAplicado = "rubro='{$rubro}' (texto)";
                 } else {
                     $filtroAplicado = 'sin filtro de rubro';
+                }
+                // Sumar filtro por departamento si el modo lo pide.
+                // Mantiene el rubro: queremos SOLO movimientos del programa actual
+                // (PIPC=café, PIPA=agrícola) que toquen ese depto.
+                if ($modo === 'departamento') {
+                    $fetchArgsBase['departamento'] = $departamento;
+                    $filtroAplicado .= " · departamento='{$departamento}'";
+                    // Para depto traemos histórico completo del depto (chico de todos modos)
+                    $fetchArgsBase['desde'] = $fechaBase;
+                    $fetchArgsBase['hasta'] = date('Y-m-d');
                 }
             }
             error_log("sincronizarTrazaragro: programa={$progId} · modo={$modo} · {$filtroAplicado} · rango={$fetchArgsBase['desde']}/{$fetchArgsBase['hasta']} · top={$top}");
@@ -1578,6 +1596,149 @@ class EntregasController extends Controller
             'total_movs'   => $totalMovs,
         ]);
     }
+
+    // ════════════════════════════════════════════════════════════
+    //  DIAGNÓSTICO API OIRSA — Probar conexión en vivo
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Vista HTML del diagnóstico de conexión API.
+     * Carga la página /entregas/diagnosticoApi y ejecuta el endpoint JSON vía AJAX.
+     */
+    public function diagnosticoApi(): void
+    {
+        $this->view('entregas/diag_api');
+    }
+
+    /**
+     * Endpoint JSON: prueba la conexión a OIRSA en 4 pasos.
+     * Devuelve por cada paso: ok/fail, detalle y tiempo de respuesta.
+     */
+    public function probarApi(): void
+    {
+        @set_time_limit(60);
+        $pasos = [];
+
+        // Paso 1 — Verificar config en .env
+        $cfgOk = defined('TRAZARAGRO')
+              && !empty(TRAZARAGRO['base_url'])
+              && !empty(TRAZARAGRO['username'])
+              && !empty(TRAZARAGRO['password']);
+        $cfgDetalle = $cfgOk
+            ? 'URL=' . TRAZARAGRO['base_url'] . ' · usuario=' . TRAZARAGRO['username']
+            : 'Falta uno o más de: TRAZARAGRO_BASE_URL, TRAZARAGRO_USERNAME, TRAZARAGRO_PASSWORD en .env';
+        $pasos[] = [
+            'paso'    => 'Configuración en .env',
+            'ok'      => $cfgOk,
+            'detalle' => $cfgDetalle,
+            'tiempo'  => 0,
+        ];
+
+        // Paso 2 — Servidor OIRSA accesible (ping HTTP HEAD)
+        $tStart    = microtime(true);
+        $reachable = false;
+        $msgReach  = 'No probado (falta config)';
+        if ($cfgOk) {
+            $ch = curl_init(TRAZARAGRO['base_url']);
+            curl_setopt_array($ch, [
+                CURLOPT_NOBODY         => true,
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
+            curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            $reachable = ($code > 0);
+            $msgReach  = $reachable
+                ? "Servidor responde HTTP {$code}"
+                : "Error de red: " . ($err ?: 'sin detalle');
+        }
+        $pasos[] = [
+            'paso'    => 'Servidor OIRSA accesible',
+            'ok'      => $reachable,
+            'detalle' => $msgReach,
+            'tiempo'  => round((microtime(true) - $tStart) * 1000, 1),
+        ];
+
+        // Paso 3 — Autenticación OAuth2 (obtener token)
+        $authOk = false;
+        $msgAuth = 'No probado';
+        if ($cfgOk && $reachable && class_exists('TrazaragroClient')) {
+            $tStart = microtime(true);
+            try {
+                $cli  = new TrazaragroClient();
+                $ping = $cli->ping();
+                $authOk  = !empty($ping['ok']);
+                $msgAuth = $authOk
+                    ? 'Token OAuth2 obtenido correctamente (' . ($ping['mode'] ?? 'live') . ')'
+                    : 'Falló autenticación: ' . ($ping['msg'] ?? 'sin detalle');
+                $tAuth = round((microtime(true) - $tStart) * 1000, 1);
+            } catch (\Throwable $e) {
+                $msgAuth = 'Excepción: ' . substr($e->getMessage(), 0, 200);
+                $tAuth = round((microtime(true) - $tStart) * 1000, 1);
+            }
+        } else {
+            $tAuth = 0;
+        }
+        $pasos[] = [
+            'paso'    => 'Autenticación OAuth2',
+            'ok'      => $authOk,
+            'detalle' => $msgAuth,
+            'tiempo'  => $tAuth,
+        ];
+
+        // Paso 4 — Consulta OData de prueba (top=1)
+        $queryOk = false;
+        $msgQuery = 'No probado';
+        $tQuery = 0;
+        if ($authOk && isset($cli)) {
+            $tStart = microtime(true);
+            try {
+                $movs = $cli->fetchEntregas([
+                    'top'       => 1,
+                    'desde'     => date('Y-m-d', strtotime('-30 days')),
+                    'hasta'     => date('Y-m-d'),
+                    'tipoMovId' => 0,
+                ]);
+                $queryOk  = true;
+                $msgQuery = 'OData OK — devolvió ' . count($movs) . ' movimiento' . (count($movs) !== 1 ? 's' : '') . ' (prueba)';
+                $tQuery = round((microtime(true) - $tStart) * 1000, 1);
+            } catch (\Throwable $e) {
+                $msgQuery = 'Excepción: ' . substr($e->getMessage(), 0, 200);
+                $tQuery = round((microtime(true) - $tStart) * 1000, 1);
+            }
+        }
+        $pasos[] = [
+            'paso'    => 'Consulta OData de prueba',
+            'ok'      => $queryOk,
+            'detalle' => $msgQuery,
+            'tiempo'  => $tQuery,
+        ];
+
+        // Resumen + config técnica
+        $todoOk = true;
+        foreach ($pasos as $p) { if (!$p['ok']) { $todoOk = false; break; } }
+
+        $this->success('Diagnóstico API OIRSA', [
+            'todo_ok' => $todoOk,
+            'pasos'   => $pasos,
+            'config'  => [
+                'base_url'     => defined('TRAZARAGRO') ? (TRAZARAGRO['base_url']  ?? '') : '',
+                'username'     => defined('TRAZARAGRO') ? (TRAZARAGRO['username']  ?: '(vacío)') : '',
+                'has_password' => defined('TRAZARAGRO') ? !empty(TRAZARAGRO['password']) : false,
+                'client_id'    => defined('TRAZARAGRO') ? (TRAZARAGRO['client_id'] ?? '') : '',
+                'instance'     => defined('TRAZARAGRO') ? (TRAZARAGRO['instance']  ?? '') : '',
+                'timeout_s'    => defined('TRAZARAGRO') ? (TRAZARAGRO['timeout']   ?? 30) : 0,
+                'php_version'  => PHP_VERSION,
+                'curl_version' => function_exists('curl_version') ? (curl_version()['version'] ?? '?') : 'sin cURL',
+            ],
+        ]);
+    }
+
 
     // ════════════════════════════════════════════════════════════
     //  ENDPOINTS LEGACY (mantenidos por compatibilidad)

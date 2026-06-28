@@ -331,17 +331,19 @@ $(function () {
             guiasa: 'Sincronizar una GUIASA especifica',
             bodega: 'Sincronizar por bodega',
             rango:  'Sincronizar por rango de fechas',
+            departamento: 'Sincronizar por departamento',
             historico: 'Historico completo desde 2026-04-01'
         };
         const descs = {
             guiasa: 'Solo trae movimientos de OIRSA cuyo numero de GUIASA contenga el valor ingresado.',
             bodega: 'Solo trae movimientos donde la bodega (origen o destino) coincida con el CUE.',
             rango:  'Trae movimientos cuya fecha de autorizacion este en el rango.',
+            departamento: 'Trae movimientos donde el departamento de origen o destino coincida.',
             historico: 'Re-sincronizacion completa desde la fecha base de los programas.'
         };
         $('#syncPersTitulo').text(titulos[modo] || 'Sincronizacion personalizada');
         $('#syncPersDesc').text(descs[modo] || '');
-        $('#syncCampoGuiasa,#syncCampoBodega,#syncCampoRango,#syncCampoHistorico').hide();
+        $('#syncCampoGuiasa,#syncCampoBodega,#syncCampoRango,#syncCampoHistorico,#syncCampoDepto').hide();
         if (modo === 'guiasa') $('#syncCampoGuiasa').show();
         if (modo === 'bodega') $('#syncCampoBodega').show();
         if (modo === 'rango')  {
@@ -352,6 +354,7 @@ $(function () {
             $('#syncCampoRango').show();
         }
         if (modo === 'historico') $('#syncCampoHistorico').show();
+        if (modo === 'departamento') $('#syncCampoDepto').show();
         $('#btnSyncPersConfirmar').data('modo', modo);
         new bootstrap.Modal(document.getElementById('modalSyncPers')).show();
     });
@@ -377,6 +380,10 @@ $(function () {
             if (d < '2026-04-01') { SAG.toast('La fecha desde no puede ser anterior a 2026-04-01.', 'warning'); return; }
             data.desde = d;
             data.hasta = h;
+        } else if (modo === 'departamento') {
+            const d = ($("#syncInputDepto").val() || "").trim();
+            if (!d) { SAG.toast('Selecciona un departamento.', 'warning'); return; }
+            data.departamento = d;
         } else if (modo === 'historico') {
             if (!confirm('Esto BORRARA todos los movimientos del programa y los re-descarga desde 2026-04-01. Continuar?')) return;
             data.limpiar = 1;

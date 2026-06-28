@@ -124,6 +124,30 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <!-- FASE 3: Indicador de última sincronización -->
+      <?php if (!empty($ultimaSyncedAt)):
+        $tsSync   = strtotime($ultimaSyncedAt);
+        $segDif   = max(0, time() - $tsSync);
+        if     ($segDif < 60)        $hace = 'hace ' . $segDif . ' s';
+        elseif ($segDif < 3600)      $hace = 'hace ' . floor($segDif/60) . ' min';
+        elseif ($segDif < 86400)     $hace = 'hace ' . floor($segDif/3600) . ' h';
+        elseif ($segDif < 86400 * 2) $hace = 'ayer';
+        elseif ($segDif < 86400 * 7) $hace = 'hace ' . floor($segDif/86400) . ' días';
+        else                          $hace = 'hace ' . floor($segDif/86400) . ' días';
+        $fechaTxt = date('d/m/Y H:i', $tsSync);
+        // Color del chip según frescura: < 24h verde · < 7 días amarillo · más rojo
+        if    ($segDif < 86400)       $colorChip = ['#dcfce7','#166534'];
+        elseif($segDif < 86400 * 7)   $colorChip = ['#fef3c7','#92400e'];
+        else                          $colorChip = ['#fee2e2','#991b1b'];
+      ?>
+      <div title="Última sincronización: <?= $fechaTxt ?>" style="display:inline-flex;align-items:center;gap:6px;background:<?= $colorChip[0] ?>;color:<?= $colorChip[1] ?>;padding:6px 12px;border-radius:8px;font-size:.78rem;font-weight:600;">
+        <i class="fas fa-clock"></i> Última sync: <strong><?= $hace ?></strong>
+      </div>
+      <?php else: ?>
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;color:#475569;padding:6px 12px;border-radius:8px;font-size:.78rem;font-weight:600;">
+        <i class="fas fa-clock"></i> Sin sincronizar aún
+      </div>
+      <?php endif; ?>
       <!-- Grupo: botón principal + opciones avanzadas -->
       <div class="btn-group" role="group">
         <button class="btn-sync" id="btnSincronizarTrazaragro" style="background:#1e3a8a;border-top-right-radius:0;border-bottom-right-radius:0;" title="Clic = incremental · Shift+Clic = histórico completo desde 2026-04-01">
@@ -137,6 +161,7 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
           <li><a class="dropdown-item" href="#" data-sync-modo="guiasa"><i class="fas fa-file-invoice me-2" style="color:#9a3412;width:18px;"></i> Por GUIASA específica</a></li>
           <li><a class="dropdown-item" href="#" data-sync-modo="bodega"><i class="fas fa-warehouse me-2" style="color:#1e40af;width:18px;"></i> Por bodega (CUE)</a></li>
           <li><a class="dropdown-item" href="#" data-sync-modo="rango"><i class="fas fa-calendar-range me-2" style="color:#7c3aed;width:18px;"></i> Por rango de fechas</a></li>
+          <li><a class="dropdown-item" href="#" data-sync-modo="departamento"><i class="fas fa-map-location-dot me-2" style="color:#16a34a;width:18px;"></i> Por departamento</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="#" data-sync-modo="historico"><i class="fas fa-clock-rotate-left me-2" style="color:#dc2626;width:18px;"></i> Histórico completo desde 2026-04-01</a></li>
         </ul>
@@ -167,6 +192,31 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
               <label class="form-label" style="font-weight:600;">CUE de la bodega</label>
               <input type="text" class="form-control" id="syncInputBodega" placeholder="Ej: CUE-001-23" autocomplete="off">
               <small style="color:#64748b;">Trae movimientos donde esta bodega sea origen o destino.</small>
+            </div>
+            <div id="syncCampoDepto" style="display:none;">
+              <label class="form-label" style="font-weight:600;">Departamento</label>
+              <select class="form-control" id="syncInputDepto">
+                <option value="">— Seleccione un departamento —</option>
+                <option>Atlántida</option>
+                <option>Choluteca</option>
+                <option>Colón</option>
+                <option>Comayagua</option>
+                <option>Copán</option>
+                <option>Cortés</option>
+                <option>El Paraíso</option>
+                <option>Francisco Morazán</option>
+                <option>Gracias a Dios</option>
+                <option>Intibucá</option>
+                <option>Islas de la Bahía</option>
+                <option>La Paz</option>
+                <option>Lempira</option>
+                <option>Ocotepeque</option>
+                <option>Olancho</option>
+                <option>Santa Bárbara</option>
+                <option>Valle</option>
+                <option>Yoro</option>
+              </select>
+              <small style="color:#64748b;">Trae movimientos donde el departamento de origen o destino contenga este nombre.</small>
             </div>
             <div id="syncCampoRango" style="display:none;">
               <div class="row g-2">

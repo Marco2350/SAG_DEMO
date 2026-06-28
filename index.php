@@ -334,6 +334,8 @@ $router->post('/presupuesto/api/lineas',         'PresupuestoController', 'apiLi
 // ── Entregas de Incentivos (mock por ahora — Kobo + Trazaragro) ──────
 $router->get('/entregas',                            'EntregasController', 'index');
 $router->get('/entregas/diag',                       'EntregasController', 'diag');
+$router->get("/entregas/diagnosticoApi",          "EntregasController", "diagnosticoApi");
+$router->get("/entregas/probarApi",                "EntregasController", "probarApi");
 $router->get('/entregas/descubrirTiposMovimientos',  'EntregasController', 'descubrirTiposMovimientos');
 $router->get('/entregas/exportar',                   'EntregasController', 'exportar');
 $router->get('/entregas/acta',                       'EntregasController', 'acta');
