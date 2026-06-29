@@ -29,13 +29,39 @@ class MantenimientoController extends Controller
             "SELECT u.*, r.nombre AS rol_nombre FROM sag_usuarios u
              INNER JOIN sag_roles r ON r.id_rol = u.id_rol ORDER BY u.nombre, u.apellido"
         );
-        $roles     = $dbMain->fetchAll("SELECT * FROM sag_roles ORDER BY nombre");
+        $roles     = $dbMain->fetchAll(
+            "SELECT id_rol, slug, nombre,
+                    " . ($dbMain->columnaExiste('sag_roles', 'descripcion') ? 'descripcion' : "'' AS descripcion") . ",
+                    " . ($dbMain->columnaExiste('sag_roles', 'es_admin') ? 'es_admin' : '0 AS es_admin') . ",
+                    " . ($dbMain->columnaExiste('sag_roles', 'activo') ? 'activo' : '1 AS activo') . "
+             FROM sag_roles ORDER BY es_admin DESC, nombre"
+        );
         $departamentos = $db->fetchAll("SELECT * FROM sag_departamentos WHERE activo=1 AND id_proyecto=? ORDER BY nombre", [$pid]);
+
+        // ── Administración de roles / privilegios / proyectos (solo admin) ──
+        $esAdminRoles = $this->hasRole(['super_admin', 'admin', 'administrador']);
+        $modulos = $acciones = $privilegios = $proyectos = $usuariosProyectos = [];
+        try {
+            if ($dbMain->tablaExiste('sag_modulos')) {
+                $modulos  = $dbMain->fetchAll("SELECT id_modulo, slug, nombre FROM sag_modulos WHERE activo=1 ORDER BY orden, nombre");
+                $acciones = $dbMain->fetchAll("SELECT id_accion, slug, nombre FROM sag_acciones ORDER BY orden, nombre");
+                $privilegios = $dbMain->fetchAll("SELECT id_rol, id_modulo, id_accion FROM sag_rol_privilegio");
+            }
+            if ($dbMain->tablaExiste('sag_proyectos')) {
+                $proyectos = $dbMain->fetchAll("SELECT id_proyecto, codigo, sigla, nombre FROM sag_proyectos WHERE activo=1 ORDER BY id_proyecto");
+            }
+            if ($dbMain->tablaExiste('sag_usuario_proyecto')) {
+                $usuariosProyectos = $dbMain->fetchAll("SELECT id_usuario, id_proyecto FROM sag_usuario_proyecto");
+            }
+        } catch (\Throwable $e) {
+            error_log('MantenimientoController::index (roles) — ' . $e->getMessage());
+        }
 
         $pageTitle = 'Mantenimiento — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
         $this->view('mantenimiento/index', compact(
             'tecnicos', 'temas', 'subtemas', 'cultivos', 'tiposAt',
-            'usuarios', 'roles', 'departamentos', 'pageTitle'
+            'usuarios', 'roles', 'departamentos', 'pageTitle',
+            'esAdminRoles', 'modulos', 'acciones', 'privilegios', 'proyectos', 'usuariosProyectos'
         ));
     }
 
@@ -294,15 +320,35 @@ class MantenimientoController extends Controller
         if ($password && strlen($password) < 8) {
             $this->error('La contraseña debe tener al menos 8 caracteres.'); return;
         }
-        if (!Database::main()->fetchOne("SELECT id_rol FROM sag_roles WHERE id_rol=?", [$idRol])) {
+        $db = Database::main();
+        if (!$db->fetchOne("SELECT id_rol FROM sag_roles WHERE id_rol=?", [$idRol])) {
             $this->error('El rol seleccionado no es válido.'); return;
         }
 
+        // Alcance de proyectos (multi-proyecto, rol único).
+        $tieneTablaProy = $db->columnaExiste('sag_usuarios', 'todos_proyectos')
+                       && $db->tablaExiste('sag_usuario_proyecto');
+        $todosProy = (int) $this->getPost('todos_proyectos', 0) ? 1 : 0;
+        $proyEntrada = $_POST['proyectos'] ?? [];
+        if (!is_array($proyEntrada)) $proyEntrada = [$proyEntrada];
+        $proyectos = array_values(array_unique(array_filter(array_map('intval', $proyEntrada))));
+
+        // Validar que los proyectos existan
+        if (!$todosProy && $proyectos) {
+            $in  = implode(',', array_fill(0, count($proyectos), '?'));
+            $val = $db->fetchAll("SELECT id_proyecto FROM sag_proyectos WHERE id_proyecto IN ($in)", $proyectos);
+            $proyectos = array_map(fn($r) => (int) $r['id_proyecto'], $val);
+        }
+        if ($tieneTablaProy && !$todosProy && !$proyectos) {
+            $this->error('Asigne al menos un proyecto o marque «Acceso a todos los proyectos».'); return;
+        }
+
         try {
-            $db = Database::main();
+            $db->beginTransaction();
             if ($id) {
                 $sql    = "UPDATE sag_usuarios SET nombre=?, apellido=?, email=?, username=?, id_rol=?, activo=?";
                 $params = [$nombre, $apellido, $email, $username, $idRol, (int)$this->getPost('activo', 1)];
+                if ($tieneTablaProy) { $sql .= ", todos_proyectos=?"; $params[] = $todosProy; }
                 if ($password) {
                     $sql    .= ", password_hash=?";
                     $params[] = password_hash($password, PASSWORD_BCRYPT);
@@ -310,18 +356,45 @@ class MantenimientoController extends Controller
                 $sql .= " WHERE id_usuario=?";
                 $params[] = $id;
                 $db->execute($sql, $params);
-                $this->logAction('EDITAR', 'mantenimiento_usuarios', "ID:{$id}");
-                $this->success('Usuario actualizado.');
+                $idUsuario = $id;
+                $accionLog = 'EDITAR';
             } else {
-                $db->execute(
-                    "INSERT INTO sag_usuarios (nombre, apellido, email, username, password_hash, id_rol)
-                     VALUES (?, ?, ?, ?, ?, ?)",
-                    [$nombre, $apellido, $email, $username, password_hash($password, PASSWORD_BCRYPT), $idRol]
-                );
-                $this->logAction('CREAR', 'mantenimiento_usuarios', $username);
-                $this->success('Usuario creado.');
+                if ($tieneTablaProy) {
+                    $db->execute(
+                        "INSERT INTO sag_usuarios (nombre, apellido, email, username, password_hash, id_rol, todos_proyectos)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [$nombre, $apellido, $email, $username, password_hash($password, PASSWORD_BCRYPT), $idRol, $todosProy]
+                    );
+                } else {
+                    $db->execute(
+                        "INSERT INTO sag_usuarios (nombre, apellido, email, username, password_hash, id_rol)
+                         VALUES (?, ?, ?, ?, ?, ?)",
+                        [$nombre, $apellido, $email, $username, password_hash($password, PASSWORD_BCRYPT), $idRol]
+                    );
+                }
+                $idUsuario = (int) $db->lastInsertId();
+                $accionLog = 'CREAR';
             }
+
+            // Reescribir la asignación de proyectos
+            if ($tieneTablaProy) {
+                $db->execute("DELETE FROM sag_usuario_proyecto WHERE id_usuario=?", [$idUsuario]);
+                if (!$todosProy) {
+                    foreach ($proyectos as $idProy) {
+                        $db->execute(
+                            "INSERT IGNORE INTO sag_usuario_proyecto (id_usuario, id_proyecto) VALUES (?, ?)",
+                            [$idUsuario, $idProy]
+                        );
+                    }
+                }
+            }
+
+            $db->commit();
+            $this->logAction($accionLog, 'mantenimiento_usuarios', "ID:{$idUsuario}");
+            $this->success($id ? 'Usuario actualizado.' : 'Usuario creado.');
         } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollback();
+            error_log('MantenimientoController::saveUsuario — ' . $e->getMessage());
             $this->error('Error al guardar usuario. El email o username puede estar duplicado.');
         }
     }
@@ -340,6 +413,143 @@ class MantenimientoController extends Controller
             $this->success('Usuario desactivado.');
         } catch (Exception $e) {
             $this->error('Error al eliminar usuario.');
+        }
+    }
+
+    // ── ROLES Y PRIVILEGIOS (solo administradores) ─────
+
+    /** Solo roles administradores pueden gestionar roles/privilegios. */
+    private function requireAdminRoles(): void
+    {
+        $this->requireRole(['super_admin', 'admin', 'administrador']);
+    }
+
+    private function slugify(string $s): string
+    {
+        $t = @iconv('UTF-8', 'ASCII//TRANSLIT', $s);
+        if ($t !== false) $s = $t;
+        $s = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '_', $s));
+        return trim($s, '_');
+    }
+
+    public function saveRol(): void
+    {
+        $this->requireAdminRoles();
+        $db = Database::main();
+
+        $id          = (int) $this->getPost('id_rol', 0);
+        $nombre      = trim($this->getPost('nombre', ''));
+        $descripcion = trim($this->getPost('descripcion', ''));
+        $activo      = (int) $this->getPost('activo', 1) ? 1 : 0;
+        $slugIn      = trim($this->getPost('slug', ''));
+
+        if ($nombre === '') { $this->error('El nombre del rol es obligatorio.'); return; }
+
+        try {
+            if ($id) {
+                if (!$db->fetchOne("SELECT id_rol FROM sag_roles WHERE id_rol=?", [$id])) {
+                    $this->error('Rol no encontrado.'); return;
+                }
+                $db->execute(
+                    "UPDATE sag_roles SET nombre=?, descripcion=?, activo=? WHERE id_rol=?",
+                    [$nombre, $descripcion, $activo, $id]
+                );
+                $this->logAction('EDITAR', 'mantenimiento_roles', "ID:{$id}");
+                $this->success('Rol actualizado.');
+            } else {
+                $slug = $slugIn !== '' ? strtolower($slugIn) : $this->slugify($nombre);
+                if (!preg_match('/^[a-z0-9_]{3,40}$/', $slug)) {
+                    $this->error('El identificador (slug) solo admite minúsculas, números y guion bajo (3-40).'); return;
+                }
+                if ($db->fetchOne("SELECT id_rol FROM sag_roles WHERE slug=?", [$slug])) {
+                    $this->error('Ya existe un rol con ese identificador.'); return;
+                }
+                $db->execute(
+                    "INSERT INTO sag_roles (slug, nombre, descripcion, es_admin, activo) VALUES (?, ?, ?, 0, ?)",
+                    [$slug, $nombre, $descripcion, $activo]
+                );
+                $this->logAction('CREAR', 'mantenimiento_roles', $slug);
+                $this->success('Rol creado.');
+            }
+        } catch (\Throwable $e) {
+            error_log('MantenimientoController::saveRol — ' . $e->getMessage());
+            $this->error('No se pudo guardar el rol.');
+        }
+    }
+
+    public function deleteRol(): void
+    {
+        $this->requireAdminRoles();
+        $db = Database::main();
+        $id = (int) $this->getPost('id_rol', 0);
+        if (!$id) { $this->error('Rol no válido.'); return; }
+
+        $rol = $db->fetchOne("SELECT slug, es_admin FROM sag_roles WHERE id_rol=?", [$id]);
+        if (!$rol) { $this->error('Rol no encontrado.'); return; }
+        if ((int) $rol['es_admin'] === 1) { $this->error('No se puede desactivar un rol administrador del sistema.'); return; }
+        if ((int) $id === (int) ($_SESSION['user']['id_rol'] ?? 0)) {
+            $this->error('No puede desactivar su propio rol.'); return;
+        }
+        $enUso = $db->fetchOne("SELECT COUNT(*) AS n FROM sag_usuarios WHERE id_rol=? AND activo=1", [$id]);
+        if ((int) ($enUso['n'] ?? 0) > 0) {
+            $this->error('No se puede desactivar: hay usuarios activos con este rol.'); return;
+        }
+        try {
+            $db->execute("UPDATE sag_roles SET activo=0 WHERE id_rol=?", [$id]);
+            $this->logAction('ELIMINAR', 'mantenimiento_roles', "ID:{$id}");
+            $this->success('Rol desactivado.');
+        } catch (\Throwable $e) {
+            error_log('MantenimientoController::deleteRol — ' . $e->getMessage());
+            $this->error('No se pudo desactivar el rol.');
+        }
+    }
+
+    public function savePrivilegios(): void
+    {
+        $this->requireAdminRoles();
+        $db = Database::main();
+
+        $idRol = (int) $this->getPost('id_rol', 0);
+        if (!$idRol) { $this->error('Rol no válido.'); return; }
+
+        $rol = $db->fetchOne("SELECT slug, es_admin FROM sag_roles WHERE id_rol=?", [$idRol]);
+        if (!$rol) { $this->error('Rol no encontrado.'); return; }
+        if ((int) $rol['es_admin'] === 1) {
+            $this->error('Los roles administradores tienen acceso total y no se editan.'); return;
+        }
+
+        // privilegios: array de "idModulo:idAccion"
+        $entrada = $_POST['privilegios'] ?? [];
+        if (!is_array($entrada)) $entrada = [$entrada];
+
+        $modulosValidos  = array_map(fn($r) => (int) $r['id_modulo'], $db->fetchAll("SELECT id_modulo FROM sag_modulos"));
+        $accionesValidas = array_map(fn($r) => (int) $r['id_accion'], $db->fetchAll("SELECT id_accion FROM sag_acciones"));
+
+        $pares = [];
+        foreach ($entrada as $p) {
+            [$m, $a] = array_pad(explode(':', (string) $p), 2, null);
+            $m = (int) $m; $a = (int) $a;
+            if (in_array($m, $modulosValidos, true) && in_array($a, $accionesValidas, true)) {
+                $pares["$m:$a"] = [$m, $a];
+            }
+        }
+
+        try {
+            $db->beginTransaction();
+            $db->execute("DELETE FROM sag_rol_privilegio WHERE id_rol=?", [$idRol]);
+            foreach ($pares as [$m, $a]) {
+                $db->execute(
+                    "INSERT IGNORE INTO sag_rol_privilegio (id_rol, id_modulo, id_accion) VALUES (?, ?, ?)",
+                    [$idRol, $m, $a]
+                );
+            }
+            $db->commit();
+            $this->logAction('EDITAR', 'mantenimiento_privilegios', "Rol:{$idRol} · " . count($pares) . ' privilegios');
+            $this->success('Privilegios actualizados.');
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollback();
+            error_log('MantenimientoController::savePrivilegios — ' . $e->getMessage());
+            $this->error('No se pudieron guardar los privilegios.');
         }
     }
 

@@ -85,6 +85,12 @@ class AuthController extends Controller
             ];
             $_SESSION['_last_activity'] = time();
 
+            // Precalcular el alcance de proyectos del usuario (multi-proyecto).
+            // Permisos::proyectosPermitidos() lo cachea en la sesión y tolera
+            // entornos donde las tablas nuevas aún no existan.
+            unset($_SESSION['user']['proyectos_scope']);
+            Permisos::proyectosPermitidos();
+
             // Actualizar último acceso
             $db->execute(
                 "UPDATE sag_usuarios SET ultimo_acceso = NOW() WHERE id_usuario = ?",

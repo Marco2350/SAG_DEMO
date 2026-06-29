@@ -138,8 +138,9 @@ abstract class Controller
     /** Verifica si el usuario puede operar el programa indicado. */
     protected function programaPermitido(string $programaId): bool
     {
-        $asignado = $this->programaAsignado();
-        return $asignado === null || hash_equals($asignado, strtolower($programaId));
+        // Alcance multi-proyecto: roles admin o todos_proyectos => todos;
+        // en otro caso, solo los proyectos asignados en sag_usuario_proyecto.
+        return Permisos::puedeOperarPip($programaId);
     }
 
     /** Bloquea el acceso directo a módulos que el rol no puede consultar. */

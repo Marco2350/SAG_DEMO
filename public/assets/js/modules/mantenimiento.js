@@ -407,11 +407,29 @@ $(function () {
         }).join('');
     }
 
+    // Alcance de proyectos en el modal de usuario
+    function toggleProyBox() {
+        const todos = $('#usrTodosProy').is(':checked');
+        $('.usrProyChk').prop('disabled', todos);
+        $('#usrProyectosBox').css('opacity', todos ? '.45' : '1');
+    }
+    $('#usrTodosProy').on('change', toggleProyBox);
+
+    function setProyectosUsuario(todos, proyectos) {
+        $('#usrTodosProy').prop('checked', !!todos);
+        const set = new Set((proyectos || []).map(Number));
+        $('.usrProyChk').each(function () {
+            this.checked = set.has(parseInt(this.value));
+        });
+        toggleProyBox();
+    }
+
     $('#btnNuevoUsuario').on('click', function () {
         $('#usrId').val(0);
         $('#usrNombre, #usrApellido, #usrEmail, #usrUsername, #usrPassword').val('');
         $('#usrRol').val(''); $('#usrActivo').val('1');
         $('#campoPassword').show(); $('#pwReq').show();
+        setProyectosUsuario(false, []);
         document.getElementById('tituloModalUsr').innerHTML = '<i class="fas fa-user-plus me-2" style="color:var(--primario);"></i>Nuevo usuario';
         abrirModal('modalUsuario');
     });
@@ -435,6 +453,7 @@ $(function () {
         $('#usrActivo').val(u.activo);
         $('#usrPassword').val('');
         $('#campoPassword').show(); $('#pwReq').hide();
+        setProyectosUsuario(u.todos_proyectos, u.proyectos);
         document.getElementById('tituloModalUsr').innerHTML = '<i class="fas fa-pencil me-2" style="color:var(--primario);"></i>Editar usuario';
         abrirModal('modalUsuario');
     };
@@ -469,15 +488,156 @@ $(function () {
         if (!idUsr && !password) { SAG.toast('La contraseña es obligatoria para nuevos usuarios.', 'warning'); return; }
         if (password && password.length < 6) { SAG.toast('La contraseña debe tener al menos 6 caracteres.', 'warning'); return; }
 
+        const todos = $('#usrTodosProy').is(':checked') ? 1 : 0;
+        const proyectos = $('.usrProyChk:checked').map((_, el) => el.value).get();
+        if (!todos && proyectos.length === 0) {
+            SAG.toast('Asigne al menos un proyecto o marque «Acceso a todos los proyectos».', 'warning'); return;
+        }
+
         const data = {
             id_usuario: idUsr,
             nombre, apellido, email, username,
             id_rol: idRol,
-            activo: $('#usrActivo').val()
+            activo: $('#usrActivo').val(),
+            todos_proyectos: todos,
+            proyectos: proyectos
         };
         if (password) data.password = password;
 
         SAG.ajax({ url: '/mantenimiento/usuarios/save', data, success: r => afterSave(r, 'modalUsuario') });
+    });
+
+    // ─────────────────────────────────────────────────
+    // ROLES Y PRIVILEGIOS  (solo administradores)
+    // ─────────────────────────────────────────────────
+    let privRolId = 0;
+
+    function renderRoles() {
+        if (!D.esAdminRoles) return;
+        const body = document.getElementById('bodyRoles');
+        if (!body) return;
+        body.innerHTML = (D.roles && D.roles.length)
+            ? D.roles.map((r, i) => {
+                const tipo = r.es_admin
+                    ? '<span class="badge-pill bp-purple">Administrador</span>'
+                    : '<span class="badge-pill bp-blue">Personalizado</span>';
+                const btnPriv = r.es_admin
+                    ? `<button class="btn-sec" style="padding:5px 10px;font-size:.74rem;" disabled title="Acceso total"><i class="fas fa-shield-halved"></i></button>`
+                    : `<button class="btn-edit" onclick="privilegiosRol(${r.id})" title="Privilegios"><i class="fas fa-shield-halved"></i></button>`;
+                const btnDel = r.es_admin
+                    ? ''
+                    : `<button class="btn-danger" onclick="eliminarRol(${r.id})" title="Desactivar"><i class="fas fa-ban"></i></button>`;
+                return `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td><strong>${escHtml(r.nombre)}</strong></td>
+                  <td><code style="font-size:.72rem;">${escHtml(r.slug)}</code></td>
+                  <td style="font-size:.76rem;color:#666;max-width:260px;">${escHtml(r.descripcion)}</td>
+                  <td>${tipo}</td>
+                  <td>${badgeActivo(r.activo)}</td>
+                  <td style="white-space:nowrap;">
+                    ${btnPriv}
+                    <button class="btn-edit" onclick="editarRol(${r.id})" title="Editar"><i class="fas fa-pencil"></i></button>
+                    ${btnDel}
+                  </td>
+                </tr>`;
+            }).join('')
+            : '<tr><td colspan="7" style="text-align:center;padding:20px;color:#aaa;">Sin roles.</td></tr>';
+    }
+
+    $('#btnNuevoRol').on('click', function () {
+        $('#rolId').val(0);
+        $('#rolNombre, #rolSlug, #rolDesc').val('');
+        $('#rolActivo').val('1');
+        $('#rolSlugCampo').show();
+        document.getElementById('tituloModalRol').innerHTML = '<i class="fas fa-user-shield me-2" style="color:var(--primario);"></i>Nuevo rol';
+        abrirModal('modalRol');
+    });
+
+    window.editarRol = function (id) {
+        const r = D.roles.find(x => x.id === id);
+        if (!r) return;
+        $('#rolId').val(r.id);
+        $('#rolNombre').val(r.nombre);
+        $('#rolSlug').val(r.slug);
+        $('#rolDesc').val(r.descripcion);
+        $('#rolActivo').val(r.activo);
+        $('#rolSlugCampo').hide(); // el slug no se cambia al editar
+        document.getElementById('tituloModalRol').innerHTML = '<i class="fas fa-pencil me-2" style="color:var(--primario);"></i>Editar rol';
+        abrirModal('modalRol');
+    };
+
+    window.eliminarRol = function (id) {
+        const r = D.roles.find(x => x.id === id);
+        if (!r) return;
+        confirmar('¿Desactivar rol?', `El rol "${r.nombre}" quedará inactivo.`, function () {
+            SAG.ajax({ url: '/mantenimiento/roles/delete', data: { id_rol: id }, success: function (res) {
+                if (!res.success) { SAG.toast(res.message, 'error'); return; }
+                SAG.toast(res.message, 'success');
+                setTimeout(() => location.reload(), 800);
+            }});
+        });
+    };
+
+    $('#btnGuardarRol').on('click', function () {
+        const nombre = $('#rolNombre').val().trim();
+        const id     = parseInt($('#rolId').val()) || 0;
+        if (!nombre) { SAG.toast('El nombre del rol es obligatorio.', 'warning'); return; }
+        const data = {
+            id_rol: id,
+            nombre,
+            descripcion: $('#rolDesc').val().trim(),
+            activo: $('#rolActivo').val(),
+        };
+        if (!id) data.slug = $('#rolSlug').val().trim();
+        SAG.ajax({ url: '/mantenimiento/roles/save', data, success: r => afterSave(r, 'modalRol') });
+    });
+
+    // ── Matriz de privilegios ─────────────────────────
+    window.privilegiosRol = function (id) {
+        const r = D.roles.find(x => x.id === id);
+        if (!r) return;
+        privRolId = id;
+        document.getElementById('tituloModalPriv').innerHTML =
+            `<i class="fas fa-shield-halved me-2" style="color:var(--primario);"></i>Privilegios — ${escHtml(r.nombre)}`;
+
+        const esAdmin = !!r.es_admin;
+        $('#privAdminAviso').toggle(esAdmin);
+        $('#btnGuardarPriv').prop('disabled', esAdmin).css('opacity', esAdmin ? '.5' : '1');
+
+        // Cabecera
+        let head = '<th>Módulo</th>';
+        D.acciones.forEach(a => { head += `<th style="text-align:center;">${escHtml(a.nombre)}</th>`; });
+        document.getElementById('privHead').innerHTML = head;
+
+        // Set de privilegios actuales del rol: "idModulo:idAccion"
+        const actuales = new Set(
+            (D.privilegios || []).filter(p => p[0] === id).map(p => p[1] + ':' + p[2])
+        );
+
+        // Cuerpo
+        document.getElementById('privBody').innerHTML = D.modulos.map(m => {
+            let row = `<td><strong>${escHtml(m.nombre)}</strong></td>`;
+            D.acciones.forEach(a => {
+                const key = m.id + ':' + a.id;
+                const checked = (esAdmin || actuales.has(key)) ? 'checked' : '';
+                const dis = esAdmin ? 'disabled' : '';
+                row += `<td style="text-align:center;"><input type="checkbox" class="privChk" value="${key}" ${checked} ${dis}/></td>`;
+            });
+            return `<tr>${row}</tr>`;
+        }).join('');
+
+        abrirModal('modalPrivilegios');
+    };
+
+    $('#btnGuardarPriv').on('click', function () {
+        if (!privRolId) return;
+        const privilegios = $('.privChk:checked').map((_, el) => el.value).get();
+        SAG.ajax({
+            url: '/mantenimiento/privilegios/save',
+            data: { id_rol: privRolId, privilegios },
+            success: r => afterSave(r, 'modalPrivilegios')
+        });
     });
 
     // ── INIT ──────────────────────────────────────────
@@ -487,4 +647,5 @@ $(function () {
     renderCultivos();
     renderTiposAt();
     renderUsuarios();
+    renderRoles();
 });

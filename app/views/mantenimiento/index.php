@@ -72,6 +72,13 @@ $cssExtra = '<style>
 <?php require ROOT_PATH . '/app/views/layouts/sidebar.php'; ?>
 <?php $jsExtra = '<script src="' . BASE_URL . '/public/assets/js/modules/mantenimiento.js"></script>'; ?>
 <?php require ROOT_PATH . '/app/views/layouts/topbar.php'; ?>
+<?php
+    // Mapa usuario → [id_proyecto...] para el alcance multi-proyecto.
+    $mapUsuarioProy = [];
+    foreach (($usuariosProyectos ?? []) as $rel) {
+        $mapUsuarioProy[(int) $rel['id_usuario']][] = (int) $rel['id_proyecto'];
+    }
+?>
 
 <script>
 const SAG_MANT = {
@@ -118,11 +125,37 @@ const SAG_MANT = {
         'rol'       => $u['rol_nombre'] ?? '',
         'id_rol'    => (int)$u['id_rol'],
         'activo'    => (int)$u['activo'],
+        'todos_proyectos' => (int)($u['todos_proyectos'] ?? 0),
+        'proyectos' => $mapUsuarioProy[(int)$u['id_usuario']] ?? [],
     ], $usuarios), JSON_UNESCAPED_UNICODE) ?>,
     roles: <?= json_encode(array_map(fn($r) => [
-        'id'     => (int)$r['id_rol'],
-        'nombre' => $r['nombre'],
+        'id'          => (int)$r['id_rol'],
+        'slug'        => $r['slug'] ?? '',
+        'nombre'      => $r['nombre'],
+        'descripcion' => $r['descripcion'] ?? '',
+        'es_admin'    => (int)($r['es_admin'] ?? 0),
+        'activo'      => (int)($r['activo'] ?? 1),
     ], $roles), JSON_UNESCAPED_UNICODE) ?>,
+    modulos: <?= json_encode(array_map(fn($m) => [
+        'id'     => (int)$m['id_modulo'],
+        'slug'   => $m['slug'],
+        'nombre' => $m['nombre'],
+    ], $modulos ?? []), JSON_UNESCAPED_UNICODE) ?>,
+    acciones: <?= json_encode(array_map(fn($a) => [
+        'id'     => (int)$a['id_accion'],
+        'slug'   => $a['slug'],
+        'nombre' => $a['nombre'],
+    ], $acciones ?? []), JSON_UNESCAPED_UNICODE) ?>,
+    privilegios: <?= json_encode(array_map(fn($p) => [
+        (int)$p['id_rol'], (int)$p['id_modulo'], (int)$p['id_accion'],
+    ], $privilegios ?? []), JSON_UNESCAPED_UNICODE) ?>,
+    proyectos: <?= json_encode(array_map(fn($p) => [
+        'id'     => (int)$p['id_proyecto'],
+        'codigo' => $p['codigo'],
+        'sigla'  => $p['sigla'],
+        'nombre' => $p['nombre'],
+    ], $proyectos ?? []), JSON_UNESCAPED_UNICODE) ?>,
+    esAdminRoles: <?= !empty($esAdminRoles) ? 'true' : 'false' ?>,
     departamentos: <?= json_encode(array_map(fn($d) => [
         'id'     => (int)$d['id_departamento'],
         'nombre' => $d['nombre'],
@@ -156,6 +189,9 @@ const SAG_MANT = {
         <button class="mode-tab" data-tab="Cultivos"><i class="fas fa-seedling me-1"></i>Cultivos</button>
         <button class="mode-tab" data-tab="TiposAt"><i class="fas fa-list-check me-1"></i>Tipos AT</button>
         <button class="mode-tab" data-tab="Usuarios"><i class="fas fa-users-gear me-1"></i>Usuarios</button>
+        <?php if (!empty($esAdminRoles)): ?>
+        <button class="mode-tab" data-tab="Roles"><i class="fas fa-user-shield me-1"></i>Roles y privilegios</button>
+        <?php endif; ?>
         <button class="mode-tab" data-tab="Parametros"><i class="fas fa-sliders me-1"></i>Parámetros</button>
       </div>
     </div>
@@ -235,6 +271,20 @@ const SAG_MANT = {
         </div>
         <div class="row g-3" id="gridUsuarios"></div>
       </div>
+
+      <?php if (!empty($esAdminRoles)): ?>
+      <!-- ROLES Y PRIVILEGIOS -->
+      <div class="section-panel" id="tabRoles">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <div style="font-size:.84rem;color:#555;">Define roles y controla qué módulos y acciones puede realizar cada uno</div>
+          <button class="btn-prim" id="btnNuevoRol"><i class="fas fa-plus"></i> Nuevo rol</button>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Rol</th><th>Identificador</th><th>Descripción</th><th>Tipo</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="bodyRoles"></tbody>
+        </table>
+      </div>
+      <?php endif; ?>
 
       <!-- PARÁMETROS -->
       <div class="section-panel" id="tabParametros">
@@ -545,6 +595,21 @@ const SAG_MANT = {
             <option value="0">Inactivo</option>
           </select>
         </div>
+        <div class="col-12">
+          <label class="fl">Acceso a proyectos <span class="req">*</span></label>
+          <div style="border:1.5px solid var(--borde);border-radius:8px;padding:10px 12px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:600;cursor:pointer;margin-bottom:6px;">
+              <input type="checkbox" id="usrTodosProy"/> Acceso a todos los proyectos
+            </label>
+            <div id="usrProyectosBox" style="display:flex;flex-wrap:wrap;gap:12px;padding-top:8px;border-top:1px solid #f0f0f0;">
+              <?php foreach (($proyectos ?? []) as $p): ?>
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;cursor:pointer;">
+                <input type="checkbox" class="usrProyChk" value="<?= (int)$p['id_proyecto'] ?>"/> <?= htmlspecialchars($p['sigla']) ?>
+              </label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
         <input type="hidden" id="usrId"/>
       </div>
     </div>
@@ -554,6 +619,73 @@ const SAG_MANT = {
     </div>
   </div>
 </div>
+
+<?php if (!empty($esAdminRoles)): ?>
+<!-- MODAL ROL -->
+<div class="modal-overlay" id="modalRol">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h6 id="tituloModalRol"><i class="fas fa-user-shield me-2" style="color:var(--primario);"></i>Nuevo rol</h6>
+      <button class="btn-close-x" onclick="cerrarModal('modalRol')"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body-inner">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="fl">Nombre del rol <span class="req">*</span></label>
+          <input type="text" class="fc" id="rolNombre" placeholder="Ej. Coordinador Regional"/>
+        </div>
+        <div class="col-12" id="rolSlugCampo">
+          <label class="fl">Identificador (slug) <span class="req">*</span></label>
+          <input type="text" class="fc" id="rolSlug" placeholder="ej. coord_regional"/>
+          <small style="color:#888;font-size:.72rem;">Solo minúsculas, números y guion bajo. No se podrá cambiar después.</small>
+        </div>
+        <div class="col-12">
+          <label class="fl">Descripción</label>
+          <textarea class="fc" id="rolDesc" rows="2" placeholder="Breve descripción del rol..."></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="fl">Estado</label>
+          <select class="fc" id="rolActivo">
+            <option value="1">Activo</option>
+            <option value="0">Inactivo</option>
+          </select>
+        </div>
+        <input type="hidden" id="rolId"/>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="cerrarModal('modalRol')">Cancelar</button>
+      <button class="btn-prim" id="btnGuardarRol"><i class="fas fa-save"></i> Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PRIVILEGIOS -->
+<div class="modal-overlay" id="modalPrivilegios">
+  <div class="modal-box" style="max-width:780px;">
+    <div class="modal-head">
+      <h6 id="tituloModalPriv"><i class="fas fa-shield-halved me-2" style="color:var(--primario);"></i>Privilegios</h6>
+      <button class="btn-close-x" onclick="cerrarModal('modalPrivilegios')"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="modal-body-inner">
+      <div id="privAdminAviso" style="display:none;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:.8rem;color:#854d0e;margin-bottom:10px;">
+        <i class="fas fa-crown me-1"></i> Rol administrador: tiene acceso total al sistema y no se edita.
+      </div>
+      <div style="font-size:.78rem;color:#666;margin-bottom:10px;">Marca las acciones permitidas por módulo. La columna <strong>Ver</strong> habilita el acceso al módulo.</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" id="tablaPrivilegios" style="font-size:.78rem;">
+          <thead><tr id="privHead"></tr></thead>
+          <tbody id="privBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="cerrarModal('modalPrivilegios')">Cancelar</button>
+      <button class="btn-prim" id="btnGuardarPriv"><i class="fas fa-save"></i> Guardar privilegios</button>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- MODAL CONFIRMACIÓN -->
 <div class="confirm-overlay" id="confirmOverlay">

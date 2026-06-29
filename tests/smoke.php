@@ -54,6 +54,26 @@ sesionPrueba('admin_bodega', 'pipa', 'pipa');
 verificar(Permisos::puedeEn('inventarios', ACC_CARGAR), 'Bodega sin permiso para inventario.');
 verificar(!Permisos::puedeEn('mantenimiento', ACC_VER), 'Bodega obtuvo acceso a mantenimiento.');
 
+// ── Alcance MULTI-PROYECTO (modelo nuevo: todos_proyectos + proyectos[]) ──
+function sesionMultiPip(string $rol, int $todos, array $proyectos, string $activo): void
+{
+    $_SESSION = [
+        'user' => ['rol_slug' => $rol, 'todos_proyectos' => $todos, 'proyectos' => $proyectos],
+        'programa' => ['id' => $activo],
+    ];
+}
+
+sesionMultiPip('coord_pip', 0, ['pipc', 'pipg'], 'pipg');
+verificar(Permisos::puedeOperarPipActivo(), 'Multi-proyecto: no permitió un PIP asignado (pipg).');
+$_SESSION['programa']['id'] = 'pipa';
+verificar(!Permisos::puedeOperarPipActivo(), 'Multi-proyecto: permitió un PIP NO asignado (pipa).');
+
+sesionMultiPip('coord_pip', 1, [], 'pipa');
+verificar(Permisos::puedeOperarPipActivo(), 'El flag todos_proyectos no concedió acceso.');
+
+sesionMultiPip('tecnico_campo', 0, ['pipc'], 'pipg');
+verificar(!Permisos::puedeEn('beneficiarios', ACC_CREAR), 'Multi-proyecto: no aisló la captura fuera del PIP asignado.');
+
 $appConfig = file_get_contents(ROOT_PATH . '/config/app.php') ?: '';
 verificar(
     !preg_match("/TRAZARAGRO_CLIENT_SECRET'\\s*,\\s*'[^']{8,}'/", $appConfig),
