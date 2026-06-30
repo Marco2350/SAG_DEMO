@@ -314,12 +314,22 @@ class MantenimientoController extends Controller
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->error('El correo electrónico no es válido.'); return;
         }
+        if (!preg_match('/^[a-zA-Z0-9._-]{3,60}$/', $username)) {
+            $this->error('El usuario solo admite letras, números, punto, guion y guion bajo (3-60).'); return;
+        }
         if (!$id && !$password) {
             $this->error('La contraseña es obligatoria para usuarios nuevos.'); return;
         }
         if ($password && strlen($password) < 8) {
             $this->error('La contraseña debe tener al menos 8 caracteres.'); return;
         }
+
+        // Estado y guard de auto-bloqueo (no desactivar la propia cuenta).
+        $activo = (int) $this->getPost('activo', 1) ? 1 : 0;
+        if ($id && $id === (int) ($_SESSION['user']['id_usuario'] ?? 0) && !$activo) {
+            $this->error('No puede desactivar su propia cuenta.'); return;
+        }
+
         $db = Database::main();
         if (!$db->fetchOne("SELECT id_rol FROM sag_roles WHERE id_rol=?", [$idRol])) {
             $this->error('El rol seleccionado no es válido.'); return;
@@ -347,7 +357,7 @@ class MantenimientoController extends Controller
             $db->beginTransaction();
             if ($id) {
                 $sql    = "UPDATE sag_usuarios SET nombre=?, apellido=?, email=?, username=?, id_rol=?, activo=?";
-                $params = [$nombre, $apellido, $email, $username, $idRol, (int)$this->getPost('activo', 1)];
+                $params = [$nombre, $apellido, $email, $username, $idRol, $activo];
                 if ($tieneTablaProy) { $sql .= ", todos_proyectos=?"; $params[] = $todosProy; }
                 if ($password) {
                     $sql    .= ", password_hash=?";

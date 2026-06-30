@@ -486,7 +486,7 @@ $(function () {
         }
         if (!idRol)    { SAG.toast('Seleccione un rol.', 'warning'); return; }
         if (!idUsr && !password) { SAG.toast('La contraseña es obligatoria para nuevos usuarios.', 'warning'); return; }
-        if (password && password.length < 6) { SAG.toast('La contraseña debe tener al menos 6 caracteres.', 'warning'); return; }
+        if (password && password.length < 8) { SAG.toast('La contraseña debe tener al menos 8 caracteres.', 'warning'); return; }
 
         const todos = $('#usrTodosProy').is(':checked') ? 1 : 0;
         const proyectos = $('.usrProyChk:checked').map((_, el) => el.value).get();

@@ -586,7 +586,7 @@ const SAG_MANT = {
         </div>
         <div class="col-md-6" id="campoPassword">
           <label class="fl">Contraseña <span class="req" id="pwReq">*</span></label>
-          <input type="password" class="fc" id="usrPassword" placeholder="Mínimo 6 caracteres"/>
+          <input type="password" class="fc" id="usrPassword" placeholder="Mínimo 8 caracteres"/>
         </div>
         <div class="col-md-6">
           <label class="fl">Estado</label>
