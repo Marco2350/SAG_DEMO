@@ -252,7 +252,7 @@ abstract class Controller
             'contar', 'datos', 'detalle', 'getPresupuesto', 'listarLineas',
             'listarModificaciones', 'listarCompras', 'getCompra',
             'listarViaticos', 'getViatico', 'listarGastos', 'getGasto',
-            'listarDocumentos', 'apiLineas', 'listarCronogramas',
+            'listarDocumentos', 'apiLineas', 'listarCronogramas', 'datosProductores',
             'getCronograma', 'kardex', 'stockPorBodega', 'apiLista',
         ];
         if (in_array($action, $lectura, true)) {

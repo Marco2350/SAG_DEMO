@@ -30,19 +30,24 @@ class EntregasController extends Controller
     {
         $pageTitle = 'Entregas de Incentivos — ' . ($_SESSION['programa']['sigla'] ?? '') . ' · ' . APP_NAME;
 
-        $movimientos        = $this->cargarMovimientos();
-        $movimientos        = $this->enriquecerMovimientos($movimientos);
-        $reporteDepartamentos = $this->reportePorDepartamento($movimientos);
-        $reporteProductores = $this->reportePorProductor($movimientos);
-        $reporteBodegas     = $this->reportePorBodega($movimientos);
-        $anomalias          = $this->recolectarAnomalias($movimientos);
-        $kpis               = $this->calcularKpis($movimientos);
-        $catalogos          = $this->cargarCatalogosFiltros();
-        $conteosOirsaTipos  = $this->conteosTrazaragroPorTipo();
+        // KPIs, reporte por bodega y anomalías se calculan recorriendo la tabla
+        // en bloques de tamaño fijo (escanearMovimientos). El listado de
+        // movimientos y el reporte por productor ya no se materializan aquí:
+        // se sirven paginados por AJAX (datos / datosProductores). Cargarlo
+        // todo agotaba el memory_limit de PHP en producción (~80k filas).
+        $scan                 = $this->escanearMovimientos();
+        $kpis                 = $scan['kpis'];
+        $reporteBodegas       = $scan['bodegas'];
+        $anomalias            = $scan['anomalias'];
+        $totalAnomalias       = $scan['total_anomalias'];
+        $totalProductores     = $scan['total_productores'];
+        $reporteDepartamentos = $this->inventarioOirsaPorDepartamento();
+        $catalogos            = $this->cargarCatalogosFiltros();
+        $conteosOirsaTipos    = $this->conteosTrazaragroPorTipo();
         // FASE 3 — fecha/hora de la última sincronización con OIRSA del programa actual.
         // Se muestra como chip junto al botón "Sincronizar" para que el usuario
         // sepa qué tan fresca está la data antes de decidir sincronizar.
-        $ultimaSyncedAt     = $this->ultimaFechaAutorizacionDelPrograma();
+        $ultimaSyncedAt       = $this->ultimaFechaAutorizacionDelPrograma();
 
         // Para badge en sidebar — actualiza el contador de alertas en sesión
         $_SESSION['entregas_alertas_count'] = $kpis['con_alertas'] ?? 0;
@@ -50,43 +55,117 @@ class EntregasController extends Controller
         $esAdmin = Permisos::puedeEn('entregas', ACC_APROBAR);
 
         $this->view('entregas/index', compact(
-            'pageTitle', 'movimientos', 'kpis', 'catalogos', 'esAdmin',
-            'reporteDepartamentos', 'reporteProductores', 'reporteBodegas',
-            'anomalias', 'conteosOirsaTipos', 'ultimaSyncedAt'
+            'pageTitle', 'kpis', 'catalogos', 'esAdmin',
+            'reporteDepartamentos', 'totalProductores', 'reporteBodegas',
+            'anomalias', 'totalAnomalias', 'conteosOirsaTipos', 'ultimaSyncedAt'
         ));
     }
 
     // ════════════════════════════════════════════════════════════
-    //  CARGA DESDE BD
+    //  LISTADO PAGINADO (AJAX) — tab "Movimientos"
     // ════════════════════════════════════════════════════════════
-    private function cargarMovimientos(): array
+
+    /** Columnas que consumen la tabla y el modal de detalle en entregas.js. */
+    private const COLS_LISTADO = 'id, movement_id, rubro, tipo_movimiento, objeto_trazable,
+            codigo_trazabilidad, guiasa_no, codigo_autorizacion,
+            fecha_registro, fecha_autorizacion, fecha_expiracion,
+            origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
+            destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue,
+            destino_departamento, destino_municipio,
+            cantidad, unidad, transportista, vehiculo, condicion, proposito,
+            autorizado_por, creado_por, status_oirsa, estado_local, synced_at';
+
+    /**
+     * Devuelve una página de movimientos con los filtros aplicados en SQL.
+     * Reemplaza al antiguo window.OIRSA_MOVS (todo el dataset embebido en la
+     * página + filtrado client-side), que agotaba la memoria en producción.
+     */
+    public function datos(): void
     {
+        $this->requireCsrf();
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
-            // raw_json excluido: es un blob grande sólo necesario en detalle().
-            // Aislamiento por proyecto: cada PIP sólo ve SUS entregas OIRSA.
-            return $db->fetchAll(
-                "SELECT movement_id, rubro, rubro_id, tipo_movimiento, tipo_movimiento_id, actividad_id,
-                        objeto_trazable, objeto_trazable_codigo, codigo_trazabilidad,
-                        guiasa_no, codigo_autorizacion,
-                        fecha_registro, fecha_autorizacion, fecha_expiracion,
-                        origen_persona, origen_establecimiento, origen_cue, origen_departamento, origen_municipio,
-                        destino_persona, destino_dni, destino_nombre, destino_establecimiento, destino_cue,
-                        destino_departamento, destino_municipio,
-                        cantidad, unidad, transportista, vehiculo, condicion, proposito,
-                        autorizado_por, creado_por, status_oirsa, status_id, event_stage, is_completed,
-                        estado_local, observaciones_local, revisado_por_local, fecha_revision_local, synced_at
-                 FROM sag_trazaragro_movimientos
-                 WHERE id_proyecto = ?
-                   AND tipo_movimiento_id = 111  -- solo Entregas (Bodega → Productor)
-                 ORDER BY fecha_autorizacion DESC, movement_id DESC",
-                [$pid]
-            );
+
+            $porPagina = min(300, max(20, (int)$this->getPost('per_page', 100)));
+            $pagina    = max(1, (int)$this->getPost('page', 1));
+
+            [$where, $params] = $this->filtrosListadoSql($pid);
+
+            $total = (int)($db->fetchOne(
+                "SELECT COUNT(*) AS c FROM sag_trazaragro_movimientos WHERE {$where}",
+                $params
+            )['c'] ?? 0);
+
+            // LIMIT/OFFSET van inline (enteros saneados): PDO en modo nativo
+            // no acepta placeholders para LIMIT.
+            $offset = ($pagina - 1) * $porPagina;
+            $rows   = $offset < $total
+                ? $db->fetchAll(
+                    'SELECT ' . self::COLS_LISTADO . "
+                       FROM sag_trazaragro_movimientos
+                      WHERE {$where}
+                   ORDER BY fecha_autorizacion DESC, id DESC
+                      LIMIT {$porPagina} OFFSET {$offset}",
+                    $params
+                )
+                : [];
+
+            $this->success('OK', [
+                'total'    => $total,
+                'page'     => $pagina,
+                'per_page' => $porPagina,
+                'rows'     => $rows,
+            ]);
         } catch (\Throwable $e) {
-            error_log('cargarMovimientos: ' . $e->getMessage());
-            return [];
+            error_log('EntregasController::datos — ' . $e->getMessage());
+            $this->error('No se pudo cargar el listado de movimientos.');
         }
+    }
+
+    /** Construye el WHERE del listado a partir de los filtros del request. */
+    private function filtrosListadoSql(int $pid): array
+    {
+        $where  = ['id_proyecto = ?', 'tipo_movimiento_id = 111'];
+        $params = [$pid];
+
+        foreach ([
+            'rubro'  => 'rubro',
+            'tipo'   => 'tipo_movimiento',
+            'objeto' => 'objeto_trazable',
+            'depto'  => 'destino_departamento',
+            'estado' => 'estado_local',
+        ] as $campo => $columna) {
+            $v = (string)$this->getPost($campo, '');
+            if ($v !== '') {
+                $where[]  = "{$columna} = ?";
+                $params[] = $v;
+            }
+        }
+
+        $desde = (string)$this->getPost('desde', '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) {
+            $where[]  = 'fecha_autorizacion >= ?';
+            $params[] = $desde;
+        }
+        $hasta = (string)$this->getPost('hasta', '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) {
+            $where[]  = 'fecha_autorizacion < ?';
+            $params[] = date('Y-m-d', strtotime($hasta . ' +1 day'));
+        }
+
+        $busca = trim((string)$this->getPost('busca', ''));
+        if ($busca !== '') {
+            $like = '%' . addcslashes($busca, '%_\\') . '%';
+            $cols = ['destino_dni', 'destino_nombre', 'destino_persona', 'guiasa_no',
+                     'codigo_autorizacion', 'codigo_trazabilidad', 'objeto_trazable', 'autorizado_por'];
+            $where[] = '(' . implode(' OR ', array_map(fn($c) => "{$c} LIKE ?", $cols)) . ')';
+            foreach ($cols as $c) {
+                $params[] = $like;
+            }
+        }
+
+        return [implode(' AND ', $where), $params];
     }
 
     private function cargarCatalogosFiltros(): array
@@ -133,177 +212,286 @@ class EntregasController extends Controller
         }
     }
 
-    private function calcularKpis(array $movimientos): array
+    // ════════════════════════════════════════════════════════════
+    //  ESCANEO POR LOTES: KPIs + bodegas + anomalías + padrón
+    // ════════════════════════════════════════════════════════════
+
+    private const SCAN_LOTE               = 5000;
+    private const MAX_ANOMALIAS_LISTADAS  = 500;
+    private const MAX_OBJETOS_POR_PRODUCTOR = 300;
+
+    /**
+     * Recorre las entregas del programa en bloques de SCAN_LOTE filas
+     * (keyset sobre movement_id) y acumula KPIs, reporte por bodega,
+     * anomalías y productores únicos con memoria acotada.
+     *
+     * Reemplaza al flujo cargarMovimientos()+enriquecerMovimientos()+
+     * calcularKpis()+reportePorBodega()+recolectarAnomalias(), que
+     * materializaba el dataset completo y agotaba el memory_limit.
+     * Los criterios de alerta son los mismos que aplicaba enriquecerMovimientos.
+     */
+    private function escanearMovimientos(): array
     {
         $kpis = [
-            'total_movimientos'    => count($movimientos),
+            'total_movimientos'    => 0,
             'entregados'           => 0,
             'pendientes'           => 0,
             'beneficiarios_unicos' => 0,
             'manifiestos_unicos'   => 0,   // GUIASA No.
             'cantidad_total'       => 0,
             'desglose_objetos'     => [],
+            'con_alertas'          => 0,
+            'no_en_padron'         => 0,
+        ];
+        $resultado = [
+            'kpis'              => $kpis,
+            'bodegas'           => [],
+            'anomalias'         => [],
+            'total_anomalias'   => 0,
+            'total_productores' => 0,
         ];
 
-        $beneficiarios = [];
-        $manifiestos   = [];
-        $porObjeto     = [];
-
-        foreach ($movimientos as $m) {
-            // Beneficiario único por DNI
-            if (!empty($m['destino_dni'])) $beneficiarios[$m['destino_dni']] = true;
-            // Manifiesto único por GUIASA
-            if (!empty($m['guiasa_no']))   $manifiestos[$m['guiasa_no']]   = true;
-
-            $entregado = !empty($m['is_completed']) || !empty($m['codigo_trazabilidad']);
-            if ($entregado) $kpis['entregados']++;
-            else            $kpis['pendientes']++;
-
-            $kpis['cantidad_total'] += (float)($m['cantidad'] ?? 0);
-
-            // Desglose por objeto trazable exacto
-            $obj = trim((string)($m['objeto_trazable'] ?? '')) ?: '(sin nombre)';
-            if (!isset($porObjeto[$obj])) {
-                $porObjeto[$obj] = [
-                    'objeto'      => $obj,
-                    'unidad'      => $m['unidad'] ?? '',
-                    'movimientos' => 0,
-                    'entregados'  => 0,
-                    'pendientes'  => 0,
-                    'cantidad'    => 0,
-                ];
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
+            if (!$db->tablaExiste('sag_trazaragro_movimientos')) {
+                return $resultado;
             }
-            $porObjeto[$obj]['movimientos']++;
-            $porObjeto[$obj]['cantidad'] += (float)($m['cantidad'] ?? 0);
-            if ($entregado) $porObjeto[$obj]['entregados']++;
-            else            $porObjeto[$obj]['pendientes']++;
+        } catch (\Throwable $e) {
+            return $resultado;
         }
 
+        $padron = $this->cargarPadron();
+
+        // Duplicados DNI+objeto precalculados en SQL. Configurable por programa:
+        // algunos PIPs (ej PIPC: 2 sacos de fertilizante por productor como
+        // mínimo) generan duplicados legítimos por diseño, así que respetamos
+        // el flag 'detectar_dup_dni_objeto' del config.
+        $progId        = $_SESSION['programa']['id'] ?? '';
+        $detectarDup   = (bool)(PROGRAMAS[$progId]['detectar_dup_dni_objeto'] ?? true);
+        $contDniObjeto = [];
+        if ($detectarDup) {
+            try {
+                $dups = $db->fetchAll(
+                    "SELECT TRIM(destino_dni) AS dni, TRIM(objeto_trazable) AS obj, COUNT(*) AS c
+                       FROM sag_trazaragro_movimientos
+                      WHERE id_proyecto = ? AND tipo_movimiento_id = 111
+                        AND TRIM(COALESCE(destino_dni, '')) <> ''
+                        AND TRIM(COALESCE(objeto_trazable, '')) <> ''
+                   GROUP BY TRIM(destino_dni), TRIM(objeto_trazable)
+                     HAVING COUNT(*) > 1",
+                    [$pid]
+                );
+                foreach ($dups as $d) {
+                    $contDniObjeto[$d['dni'] . '||' . $d['obj']] = (int)$d['c'];
+                }
+                unset($dups);
+            } catch (\Throwable $e) {
+                error_log('escanearMovimientos (duplicados): ' . $e->getMessage());
+            }
+        }
+
+        $beneficiarios  = [];
+        $manifiestos    = [];
+        $porObjeto      = [];
+        $byBod          = [];
+        $productores    = [];
+        $anomalias      = [];
+        $totalAnomalias = 0;
+        $ultimoId       = -1;
+
+        while (true) {
+            try {
+                // Keyset sobre la PK auto-increment `id` (movement_id se repite:
+                // un movimiento OIRSA agrupa varios ítems/códigos de trazabilidad).
+                $lote = $db->fetchAll(
+                    "SELECT id, movement_id, destino_dni, destino_nombre, destino_persona,
+                            objeto_trazable, cantidad, unidad, estado_local, is_completed,
+                            codigo_trazabilidad, guiasa_no, fecha_autorizacion,
+                            origen_establecimiento, origen_cue, origen_departamento
+                       FROM sag_trazaragro_movimientos
+                      WHERE id_proyecto = ? AND tipo_movimiento_id = 111 AND id > ?
+                   ORDER BY id ASC
+                      LIMIT " . self::SCAN_LOTE,
+                    [$pid, $ultimoId]
+                );
+            } catch (\Throwable $e) {
+                error_log('escanearMovimientos: ' . $e->getMessage());
+                break;
+            }
+            if (!$lote) break;
+
+            foreach ($lote as $m) {
+                $ultimoId = (int)$m['id'];
+                $dni      = trim((string)($m['destino_dni'] ?? ''));
+                $obj      = trim((string)($m['objeto_trazable'] ?? ''));
+                $cantidad = (float)($m['cantidad'] ?? 0);
+
+                // ── KPIs ──
+                $kpis['total_movimientos']++;
+                if (!empty($m['destino_dni'])) $beneficiarios[$m['destino_dni']] = true;
+                if (!empty($m['guiasa_no']))   $manifiestos[$m['guiasa_no']]     = true;
+                $entregado = !empty($m['is_completed']) || !empty($m['codigo_trazabilidad']);
+                if ($entregado) $kpis['entregados']++;
+                else            $kpis['pendientes']++;
+                $kpis['cantidad_total'] += $cantidad;
+
+                $objKey = $obj !== '' ? $obj : '(sin nombre)';
+                if (!isset($porObjeto[$objKey])) {
+                    $porObjeto[$objKey] = [
+                        'objeto'      => $objKey,
+                        'unidad'      => $m['unidad'] ?? '',
+                        'movimientos' => 0,
+                        'entregados'  => 0,
+                        'pendientes'  => 0,
+                        'cantidad'    => 0,
+                    ];
+                }
+                $porObjeto[$objKey]['movimientos']++;
+                $porObjeto[$objKey]['cantidad'] += $cantidad;
+                if ($entregado) $porObjeto[$objKey]['entregados']++;
+                else            $porObjeto[$objKey]['pendientes']++;
+
+                // ── Productores únicos (misma clave que datosProductores) ──
+                $productores[$dni !== '' ? $dni : '(sin-dni)-' . md5((string)($m['destino_persona'] ?? ''))] = true;
+
+                // ── Alertas ──
+                $alertas = [];
+                if ($dni === '') {
+                    $alertas[] = 'Movimiento sin DNI de beneficiario';
+                } elseif (isset($padron[$dni])) {
+                    $estado = strtolower($padron[$dni]);
+                    if ($estado && !in_array($estado, ['activo', 'activa', '1', 'vigente'])) {
+                        $alertas[] = "Beneficiario en estado: {$estado}";
+                    }
+                } elseif (!empty($padron)) {
+                    $alertas[] = 'DNI no encontrado en el padrón del programa';
+                    $kpis['no_en_padron']++;
+                }
+                if ($dni !== '' && $obj !== '' && ($contDniObjeto[$dni . '||' . $obj] ?? 0) > 1) {
+                    $alertas[] = "Posible duplicado: este productor recibió '{$obj}' en {$contDniObjeto[$dni . '||' . $obj]} movimientos";
+                }
+                if ($cantidad <= 0) {
+                    $alertas[] = 'Cantidad cero o no especificada';
+                }
+                if (($m['estado_local'] ?? '') === 'entregado' && $obj === '') {
+                    $alertas[] = 'Marcado como entregado pero sin objeto trazable definido';
+                }
+                if ($alertas) {
+                    $kpis['con_alertas']++;
+                    foreach ($alertas as $a) {
+                        $totalAnomalias++;
+                        if (count($anomalias) < self::MAX_ANOMALIAS_LISTADAS) {
+                            $anomalias[] = [
+                                'movement_id'         => $m['movement_id'] ?? 0,
+                                'dni'                 => $m['destino_dni'] ?? '',
+                                'nombre'              => $m['destino_nombre'] ?: $m['destino_persona'] ?: '(sin nombre)',
+                                'guiasa'              => $m['guiasa_no'] ?? '',
+                                'objeto'              => $m['objeto_trazable'] ?? '',
+                                'codigo_trazabilidad' => $m['codigo_trazabilidad'] ?? '',
+                                'fecha'               => $m['fecha_autorizacion'] ?? '',
+                                'tipo'                => $this->clasificarAlerta($a),
+                                'alerta'              => $a,
+                            ];
+                        }
+                    }
+                }
+
+                // ── Reporte por bodega de origen ──
+                $bod = trim((string)($m['origen_establecimiento'] ?? '')) ?: '(sin bodega)';
+                // Normalizar: quitar el código que viene como "; 3400301153824"
+                $bodLimpio = trim((string)preg_replace('/;\s*\d+\s*$/', '', $bod));
+                $bodLimpio = $bodLimpio ?: $bod;
+                if (!isset($byBod[$bodLimpio])) {
+                    $byBod[$bodLimpio] = [
+                        'bodega'            => $bodLimpio,
+                        'cue'               => $m['origen_cue'] ?? '',
+                        'departamento'      => $m['origen_departamento'] ?? '',
+                        'movimientos'       => 0,
+                        'cantidad_total'    => 0,
+                        'entregados'        => 0,
+                        'pendientes'        => 0,
+                        'beneficiarios_set' => [],
+                        'objetos_count'     => [],
+                        'manifiestos_set'   => [],
+                    ];
+                }
+                $byBod[$bodLimpio]['movimientos']++;
+                $byBod[$bodLimpio]['cantidad_total'] += $cantidad;
+                if (($m['estado_local'] ?? '') === 'entregado') $byBod[$bodLimpio]['entregados']++;
+                else                                            $byBod[$bodLimpio]['pendientes']++;
+                if (!empty($m['destino_dni'])) $byBod[$bodLimpio]['beneficiarios_set'][$m['destino_dni']] = true;
+                if (!empty($m['guiasa_no']))   $byBod[$bodLimpio]['manifiestos_set'][$m['guiasa_no']]     = true;
+                $objBod = $m['objeto_trazable'] ?: '(sin)';
+                $byBod[$bodLimpio]['objetos_count'][$objBod] = ($byBod[$bodLimpio]['objetos_count'][$objBod] ?? 0) + 1;
+            }
+
+            $seguir = count($lote) === self::SCAN_LOTE;
+            unset($lote);
+            if (!$seguir) break;
+        }
+
+        // ── Cierre de acumuladores ──
         $kpis['beneficiarios_unicos'] = count($beneficiarios);
         $kpis['manifiestos_unicos']   = count($manifiestos);
+        unset($beneficiarios, $manifiestos);
 
-        // Conteo adicional de alertas
-        $kpis['con_alertas']      = 0;
-        $kpis['no_en_padron']     = 0;
-        foreach ($movimientos as $m) {
-            if (!empty($m['tiene_alerta'])) $kpis['con_alertas']++;
-            if (($m['validacion_padron'] ?? '') === 'no_padron') $kpis['no_en_padron']++;
-        }
-
-        // Ordenar desglose por más movimientos
         usort($porObjeto, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
         $kpis['desglose_objetos'] = $porObjeto;
 
-        return $kpis;
+        foreach ($byBod as &$b) {
+            $b['beneficiarios_unicos'] = count($b['beneficiarios_set']);
+            $b['manifiestos_unicos']   = count($b['manifiestos_set']);
+            unset($b['beneficiarios_set'], $b['manifiestos_set']);
+            arsort($b['objetos_count']);
+            $b['top_objetos'] = [];
+            foreach (array_slice($b['objetos_count'], 0, 3, true) as $objNom => $cnt) {
+                $b['top_objetos'][] = ['objeto' => $objNom, 'cantidad' => $cnt];
+            }
+            $b['objetos_unicos'] = count($b['objetos_count']);
+            unset($b['objetos_count']);
+        }
+        unset($b);
+        $bodegas = array_values($byBod);
+        usort($bodegas, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
+
+        // Más severas primero (dentro del tope listado)
+        $orden = ['sin_dni' => 1, 'no_padron' => 2, 'duplicado' => 3, 'cantidad' => 4, 'otro' => 5];
+        usort($anomalias, function ($a, $b) use ($orden) {
+            $oa = $orden[$a['tipo']] ?? 9;
+            $ob = $orden[$b['tipo']] ?? 9;
+            if ($oa !== $ob) return $oa <=> $ob;
+            return strcmp((string)$b['fecha'], (string)$a['fecha']);
+        });
+
+        return [
+            'kpis'              => $kpis,
+            'bodegas'           => $bodegas,
+            'anomalias'         => $anomalias,
+            'total_anomalias'   => $totalAnomalias,
+            'total_productores' => count($productores),
+        ];
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  ENRIQUECIMIENTO: validación padrón + detección anomalías
-    // ════════════════════════════════════════════════════════════
-
-    /**
-     * Agrega a cada movimiento campos calculados:
-     *  - validacion_padron: 'en_padron', 'no_padron', 'sin_dni'
-     *  - alertas: array de strings con problemas detectados
-     *  - tiene_alerta: bool
-     */
-    private function enriquecerMovimientos(array $movs): array
+    /** Padrón del programa activo como mapa DNI → estado (memoria acotada). */
+    private function cargarPadron(): array
     {
-        if (empty($movs)) return [];
-
-        // 1) Cargar padrón del programa activo en memoria (DNI → fila)
         $padron = [];
         try {
             $db  = Database::programa();
             $pid = Database::proyectoId();
             $rows = $db->fetchAll(
-                "SELECT dni, estado, nombre_completo FROM sag_beneficiarios WHERE id_proyecto = ?",
+                "SELECT dni, estado FROM sag_beneficiarios
+                  WHERE id_proyecto = ? AND dni IS NOT NULL AND dni <> ''",
                 [$pid]
             );
             foreach ($rows as $r) {
-                if (!empty($r['dni'])) $padron[trim($r['dni'])] = $r;
+                $padron[trim((string)$r['dni'])] = (string)($r['estado'] ?? '');
             }
         } catch (\Throwable $e) {
             // Tabla sin filas o columna distinta — seguimos sin padrón
         }
-
-        // 2) Contar duplicados: misma combinación DNI + objeto trazable
-        // Configurable por programa. Algunos PIPs (ej PIPC: 2 sacos de fertilizante
-        // por productor como mínimo) generan duplicados legítimos por diseño,
-        // así que respetamos el flag 'detectar_dup_dni_objeto' del config.
-        $progId          = $_SESSION['programa']['id'] ?? '';
-        $detectarDupDniObjeto = (bool)(PROGRAMAS[$progId]['detectar_dup_dni_objeto'] ?? true);
-        $contDniObjeto = [];
-        if ($detectarDupDniObjeto) {
-            foreach ($movs as $m) {
-                $dni  = trim((string)($m['destino_dni'] ?? ''));
-                $obj  = trim((string)($m['objeto_trazable'] ?? ''));
-                if ($dni === '' || $obj === '') continue;
-                $k = $dni . '||' . $obj;
-                $contDniObjeto[$k] = ($contDniObjeto[$k] ?? 0) + 1;
-            }
-        }
-
-        // 3) Enriquecer cada movimiento
-        foreach ($movs as &$m) {
-            $alertas = [];
-            $dni = trim((string)($m['destino_dni'] ?? ''));
-            $obj = trim((string)($m['objeto_trazable'] ?? ''));
-
-            // ── Validación padrón ──
-            if ($dni === '') {
-                $m['validacion_padron'] = 'sin_dni';
-                $alertas[] = 'Movimiento sin DNI de beneficiario';
-            } elseif (isset($padron[$dni])) {
-                $m['validacion_padron'] = 'en_padron';
-                $estado = strtolower((string)($padron[$dni]['estado'] ?? ''));
-                if ($estado && !in_array($estado, ['activo', 'activa', '1', 'vigente'])) {
-                    $alertas[] = "Beneficiario en estado: {$estado}";
-                }
-            } else {
-                $m['validacion_padron'] = empty($padron) ? 'padron_vacio' : 'no_padron';
-                if (!empty($padron)) {
-                    $alertas[] = 'DNI no encontrado en el padrón del programa';
-                }
-            }
-
-            // ── Detección de duplicado (mismo DNI + mismo objeto) ──
-            if ($dni && $obj) {
-                $k = $dni . '||' . $obj;
-                if (($contDniObjeto[$k] ?? 0) > 1) {
-                    $alertas[] = "Posible duplicado: este productor recibió '{$obj}' en {$contDniObjeto[$k]} movimientos";
-                }
-            }
-
-            // ── Cantidad sospechosa ──
-            if ((float)($m['cantidad'] ?? 0) <= 0) {
-                $alertas[] = 'Cantidad cero o no especificada';
-            }
-
-            // ── Sin objeto trazable y estado entregado (debería tener producto) ──
-            if (($m['estado_local'] ?? '') === 'entregado' && $obj === '') {
-                $alertas[] = 'Marcado como entregado pero sin objeto trazable definido';
-            }
-
-            $m['alertas']      = $alertas;
-            $m['tiene_alerta'] = !empty($alertas);
-        }
-        unset($m);
-
-        return $movs;
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  REPORTE POR PRODUCTOR
-    // ════════════════════════════════════════════════════════════
-
-    /**
-     * Agrupa por departamento de bodega y calcula el avance contra inventario OIRSA:
-     * entradas a bodega (113 + 112 destino) menos salidas (111 + 112 origen).
-     */
-    private function reportePorDepartamento(array $movs): array
-    {
-        return $this->inventarioOirsaPorDepartamento();
+        return $padron;
     }
 
     private function inventarioOirsaPorDepartamento(): array
@@ -430,160 +618,220 @@ class EntregasController extends Controller
     }
 
     /**
-     * Agrupa movimientos por destino_dni y devuelve un array con la información
-     * consolidada de cada productor: nombre, ubicación, manifiestos, objetos recibidos.
+     * Reporte por productor paginado (AJAX). Agrupa en SQL por destino_dni
+     * (o hash del nombre si no hay DNI) y sólo materializa los movimientos
+     * de los productores de la página solicitada.
      */
-    private function reportePorProductor(array $movs): array
+    public function datosProductores(): void
     {
-        $byProd = [];
-        foreach ($movs as $m) {
-            $dni = trim((string)($m['destino_dni'] ?? ''));
-            $key = $dni !== '' ? $dni : '(sin-dni)-' . md5($m['destino_persona'] ?? '');
+        $this->requireCsrf();
+        try {
+            $db  = Database::programa();
+            $pid = Database::proyectoId();
 
-            if (!isset($byProd[$key])) {
-                $byProd[$key] = [
-                    'dni'              => $dni ?: '(sin DNI)',
-                    'nombre'           => $m['destino_nombre'] ?: $m['destino_persona'] ?: '(sin nombre)',
-                    'departamento'     => $m['destino_departamento'] ?: '',
-                    'municipio'        => $m['destino_municipio'] ?: '',
-                    'establecimiento'  => $m['destino_establecimiento'] ?: '',
-                    'validacion'       => $m['validacion_padron'] ?? '',
-                    'objetos'          => [],
-                    'manifiestos_set'  => [],
-                    'total_cantidad'   => 0,
-                    'entregados'       => 0,
-                    'pendientes'       => 0,
-                    'tiene_alerta'     => false,
-                ];
+            $porPagina = min(60, max(10, (int)$this->getPost('per_page', 30)));
+            $pagina    = max(1, (int)$this->getPost('page', 1));
+
+            $keyExpr = "COALESCE(NULLIF(TRIM(destino_dni), ''),
+                        CONCAT('(sin-dni)-', MD5(COALESCE(destino_persona, ''))))";
+
+            $hayPadron = (bool)$db->fetchOne(
+                "SELECT 1 FROM sag_beneficiarios
+                  WHERE id_proyecto = ? AND dni IS NOT NULL AND dni <> '' LIMIT 1",
+                [$pid]
+            );
+
+            $where  = ['id_proyecto = ?', 'tipo_movimiento_id = 111'];
+            $params = [$pid];
+
+            $depto = (string)$this->getPost('depto', '');
+            if ($depto !== '') {
+                $where[]  = 'destino_departamento = ?';
+                $params[] = $depto;
             }
-            $byProd[$key]['objetos'][] = [
-                'objeto'       => $m['objeto_trazable'] ?: '(sin nombre)',
-                'codigo_traza' => $m['codigo_trazabilidad'] ?: '',
-                'guiasa'       => $m['guiasa_no'] ?: '',
-                'fecha'        => $m['fecha_autorizacion'] ?: '',
-                'cantidad'     => (float)($m['cantidad'] ?? 0),
-                'unidad'       => $m['unidad'] ?: '',
-                'estado'       => $m['estado_local'] ?: 'pendiente',
-                'autoriza'     => $m['autorizado_por'] ?: '',
-                'movement_id'  => $m['movement_id'] ?? 0,
-            ];
-            $byProd[$key]['manifiestos_set'][$m['guiasa_no']] = true;
-            $byProd[$key]['total_cantidad'] += (float)($m['cantidad'] ?? 0);
-            if (($m['estado_local'] ?? '') === 'entregado') $byProd[$key]['entregados']++;
-            else                                            $byProd[$key]['pendientes']++;
-            if (!empty($m['tiene_alerta']))                 $byProd[$key]['tiene_alerta'] = true;
-        }
 
-        // Cerrar set y ordenar por # de objetos descendente
-        foreach ($byProd as &$p) {
-            $p['num_manifiestos'] = count($p['manifiestos_set']);
-            unset($p['manifiestos_set']);
-            $p['num_objetos'] = count($p['objetos']);
+            // Un productor coincide con la búsqueda si ALGUNO de sus movimientos coincide
+            $busca = trim((string)$this->getPost('busca', ''));
+            if ($busca !== '') {
+                $like = '%' . addcslashes($busca, '%_\\') . '%';
+                $cols = ['destino_nombre', 'destino_persona', 'destino_dni', 'destino_departamento',
+                         'destino_municipio', 'destino_establecimiento', 'objeto_trazable',
+                         'guiasa_no', 'codigo_trazabilidad'];
+                $where[] = '(' . implode(' OR ', array_map(fn($c) => "{$c} LIKE ?", $cols)) . ')';
+                foreach ($cols as $c) {
+                    $params[] = $like;
+                }
+            }
+
+            $padronSub = "SELECT TRIM(dni) FROM sag_beneficiarios
+                           WHERE id_proyecto = ? AND dni IS NOT NULL AND dni <> ''";
+            switch ((string)$this->getPost('padron', '')) {
+                case 'sin_dni':
+                    $where[] = "TRIM(COALESCE(destino_dni, '')) = ''";
+                    break;
+                case 'en_padron':
+                    if (!$hayPadron) { $where[] = '1 = 0'; break; }
+                    $where[]  = "TRIM(destino_dni) IN ({$padronSub})";
+                    $params[] = $pid;
+                    break;
+                case 'no_padron':
+                    // Con padrón vacío el estado es 'padron_vacio', no 'no_padron'
+                    if (!$hayPadron) { $where[] = '1 = 0'; break; }
+                    $where[]  = "(TRIM(COALESCE(destino_dni, '')) <> '' AND TRIM(destino_dni) NOT IN ({$padronSub}))";
+                    $params[] = $pid;
+                    break;
+            }
+
+            $whereSql = implode(' AND ', $where);
+
+            $total = (int)($db->fetchOne(
+                "SELECT COUNT(DISTINCT {$keyExpr}) AS c
+                   FROM sag_trazaragro_movimientos WHERE {$whereSql}",
+                $params
+            )['c'] ?? 0);
+
+            $offset = ($pagina - 1) * $porPagina;
+            $grupos = $offset < $total
+                ? $db->fetchAll(
+                    "SELECT {$keyExpr} AS pkey,
+                            MAX(TRIM(COALESCE(destino_dni, ''))) AS dni,
+                            MAX(COALESCE(NULLIF(destino_nombre, ''), NULLIF(destino_persona, ''))) AS nombre,
+                            MAX(COALESCE(destino_departamento, ''))    AS departamento,
+                            MAX(COALESCE(destino_municipio, ''))       AS municipio,
+                            MAX(COALESCE(destino_establecimiento, '')) AS establecimiento,
+                            COUNT(*) AS num_objetos,
+                            COUNT(DISTINCT CASE WHEN guiasa_no IS NOT NULL AND guiasa_no <> '' THEN guiasa_no END) AS num_manifiestos,
+                            SUM(CASE WHEN estado_local = 'entregado' THEN 1 ELSE 0 END) AS entregados,
+                            SUM(CASE WHEN estado_local = 'entregado' THEN 0 ELSE 1 END) AS pendientes
+                       FROM sag_trazaragro_movimientos
+                      WHERE {$whereSql}
+                   GROUP BY pkey
+                   ORDER BY num_objetos DESC, pkey ASC
+                      LIMIT {$porPagina} OFFSET {$offset}",
+                    $params
+                )
+                : [];
+
+            $productores = $grupos ? $this->armarPaginaProductores($grupos, $keyExpr, $hayPadron) : [];
+
+            $this->success('OK', [
+                'total'    => $total,
+                'page'     => $pagina,
+                'per_page' => $porPagina,
+                'rows'     => $productores,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('EntregasController::datosProductores — ' . $e->getMessage());
+            $this->error('No se pudo cargar el reporte por productor.');
         }
-        unset($p);
-        $out = array_values($byProd);
-        usort($out, fn($a, $b) => $b['num_objetos'] <=> $a['num_objetos']);
-        return $out;
     }
-
-    // ════════════════════════════════════════════════════════════
-    //  REPORTE POR BODEGA DE ORIGEN
-    // ════════════════════════════════════════════════════════════
 
     /**
-     * Agrupa movimientos por bodega de origen (origen_establecimiento) y devuelve:
-     *   - cantidad de movimientos despachados
-     *   - cantidad de beneficiarios atendidos
-     *   - top objetos despachados (3 más frecuentes)
-     *   - total cantidad despachada
+     * Completa los grupos de una página del reporte por productor:
+     * objetos recibidos, validación de padrón y alertas de la tarjeta
+     * (mismos criterios que escanearMovimientos, evaluados sólo sobre
+     * los movimientos de los productores de la página).
      */
-    private function reportePorBodega(array $movs): array
+    private function armarPaginaProductores(array $grupos, string $keyExpr, bool $hayPadron): array
     {
-        $byBod = [];
-        foreach ($movs as $m) {
-            $bod = trim((string)($m['origen_establecimiento'] ?? '')) ?: '(sin bodega)';
-            // Normalizar: quitar el código que viene como "; 3400301153824"
-            $bodLimpio = trim((string)preg_replace('/;\s*\d+\s*$/', '', $bod));
-            $bodLimpio = $bodLimpio ?: $bod;
+        $db  = Database::programa();
+        $pid = Database::proyectoId();
 
-            if (!isset($byBod[$bodLimpio])) {
-                $byBod[$bodLimpio] = [
-                    'bodega'             => $bodLimpio,
-                    'cue'                => $m['origen_cue'] ?? '',
-                    'departamento'       => $m['origen_departamento'] ?? '',
-                    'movimientos'        => 0,
-                    'cantidad_total'     => 0,
-                    'entregados'         => 0,
-                    'pendientes'         => 0,
-                    'beneficiarios_set'  => [],
-                    'objetos_count'      => [],
-                    'manifiestos_set'    => [],
-                ];
+        $keys = array_column($grupos, 'pkey');
+        $ph   = implode(',', array_fill(0, count($keys), '?'));
+        $objRows = $db->fetchAll(
+            "SELECT {$keyExpr} AS pkey, objeto_trazable, codigo_trazabilidad, guiasa_no,
+                    fecha_autorizacion, cantidad, unidad, estado_local, autorizado_por, movement_id
+               FROM sag_trazaragro_movimientos
+              WHERE id_proyecto = ? AND tipo_movimiento_id = 111 AND {$keyExpr} IN ({$ph})
+           ORDER BY fecha_autorizacion DESC, id DESC",
+            array_merge([$pid], $keys)
+        );
+        $objetosPorProd = [];
+        foreach ($objRows as $o) {
+            $objetosPorProd[$o['pkey']][] = $o;
+        }
+        unset($objRows);
+
+        // Estado en padrón sólo de los DNI de esta página
+        $padronPagina = [];
+        $dnis = array_values(array_filter(array_map('strval', array_column($grupos, 'dni'))));
+        if ($hayPadron && $dnis) {
+            $phDni = implode(',', array_fill(0, count($dnis), '?'));
+            $rows  = $db->fetchAll(
+                "SELECT TRIM(dni) AS dni, estado FROM sag_beneficiarios
+                  WHERE id_proyecto = ? AND TRIM(dni) IN ({$phDni})",
+                array_merge([$pid], $dnis)
+            );
+            foreach ($rows as $r) {
+                $padronPagina[$r['dni']] = strtolower((string)($r['estado'] ?? ''));
             }
-            $byBod[$bodLimpio]['movimientos']++;
-            $byBod[$bodLimpio]['cantidad_total'] += (float)($m['cantidad'] ?? 0);
-            if (($m['estado_local'] ?? '') === 'entregado') $byBod[$bodLimpio]['entregados']++;
-            else                                            $byBod[$bodLimpio]['pendientes']++;
-            if (!empty($m['destino_dni']))   $byBod[$bodLimpio]['beneficiarios_set'][$m['destino_dni']] = true;
-            if (!empty($m['guiasa_no']))     $byBod[$bodLimpio]['manifiestos_set'][$m['guiasa_no']]     = true;
-            $obj = $m['objeto_trazable'] ?: '(sin)';
-            $byBod[$bodLimpio]['objetos_count'][$obj] = ($byBod[$bodLimpio]['objetos_count'][$obj] ?? 0) + 1;
         }
 
-        foreach ($byBod as &$b) {
-            $b['beneficiarios_unicos'] = count($b['beneficiarios_set']);
-            $b['manifiestos_unicos']   = count($b['manifiestos_set']);
-            unset($b['beneficiarios_set'], $b['manifiestos_set']);
-            // Top 3 objetos
-            arsort($b['objetos_count']);
-            $top = [];
-            $i = 0;
-            foreach ($b['objetos_count'] as $obj => $cnt) {
-                $top[] = ['objeto' => $obj, 'cantidad' => $cnt];
-                if (++$i >= 3) break;
-            }
-            $b['top_objetos']     = $top;
-            $b['objetos_unicos']  = count($b['objetos_count']);
-            unset($b['objetos_count']);
-        }
-        unset($b);
+        $progId      = $_SESSION['programa']['id'] ?? '';
+        $detectarDup = (bool)(PROGRAMAS[$progId]['detectar_dup_dni_objeto'] ?? true);
 
-        $out = array_values($byBod);
-        usort($out, fn($a, $b) => $b['movimientos'] <=> $a['movimientos']);
-        return $out;
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  ANOMALÍAS
-    // ════════════════════════════════════════════════════════════
-
-    private function recolectarAnomalias(array $movs): array
-    {
         $out = [];
-        foreach ($movs as $m) {
-            if (empty($m['alertas'])) continue;
-            foreach ($m['alertas'] as $a) {
-                $out[] = [
-                    'movement_id'         => $m['movement_id'] ?? 0,
-                    'dni'                 => $m['destino_dni'] ?? '',
-                    'nombre'              => $m['destino_nombre'] ?: $m['destino_persona'] ?: '(sin nombre)',
-                    'guiasa'              => $m['guiasa_no'] ?? '',
-                    'objeto'              => $m['objeto_trazable'] ?? '',
-                    'codigo_trazabilidad' => $m['codigo_trazabilidad'] ?? '',
-                    'fecha'               => $m['fecha_autorizacion'] ?? '',
-                    'tipo'                => $this->clasificarAlerta($a),
-                    'alerta'              => $a,
-                ];
+        foreach ($grupos as $g) {
+            $dni  = (string)$g['dni'];
+            $movs = $objetosPorProd[$g['pkey']] ?? [];
+
+            if ($dni === '') {
+                $validacion = 'sin_dni';
+            } elseif (isset($padronPagina[$dni])) {
+                $validacion = 'en_padron';
+            } else {
+                $validacion = $hayPadron ? 'no_padron' : 'padron_vacio';
             }
+
+            $tieneAlerta = $dni === '' || $validacion === 'no_padron';
+            if (!$tieneAlerta && $validacion === 'en_padron') {
+                $estado      = $padronPagina[$dni];
+                $tieneAlerta = $estado !== '' && !in_array($estado, ['activo', 'activa', '1', 'vigente'], true);
+            }
+
+            $porObjeto = [];
+            $objetos   = [];
+            foreach ($movs as $m) {
+                $obj = trim((string)($m['objeto_trazable'] ?? ''));
+                if ($obj !== '') $porObjeto[$obj] = ($porObjeto[$obj] ?? 0) + 1;
+                if ((float)($m['cantidad'] ?? 0) <= 0) $tieneAlerta = true;
+                if (($m['estado_local'] ?? '') === 'entregado' && $obj === '') $tieneAlerta = true;
+                if (count($objetos) < self::MAX_OBJETOS_POR_PRODUCTOR) {
+                    $objetos[] = [
+                        'objeto'       => $obj !== '' ? $obj : '(sin nombre)',
+                        'codigo_traza' => (string)($m['codigo_trazabilidad'] ?? ''),
+                        'guiasa'       => (string)($m['guiasa_no'] ?? ''),
+                        'fecha'        => (string)($m['fecha_autorizacion'] ?? ''),
+                        'cantidad'     => (float)($m['cantidad'] ?? 0),
+                        'unidad'       => (string)($m['unidad'] ?? ''),
+                        'estado'       => (string)(($m['estado_local'] ?? '') !== '' ? $m['estado_local'] : 'pendiente'),
+                        'autoriza'     => (string)($m['autorizado_por'] ?? ''),
+                        'movement_id'  => $m['movement_id'] ?? 0,
+                    ];
+                }
+            }
+            if (!$tieneAlerta && $detectarDup && $dni !== '' && $porObjeto && max($porObjeto) > 1) {
+                $tieneAlerta = true;
+            }
+
+            $out[] = [
+                'dni'              => $dni !== '' ? $dni : '(sin DNI)',
+                'nombre'           => ($g['nombre'] ?? '') !== '' && $g['nombre'] !== null ? $g['nombre'] : '(sin nombre)',
+                'departamento'     => (string)$g['departamento'],
+                'municipio'        => (string)$g['municipio'],
+                'establecimiento'  => (string)$g['establecimiento'],
+                'validacion'       => $validacion,
+                'num_objetos'      => (int)$g['num_objetos'],
+                'num_manifiestos'  => (int)$g['num_manifiestos'],
+                'entregados'       => (int)$g['entregados'],
+                'pendientes'       => (int)$g['pendientes'],
+                'tiene_alerta'     => $tieneAlerta,
+                'objetos'          => $objetos,
+                'objetos_omitidos' => max(0, count($movs) - count($objetos)),
+                'acta_url'         => $dni !== '' ? BASE_URL . '/entregas/acta?dni=' . urlencode($dni) : '',
+            ];
         }
-        // Ordenar por tipo (más severas primero) y fecha
-        $orden = ['sin_dni' => 1, 'no_padron' => 2, 'duplicado' => 3, 'cantidad' => 4, 'otro' => 5];
-        usort($out, function ($a, $b) use ($orden) {
-            $oa = $orden[$a['tipo']] ?? 9;
-            $ob = $orden[$b['tipo']] ?? 9;
-            if ($oa !== $ob) return $oa <=> $ob;
-            return strcmp($b['fecha'], $a['fecha']);
-        });
         return $out;
     }
 
@@ -1393,15 +1641,7 @@ class EntregasController extends Controller
         // Aislamiento: el CSV exporta SOLO movimientos del PIP activo
         // y SOLO entregas a productor (tipo 111). Las recepciones (tipo 113)
         // se exportan desde el módulo Inventario OIRSA.
-        $pid  = Database::proyectoId();
-        $rows = $db->fetchAll(
-            "SELECT *
-             FROM sag_trazaragro_movimientos
-             WHERE id_proyecto = ?
-               AND tipo_movimiento_id = 111
-             ORDER BY fecha_autorizacion DESC, movement_id DESC",
-            [$pid]
-        );
+        $pid = Database::proyectoId();
 
         $sigla = $_SESSION['programa']['sigla'] ?? 'SAG';
         $fname = "trazaragro_movimientos_{$sigla}_" . date('Ymd_His') . '.csv';
@@ -1436,30 +1676,53 @@ class EntregasController extends Controller
             'Estado',
         ], ';');
 
-        foreach ($rows as $r) {
-            fputcsv($out, [
-                $r['rubro'],
-                $r['tipo_movimiento'],
-                $r['objeto_trazable'],
-                $r['codigo_trazabilidad'],
-                $r['guiasa_no'],
-                $r['codigo_autorizacion'],
-                $r['fecha_autorizacion'],
-                $r['origen_persona'],
-                $r['origen_establecimiento'],
-                $r['origen_departamento'],
-                $r['destino_persona'],
-                $r['destino_dni'],
-                $r['destino_establecimiento'],
-                $r['destino_cue'],
-                $r['destino_departamento'],
-                $r['destino_municipio'],
-                $r['cantidad'],
-                $r['unidad'],
-                $r['autorizado_por'],
-                $r['estado_local'],
-            ], ';');
-        }
+        // Exportación por lotes (keyset sobre la PK `id`): el dataset completo
+        // con SELECT * (incluía el blob raw_json) agotaba la memoria de PHP.
+        $ultimoId = PHP_INT_MAX;
+        do {
+            $rows = $db->fetchAll(
+                "SELECT id, rubro, tipo_movimiento, objeto_trazable,
+                        codigo_trazabilidad, guiasa_no, codigo_autorizacion, fecha_autorizacion,
+                        origen_persona, origen_establecimiento, origen_departamento,
+                        destino_persona, destino_dni, destino_establecimiento, destino_cue,
+                        destino_departamento, destino_municipio,
+                        cantidad, unidad, autorizado_por, estado_local
+                   FROM sag_trazaragro_movimientos
+                  WHERE id_proyecto = ?
+                    AND tipo_movimiento_id = 111
+                    AND id < ?
+               ORDER BY id DESC
+                  LIMIT 2000",
+                [$pid, $ultimoId]
+            );
+            foreach ($rows as $r) {
+                $ultimoId = (int)$r['id'];
+                fputcsv($out, [
+                    $r['rubro'],
+                    $r['tipo_movimiento'],
+                    $r['objeto_trazable'],
+                    $r['codigo_trazabilidad'],
+                    $r['guiasa_no'],
+                    $r['codigo_autorizacion'],
+                    $r['fecha_autorizacion'],
+                    $r['origen_persona'],
+                    $r['origen_establecimiento'],
+                    $r['origen_departamento'],
+                    $r['destino_persona'],
+                    $r['destino_dni'],
+                    $r['destino_establecimiento'],
+                    $r['destino_cue'],
+                    $r['destino_departamento'],
+                    $r['destino_municipio'],
+                    $r['cantidad'],
+                    $r['unidad'],
+                    $r['autorizado_por'],
+                    $r['estado_local'],
+                ], ';');
+            }
+            $seguir = count($rows) === 2000;
+            unset($rows);
+        } while ($seguir);
         fclose($out);
         exit;
     }

@@ -1,9 +1,12 @@
 /**
  * entregas.js — Movimientos Trazaragro (vista nativa OIRSA)
- * Refactor mayo 2026
+ * Refactor mayo 2026 · Paginación server-side julio 2026
  *
  * - Render flat: una fila por MovementId
- * - Filtros client-side sobre window.OIRSA_MOVS
+ * - La tabla y el reporte por productor se cargan por AJAX paginado
+ *   (/entregas/datos y /entregas/datosProductores); los filtros se aplican
+ *   en SQL. El dataset completo ya no viaja embebido en la página
+ *   (window.OIRSA_MOVS agotaba la memoria de PHP y del navegador).
  * - Sincronización: clic normal = incremental, Shift+Clic = limpia BD
  */
 // Tabs del módulo Entregas — expuesto globalmente porque los botones lo invocan inline
@@ -31,12 +34,17 @@ $(function () {
         }
     } catch (e) {}
 
-    // Data global desde PHP
-    let MOVS = Array.isArray(window.OIRSA_MOVS) ? window.OIRSA_MOVS.slice() : [];
-    let MOVS_FILTRADOS = MOVS.slice();
+    // Estado de paginación server-side
+    const MOVS_POR_PAGINA  = 100;
+    const PRODS_POR_PAGINA = 30;
+    let movsPagina = 1,  movsTotal = 0,  movsRows = [], movsReq = 0;
+    let prodsPagina = 1, prodsTotal = 0, prodsReq = 0;
 
-    const $tbody    = $('#tbodyOirsa');
-    const $contador = $('#contadorFiltrados');
+    const $tbody      = $('#tbodyOirsa');
+    const $contador   = $('#contadorFiltrados');
+    const $pagerMovs  = $('#pagerMovs');
+    const $listaProds = $('#listaProductores');
+    const $pagerProds = $('#pagerProds');
 
     // ── HELPERS ──────────────────────────────────────────────
     function escapeHtml(s) {
@@ -61,10 +69,6 @@ $(function () {
         return isNaN(v) ? '' : v.toLocaleString('es-HN', { maximumFractionDigits: 2 });
     }
 
-    function normText(s) {
-        return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    }
-
     function badgeEstado(estado) {
         const map = {
             'entregado':  ['est-entregado','Entregado'],
@@ -76,9 +80,64 @@ $(function () {
         return `<span class="est-badge ${cls}">${lbl}</span>`;
     }
 
-    // ── RENDER ───────────────────────────────────────────────
+    // ── PAGINADOR (compartido) ───────────────────────────────
+    function renderPager($el, pagina, total, porPagina, onGo) {
+        if (!$el.length || total <= porPagina) { $el.html(''); return; }
+        const totalPag = Math.max(1, Math.ceil(total / porPagina));
+        $el.html(`
+            <button type="button" class="pg-btn" data-pg="prev" ${pagina <= 1 ? 'disabled' : ''}>
+              <i class="fas fa-chevron-left"></i> Anterior
+            </button>
+            <span>Página <strong>${pagina}</strong> de ${totalPag.toLocaleString('es-HN')}</span>
+            <button type="button" class="pg-btn" data-pg="next" ${pagina >= totalPag ? 'disabled' : ''}>
+              Siguiente <i class="fas fa-chevron-right"></i>
+            </button>
+        `);
+        $el.find('[data-pg="prev"]').on('click', () => onGo(pagina - 1));
+        $el.find('[data-pg="next"]').on('click', () => onGo(pagina + 1));
+    }
+
+    // ── CARGA + RENDER (tab Movimientos) ─────────────────────
+    function filtrosMovs() {
+        return {
+            rubro:  $('#fRubro').val()  || '',
+            tipo:   $('#fTipo').val()   || '',
+            objeto: $('#fObjeto').val() || '',
+            depto:  $('#fDepto').val()  || '',
+            estado: $('#fEstado').val() || '',
+            desde:  $('#fDesde').val()  || '',
+            hasta:  $('#fHasta').val()  || '',
+            busca:  ($('#fBusca').val() || '').trim(),
+        };
+    }
+
+    function cargarMovs(pagina) {
+        const req = ++movsReq;
+        $tbody.html(`<tr><td colspan="18" style="text-align:center;padding:30px;color:#888;">
+            <i class="fas fa-spinner fa-spin" style="font-size:1.3rem;"></i><br>
+            Cargando movimientos...
+        </td></tr>`);
+        SAG.ajax({
+            url: '/entregas/datos',
+            data: Object.assign({ page: pagina, per_page: MOVS_POR_PAGINA }, filtrosMovs()),
+            success: r => {
+                if (req !== movsReq) return;   // llegó tarde: hay una petición más nueva
+                if (!r.success || !r.data) {
+                    movsRows = []; movsTotal = 0;
+                    renderTabla();
+                    return;
+                }
+                movsPagina = r.data.page;
+                movsTotal  = r.data.total;
+                movsRows   = r.data.rows || [];
+                renderTabla();
+            }
+        });
+    }
+
     function renderTabla() {
-        if (!MOVS_FILTRADOS.length) {
+        renderPager($pagerMovs, movsPagina, movsTotal, MOVS_POR_PAGINA, cargarMovs);
+        if (!movsRows.length) {
             $tbody.html(`<tr><td colspan="18" style="text-align:center;padding:30px;color:#888;">
                 <i class="fas fa-inbox" style="font-size:1.5rem;margin-bottom:6px;"></i><br>
                 Sin movimientos para mostrar.
@@ -87,14 +146,14 @@ $(function () {
             return;
         }
 
-        const rows = MOVS_FILTRADOS.map(m => {
+        const rows = movsRows.map(m => {
             const fecha = fmtFecha(m.fecha_autorizacion);
             const destDeptMun = [m.destino_departamento, m.destino_municipio].filter(Boolean).join(' / ');
             const codigoTraza = m.codigo_trazabilidad
                 ? `<strong style="color:#0f766e;">${escapeHtml(m.codigo_trazabilidad)}</strong>`
                 : `<span style="color:#bbb;font-style:italic;">— sin código —</span>`;
             return `
-            <tr data-id="${m.movement_id}" class="row-mov">
+            <tr data-id="${m.id}" class="row-mov">
               <td class="wrap">${escapeHtml(m.rubro)}</td>
               <td class="wrap">${escapeHtml(m.tipo_movimiento)}</td>
               <td class="wrap"><strong>${escapeHtml(m.objeto_trazable)}</strong></td>
@@ -117,87 +176,158 @@ $(function () {
         }).join('');
 
         $tbody.html(rows);
-        $contador.html(`Mostrando <strong>${MOVS_FILTRADOS.length}</strong> de ${MOVS.length} movimientos`);
+        const desde = (movsPagina - 1) * MOVS_POR_PAGINA + 1;
+        const hasta = Math.min(movsTotal, desde + movsRows.length - 1);
+        $contador.html(`Mostrando <strong>${desde.toLocaleString('es-HN')}–${hasta.toLocaleString('es-HN')}</strong> de ${movsTotal.toLocaleString('es-HN')} movimientos`);
     }
 
-    // ── FILTROS ──────────────────────────────────────────────
-    function aplicarFiltros() {
-        const fRubro  = $('#fRubro').val();
-        const fTipo   = $('#fTipo').val();
-        const fObjeto = $('#fObjeto').val();
-        const fDepto  = $('#fDepto').val();
-        const fEstado = $('#fEstado').val();
-        const fDesde  = $('#fDesde').val();
-        const fHasta  = $('#fHasta').val();
-        const fBusca  = ($('#fBusca').val() || '').trim().toLowerCase();
+    // ── FILTROS (se aplican en el servidor) ──────────────────
+    $('#fRubro, #fTipo, #fObjeto, #fDepto, #fEstado, #fDesde, #fHasta').on('change', () => cargarMovs(1));
 
-        MOVS_FILTRADOS = MOVS.filter(m => {
-            if (fRubro  && m.rubro  !== fRubro)  return false;
-            if (fTipo   && m.tipo_movimiento !== fTipo) return false;
-            if (fObjeto && m.objeto_trazable !== fObjeto) return false;
-            if (fDepto  && m.destino_departamento !== fDepto) return false;
-            if (fEstado && m.estado_local !== fEstado) return false;
-            if (fDesde && (m.fecha_autorizacion || '') < fDesde) return false;
-            if (fHasta && (m.fecha_autorizacion || '').substring(0,10) > fHasta) return false;
-            if (fBusca) {
-                const haystack = [
-                    m.destino_dni, m.destino_nombre, m.destino_persona,
-                    m.guiasa_no, m.codigo_autorizacion, m.codigo_trazabilidad,
-                    m.objeto_trazable, m.autorizado_por,
-                ].filter(Boolean).join(' ').toLowerCase();
-                if (!haystack.includes(fBusca)) return false;
-            }
-            return true;
-        });
-        renderTabla();
-    }
-
-    $('#fRubro, #fTipo, #fObjeto, #fDepto, #fEstado, #fDesde, #fHasta').on('change', aplicarFiltros);
-    $('#fBusca').on('input', aplicarFiltros);
+    let buscaTimer = null;
+    $('#fBusca').on('input', function () {
+        clearTimeout(buscaTimer);
+        buscaTimer = setTimeout(() => cargarMovs(1), 350);
+    });
 
     $('#btnLimpiarFiltros').on('click', function () {
         $('#fRubro, #fTipo, #fObjeto, #fDepto, #fEstado').val('');
         $('#fDesde, #fHasta, #fBusca').val('');
-        aplicarFiltros();
+        cargarMovs(1);
     });
 
-    function aplicarFiltrosProductores() {
-        const depto = $('#fpDepto').val() || '';
-        const padron = $('#fpPadron').val() || '';
-        const busca = normText(($('#fpBusca').val() || '').trim());
-        let visibles = 0;
-        const $cards = $('#listaProductores .prod-card');
-
-        $cards.each(function () {
-            const $card = $(this);
-            const cDepto = $card.data('depto') || '';
-            const cPadron = $card.data('padron') || '';
-            const cSearch = normText($card.data('search') || '');
-            let ok = true;
-
-            if (depto && cDepto !== depto) ok = false;
-            if (padron && cPadron !== padron) ok = false;
-            if (busca && !cSearch.includes(busca)) ok = false;
-
-            $card.toggle(ok);
-            if (ok) visibles++;
+    // ── CARGA + RENDER (tab Por Productor) ───────────────────
+    function cargarProds(pagina) {
+        if (!$listaProds.length) return;   // el servidor mostró el estado vacío
+        const req = ++prodsReq;
+        $listaProds.html(`<div style="text-align:center;padding:40px;color:#888;">
+            <i class="fas fa-spinner fa-spin" style="font-size:1.3rem;"></i><br>Cargando productores...
+        </div>`);
+        SAG.ajax({
+            url: '/entregas/datosProductores',
+            data: {
+                page:     pagina,
+                per_page: PRODS_POR_PAGINA,
+                depto:    $('#fpDepto').val()  || '',
+                padron:   $('#fpPadron').val() || '',
+                busca:    ($('#fpBusca').val() || '').trim(),
+            },
+            success: r => {
+                if (req !== prodsReq) return;
+                if (!r.success || !r.data) {
+                    prodsTotal = 0;
+                    renderProductores([]);
+                    return;
+                }
+                prodsPagina = r.data.page;
+                prodsTotal  = r.data.total;
+                renderProductores(r.data.rows || []);
+            }
         });
-
-        $('#fpContador').html($cards.length ? `Mostrando <strong>${visibles}</strong> de ${$cards.length} productor(es)` : '');
     }
 
-    $('#fpDepto, #fpPadron').on('change', aplicarFiltrosProductores);
-    $('#fpBusca').on('input', aplicarFiltrosProductores);
+    function renderProductores(rows) {
+        renderPager($pagerProds, prodsPagina, prodsTotal, PRODS_POR_PAGINA, cargarProds);
+        if (!rows.length) {
+            $listaProds.html(`<div style="text-align:center;padding:40px;color:#888;">
+                <i class="fas fa-user-tag" style="font-size:1.5rem;margin-bottom:6px;display:block;color:#bbb;"></i>
+                Sin productores para los filtros seleccionados.
+            </div>`);
+            $('#fpContador').html('');
+            return;
+        }
+        $listaProds.html(rows.map(prodCardHtml).join(''));
+        const desde = (prodsPagina - 1) * PRODS_POR_PAGINA + 1;
+        const hasta = Math.min(prodsTotal, desde + rows.length - 1);
+        $('#fpContador').html(`Mostrando <strong>${desde.toLocaleString('es-HN')}–${hasta.toLocaleString('es-HN')}</strong> de ${prodsTotal.toLocaleString('es-HN')} productor(es)`);
+    }
+
+    function prodCardHtml(p) {
+        let badge = '';
+        if (p.validacion === 'no_padron') {
+            badge = '<span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">⚠ NO EN PADRÓN</span>';
+        } else if (p.validacion === 'en_padron') {
+            badge = '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">✓ EN PADRÓN</span>';
+        }
+        const ubicacion = escapeHtml(p.departamento || '') + (p.municipio ? ' / ' + escapeHtml(p.municipio) : '');
+        const estab = p.establecimiento
+            ? `<span style="margin:0 8px;color:#bbb;">·</span><i class="fas fa-house" style="margin-right:3px;"></i>${escapeHtml(p.establecimiento)}`
+            : '';
+        const acta = p.acta_url
+            ? `<a href="${escapeHtml(p.acta_url)}" target="_blank"
+                  style="display:inline-block;margin-top:8px;padding:5px 12px;background:#0d9488;color:#fff;border-radius:6px;text-decoration:none;font-size:.72rem;font-weight:700;"
+                  title="Generar acta imprimible / PDF"><i class="fas fa-file-pdf"></i> Acta / PDF</a>`
+            : '';
+        const filas = (p.objetos || []).map(o => `
+            <tr style="border-bottom:1px dashed #f3f4f6;">
+              <td style="padding:5px 6px;"><strong>${escapeHtml(o.objeto)}</strong></td>
+              <td style="padding:5px 6px;">${o.codigo_traza
+                  ? '<strong style="color:#0f766e;">' + escapeHtml(o.codigo_traza) + '</strong>'
+                  : '<em style="color:#bbb;">— sin código —</em>'}</td>
+              <td style="padding:5px 6px;">${escapeHtml(o.guiasa)}</td>
+              <td style="padding:5px 6px;">${escapeHtml(String(o.fecha || '').substring(0, 10))}</td>
+              <td style="padding:5px 6px;text-align:right;font-weight:600;">${fmtNum(o.cantidad)} ${escapeHtml(o.unidad)}</td>
+              <td style="padding:5px 6px;color:#0d9488;">${escapeHtml(o.autoriza)}</td>
+              <td style="padding:5px 6px;text-align:center;">
+                <span class="est-badge est-${escapeHtml(o.estado)}">${o.estado === 'entregado' ? '✓ Entregado' : 'Pendiente'}</span>
+              </td>
+            </tr>`).join('');
+        const omitidos = p.objetos_omitidos > 0
+            ? `<div style="padding:6px 0 0;color:#888;font-size:.72rem;">+ ${p.objetos_omitidos} movimiento(s) más no listado(s)</div>`
+            : '';
+        return `
+        <div class="prod-card" style="padding:14px 16px;border-bottom:2px solid #f1f5f9;background:${p.tiene_alerta ? '#fffbeb' : '#fff'};">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div style="flex:1;min-width:240px;">
+              <strong style="font-size:.95rem;color:#1a1a1a;">${escapeHtml(p.nombre)}</strong>${badge}
+              <div style="margin-top:3px;font-size:.78rem;color:#666;">
+                <i class="fas fa-id-card" style="margin-right:3px;"></i>DNI: <strong>${escapeHtml(p.dni)}</strong>
+                <span style="margin:0 8px;color:#bbb;">·</span>
+                <i class="fas fa-map-marker-alt" style="margin-right:3px;"></i>${ubicacion}${estab}
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:1.2rem;font-weight:800;color:#16a34a;line-height:1;">${p.num_objetos}</div>
+              <div style="font-size:.7rem;color:#666;text-transform:uppercase;">objetos</div>
+              <div style="font-size:.7rem;color:#888;margin-top:3px;">
+                ${p.num_manifiestos} GUIASA(s) · <span style="color:#16a34a;">${p.entregados} entreg.</span> · <span style="color:#d97706;">${p.pendientes} pend.</span>
+              </div>
+              ${acta}
+            </div>
+          </div>
+          <table style="width:100%;margin-top:10px;font-size:.76rem;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #e5e7eb;color:#555;text-transform:uppercase;font-size:.65rem;">
+                <th style="text-align:left;padding:5px 6px;">Objeto trazable</th>
+                <th style="text-align:left;padding:5px 6px;">Cód. trazabilidad</th>
+                <th style="text-align:left;padding:5px 6px;">GUIASA</th>
+                <th style="text-align:left;padding:5px 6px;">Fecha</th>
+                <th style="text-align:right;padding:5px 6px;">Cantidad</th>
+                <th style="text-align:left;padding:5px 6px;">Autorizó</th>
+                <th style="text-align:center;padding:5px 6px;">Estado</th>
+              </tr>
+            </thead>
+            <tbody>${filas}</tbody>
+          </table>
+          ${omitidos}
+        </div>`;
+    }
+
+    let fpBuscaTimer = null;
+    $('#fpDepto, #fpPadron').on('change', () => cargarProds(1));
+    $('#fpBusca').on('input', function () {
+        clearTimeout(fpBuscaTimer);
+        fpBuscaTimer = setTimeout(() => cargarProds(1), 350);
+    });
     $('#btnFpLimpiar').on('click', function () {
         $('#fpDepto, #fpPadron, #fpBusca').val('');
-        aplicarFiltrosProductores();
+        cargarProds(1);
     });
-    aplicarFiltrosProductores();
 
     // ── DETALLE (modal) ──────────────────────────────────────
     $tbody.on('click', '.row-mov', function () {
         const id = $(this).data('id');
-        const m = MOVS.find(x => String(x.movement_id) === String(id));
+        const m = movsRows.find(x => String(x.id) === String(id));
         if (!m) return;
         mostrarDetalle(m);
     });
@@ -409,5 +539,6 @@ $(function () {
     });
 
     // ── INIT ─────────────────────────────────────────────────
-    renderTabla();
+    cargarMovs(1);
+    cargarProds(1);
 });

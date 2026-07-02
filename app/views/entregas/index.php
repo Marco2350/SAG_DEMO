@@ -97,6 +97,14 @@ $cssExtra = '<style>
 .det-grid .v{color:#1a1a1a;}
 .det-section{margin-bottom:18px;}
 .det-section-title{font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--primario);border-bottom:1.5px solid var(--primario);padding-bottom:4px;margin-bottom:10px;}
+
+/* Paginación server-side */
+.pg-wrap{display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px;}
+.pg-info{font-size:.78rem;color:#666;}
+.pg-nav{display:flex;gap:6px;align-items:center;font-size:.78rem;color:#555;}
+.pg-btn{background:#fff;border:1.5px solid var(--borde);border-radius:6px;padding:4px 10px;font-size:.78rem;cursor:pointer;color:#374151;}
+.pg-btn:hover:not(:disabled){background:#eef0f7;}
+.pg-btn:disabled{opacity:.4;cursor:default;}
 </style>';
 
 $progSigla = $_SESSION['programa']['sigla']  ?? '';
@@ -107,8 +115,9 @@ require ROOT_PATH . '/app/views/layouts/header.php';
 require ROOT_PATH . '/app/views/layouts/sidebar.php';
 require ROOT_PATH . '/app/views/layouts/topbar.php';
 
-// Pasar movimientos a JS para el filtrado client-side
-$pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT | JSON_HEX_APOS);
+// Los movimientos y el reporte por productor se cargan por AJAX paginado
+// (entregas/datos y entregas/datosProductores) — nunca se embeben en la página.
+$totalMovs = (int)($kpis['total_movimientos'] ?? 0);
 ?>
 
 <!-- ══ CONTENT ══ -->
@@ -249,7 +258,7 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
   </div>
 
   <!-- Banner informativo -->
-  <?php if (empty($movimientos)): ?>
+  <?php if ($totalMovs === 0): ?>
   <div class="info-banner empty">
     <i class="fas fa-circle-info"></i>
     <div>
@@ -271,13 +280,13 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
       <i class="fas fa-chart-pie"></i> Resumen
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('movimientos')">
-      <i class="fas fa-list-ul"></i> Movimientos <small style="opacity:.7;">(<?= count($movimientos ?? []) ?>)</small>
+      <i class="fas fa-list-ul"></i> Movimientos <small style="opacity:.7;">(<?= number_format($totalMovs) ?>)</small>
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('departamentos')">
       <i class="fas fa-map-location-dot"></i> Por Departamento <small style="opacity:.7;">(<?= count($reporteDepartamentos ?? []) ?>)</small>
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('productores')">
-      <i class="fas fa-user-tag"></i> Por Productor <small style="opacity:.7;">(<?= count($reporteProductores ?? []) ?>)</small>
+      <i class="fas fa-user-tag"></i> Por Productor <small style="opacity:.7;">(<?= number_format((int)($totalProductores ?? 0)) ?>)</small>
     </button>
     <button class="mode-tab" onclick="switchEntregasTab('bodegas')">
       <i class="fas fa-warehouse"></i> Por Bodega <small style="opacity:.7;">(<?= count($reporteBodegas ?? []) ?>)</small>
@@ -285,7 +294,7 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     <button class="mode-tab" onclick="switchEntregasTab('anomalias')" <?= !empty($anomalias) ? 'style="color:#92400e;"' : '' ?>>
       <i class="fas fa-triangle-exclamation"></i> Anomalías
       <?php if (!empty($anomalias)): ?>
-        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:.7rem;margin-left:4px;font-weight:700;"><?= count($anomalias) ?></span>
+        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:.7rem;margin-left:4px;font-weight:700;"><?= number_format((int)($totalAnomalias ?? count($anomalias))) ?></span>
       <?php else: ?>
         <small style="opacity:.7;">(0)</small>
       <?php endif; ?>
@@ -620,13 +629,16 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
       </tbody>
     </table>
   </div>
-  <div id="contadorFiltrados" style="margin-top:8px;font-size:.78rem;color:#666;text-align:right;"></div>
+  <div class="pg-wrap">
+    <div id="contadorFiltrados" class="pg-info"></div>
+    <div id="pagerMovs" class="pg-nav"></div>
+  </div>
 
   </div> <!-- /tab-ent-movimientos -->
 
   <!-- ══ TAB: POR PRODUCTOR ══ -->
   <div id="tab-ent-productores" style="display:none;">
-    <?php if (empty($reporteProductores)): ?>
+    <?php if (empty($totalProductores)): ?>
       <div style="text-align:center;padding:60px 20px;color:#888;background:#fff;border:1.5px solid var(--borde);border-radius:10px;">
         <i class="fas fa-user-tag" style="font-size:2rem;margin-bottom:10px;display:block;color:#bbb;"></i>
         Sin productores aún. Sincroniza con Trazaragro para ver el reporte.
@@ -634,7 +646,7 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     <?php else: ?>
       <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
         <i class="fas fa-info-circle"></i>
-        <strong><?= count($reporteProductores) ?> productor(es)</strong> con entregas registradas. Tarjeta con fondo amarillento = el productor tiene alguna alerta.
+        <strong><?= number_format((int)$totalProductores) ?> productor(es)</strong> con entregas registradas. Tarjeta con fondo amarillento = el productor tiene alguna alerta.
       </div>
       <div class="ent-filtros" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
         <div>
@@ -665,91 +677,11 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
         </div>
       </div>
       <div id="fpContador" style="margin:-4px 0 10px;font-size:.78rem;color:#666;text-align:right;"></div>
-      <div id="listaProductores" style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:hidden;">
-      <?php foreach ($reporteProductores as $p): ?>
-      <?php
-        $prodSearch = strtolower(trim(implode(' ', array_filter([
-            $p['nombre'] ?? '', $p['dni'] ?? '', $p['departamento'] ?? '',
-            $p['municipio'] ?? '', $p['establecimiento'] ?? '',
-            implode(' ', array_map(fn($o) => (($o['objeto'] ?? '') . ' ' . ($o['guiasa'] ?? '') . ' ' . ($o['codigo_traza'] ?? '')), $p['objetos'] ?? [])),
-        ]))));
-      ?>
-      <div class="prod-card"
-           data-depto="<?= htmlspecialchars($p['departamento']) ?>"
-           data-padron="<?= htmlspecialchars($p['validacion']) ?>"
-           data-search="<?= htmlspecialchars($prodSearch) ?>"
-           style="padding:14px 16px;border-bottom:2px solid #f1f5f9;background:<?= $p['tiene_alerta'] ? '#fffbeb' : '#fff' ?>;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
-          <div style="flex:1;min-width:240px;">
-            <strong style="font-size:.95rem;color:#1a1a1a;"><?= htmlspecialchars($p['nombre']) ?></strong>
-            <?php if ($p['validacion'] === 'no_padron'): ?>
-              <span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">⚠ NO EN PADRÓN</span>
-            <?php elseif ($p['validacion'] === 'en_padron'): ?>
-              <span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;margin-left:6px;">✓ EN PADRÓN</span>
-            <?php endif; ?>
-            <div style="margin-top:3px;font-size:.78rem;color:#666;">
-              <i class="fas fa-id-card" style="margin-right:3px;"></i>DNI: <strong><?= htmlspecialchars($p['dni']) ?></strong>
-              <span style="margin:0 8px;color:#bbb;">·</span>
-              <i class="fas fa-map-marker-alt" style="margin-right:3px;"></i>
-              <?= htmlspecialchars($p['departamento']) ?><?= $p['municipio'] ? ' / ' . htmlspecialchars($p['municipio']) : '' ?>
-              <?php if ($p['establecimiento']): ?>
-                <span style="margin:0 8px;color:#bbb;">·</span>
-                <i class="fas fa-house" style="margin-right:3px;"></i><?= htmlspecialchars($p['establecimiento']) ?>
-              <?php endif; ?>
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:1.2rem;font-weight:800;color:#16a34a;line-height:1;"><?= $p['num_objetos'] ?></div>
-            <div style="font-size:.7rem;color:#666;text-transform:uppercase;">objetos</div>
-            <div style="font-size:.7rem;color:#888;margin-top:3px;">
-              <?= $p['num_manifiestos'] ?> GUIASA(s) · <span style="color:#16a34a;"><?= $p['entregados'] ?> entreg.</span> · <span style="color:#d97706;"><?= $p['pendientes'] ?> pend.</span>
-            </div>
-            <?php if (!empty($p['dni']) && $p['dni'] !== '(sin DNI)'): ?>
-            <a href="<?= BASE_URL ?>/entregas/acta?dni=<?= urlencode($p['dni']) ?>" target="_blank"
-               style="display:inline-block;margin-top:8px;padding:5px 12px;background:#0d9488;color:#fff;border-radius:6px;text-decoration:none;font-size:.72rem;font-weight:700;"
-               title="Generar acta imprimible / PDF">
-              <i class="fas fa-file-pdf"></i> Acta / PDF
-            </a>
-            <?php endif; ?>
-          </div>
-        </div>
-
-        <table style="width:100%;margin-top:10px;font-size:.76rem;border-collapse:collapse;">
-          <thead>
-            <tr style="border-bottom:1.5px solid #e5e7eb;color:#555;text-transform:uppercase;font-size:.65rem;">
-              <th style="text-align:left;padding:5px 6px;">Objeto trazable</th>
-              <th style="text-align:left;padding:5px 6px;">Cód. trazabilidad</th>
-              <th style="text-align:left;padding:5px 6px;">GUIASA</th>
-              <th style="text-align:left;padding:5px 6px;">Fecha</th>
-              <th style="text-align:right;padding:5px 6px;">Cantidad</th>
-              <th style="text-align:left;padding:5px 6px;">Autorizó</th>
-              <th style="text-align:center;padding:5px 6px;">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($p['objetos'] as $o): ?>
-            <tr style="border-bottom:1px dashed #f3f4f6;">
-              <td style="padding:5px 6px;"><strong><?= htmlspecialchars($o['objeto']) ?></strong></td>
-              <td style="padding:5px 6px;">
-                <?php if ($o['codigo_traza']): ?>
-                  <strong style="color:#0f766e;"><?= htmlspecialchars($o['codigo_traza']) ?></strong>
-                <?php else: ?>
-                  <em style="color:#bbb;">— sin código —</em>
-                <?php endif; ?>
-              </td>
-              <td style="padding:5px 6px;"><?= htmlspecialchars($o['guiasa']) ?></td>
-              <td style="padding:5px 6px;"><?= htmlspecialchars(substr((string)$o['fecha'], 0, 10)) ?></td>
-              <td style="padding:5px 6px;text-align:right;font-weight:600;"><?= number_format($o['cantidad'], 0) ?> <?= htmlspecialchars($o['unidad']) ?></td>
-              <td style="padding:5px 6px;color:#0d9488;"><?= htmlspecialchars($o['autoriza']) ?></td>
-              <td style="padding:5px 6px;text-align:center;">
-                <span class="est-badge est-<?= htmlspecialchars($o['estado']) ?>"><?= $o['estado'] === 'entregado' ? '✓ Entregado' : 'Pendiente' ?></span>
-              </td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <?php endforeach; ?>
+      <!-- Tarjetas renderizadas por JS desde /entregas/datosProductores (paginado) -->
+      <div id="listaProductores" style="background:#fff;border:1.5px solid var(--borde);border-radius:10px;overflow:hidden;"></div>
+      <div class="pg-wrap">
+        <div class="pg-info"></div>
+        <div id="pagerProds" class="pg-nav"></div>
       </div>
     <?php endif; ?>
   </div>
@@ -843,7 +775,10 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     <?php else: ?>
       <div style="margin-bottom:10px;font-size:.85rem;color:#666;">
         <i class="fas fa-info-circle"></i>
-        Se detectaron <strong><?= count($anomalias) ?> alerta(s)</strong> que requieren revisión manual. Categorías: <strong>Sin DNI</strong> (movimiento sin productor identificado), <strong>No en padrón</strong> (DNI no encontrado en sag_beneficiarios), <strong>Duplicado</strong> (mismo productor recibió mismo objeto múltiples veces), <strong>Cantidad</strong> (cero o no especificada), <strong>Estado</strong> (entregado sin objeto trazable).
+        Se detectaron <strong><?= number_format((int)($totalAnomalias ?? count($anomalias))) ?> alerta(s)</strong> que requieren revisión manual.
+        <?php if (($totalAnomalias ?? 0) > count($anomalias)): ?>
+          <em>Se listan las <?= number_format(count($anomalias)) ?> más severas; usa "Descargar reporte" para el detalle completo.</em>
+        <?php endif; ?> Categorías: <strong>Sin DNI</strong> (movimiento sin productor identificado), <strong>No en padrón</strong> (DNI no encontrado en sag_beneficiarios), <strong>Duplicado</strong> (mismo productor recibió mismo objeto múltiples veces), <strong>Cantidad</strong> (cero o no especificada), <strong>Estado</strong> (entregado sin objeto trazable).
       </div>
       <div style="background:#fff;border:1.5px solid #f59e0b;border-radius:10px;overflow:auto;">
       <table class="tbl-desg" style="min-width:900px;">
@@ -909,10 +844,6 @@ $pMovs = json_encode($movimientos ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_QUOT 
     </div>
   </div>
 </div>
-
-<script>
-window.OIRSA_MOVS = <?= $pMovs ?>;
-</script>
 
 <?php
 // asset() agrega ?v={mtime} para evitar caché del JS viejo
